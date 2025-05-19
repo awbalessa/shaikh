@@ -14,3 +14,6 @@ INSERT INTO
 VALUES
     (NOW (), NOW (), $1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
+
+-- name: ResetEmbeddings :exec
+DELETE FROM embeddings;

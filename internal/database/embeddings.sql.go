@@ -65,3 +65,12 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 	)
 	return i, err
 }
+
+const resetEmbeddings = `-- name: ResetEmbeddings :exec
+DELETE FROM embeddings
+`
+
+func (q *Queries) ResetEmbeddings(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, resetEmbeddings)
+	return err
+}
