@@ -20,10 +20,9 @@ CREATE TYPE literature_source AS enum (
 CREATE TABLE embeddings (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NOT NULL,
     granularity granularity NOT NULL,
     content_type content_type NOT NULL,
-    content TEXT NOT NULL,
+    content TEXT NOT NULL UNIQUE,
     lang lang NOT NULL DEFAULT 'ar',
     literature_source literature_source NOT NULL,
     embedding_title TEXT NOT NULL,

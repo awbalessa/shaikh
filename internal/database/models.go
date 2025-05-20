@@ -192,7 +192,6 @@ func (ns NullLiteratureSource) Value() (driver.Value, error) {
 type Embedding struct {
 	ID               int64
 	CreatedAt        pgtype.Timestamp
-	UpdatedAt        pgtype.Timestamp
 	Granularity      Granularity
 	ContentType      ContentType
 	Content          string

@@ -15,9 +15,9 @@ const createEmbedding = `-- name: CreateEmbedding :one
 INSERT INTO
     embeddings (
         created_at,
-        updated_at,
         granularity,
         content_type,
+        content,
         lang,
         literature_source,
         embedding_title,
@@ -25,13 +25,14 @@ INSERT INTO
         metadata
     )
 VALUES
-    (NOW (), NOW (), $1, $2, $3, $4, $5, $6, $7)
-RETURNING id, created_at, updated_at, granularity, content_type, content, lang, literature_source, embedding_title, embedding, metadata
+    (NOW (), $1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, created_at, granularity, content_type, content, lang, literature_source, embedding_title, embedding, metadata
 `
 
 type CreateEmbeddingParams struct {
 	Granularity      Granularity
 	ContentType      ContentType
+	Content          string
 	Lang             Lang
 	LiteratureSource LiteratureSource
 	EmbeddingTitle   string
@@ -43,6 +44,7 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 	row := q.db.QueryRow(ctx, createEmbedding,
 		arg.Granularity,
 		arg.ContentType,
+		arg.Content,
 		arg.Lang,
 		arg.LiteratureSource,
 		arg.EmbeddingTitle,
@@ -53,7 +55,6 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.Granularity,
 		&i.ContentType,
 		&i.Content,
