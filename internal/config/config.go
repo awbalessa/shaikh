@@ -5,13 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/awbalessa/shaikh/internal/database"
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	GeminiKey   string
-	Platform    string
-	DatabaseURL string
+	GeminiKey      string
+	Platform       string
+	DatabaseURL    string
+	EmbeddingModel string
+	Queries        *database.Queries
 }
 
 func Load() (*Config, error) {
@@ -30,8 +33,9 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		GeminiKey:   os.Getenv("GEMINI_API_KEY"),
-		DatabaseURL: os.Getenv("DB_URL"),
+		GeminiKey:      os.Getenv("GEMINI_API_KEY"),
+		DatabaseURL:    os.Getenv("DB_URL"),
+		EmbeddingModel: os.Getenv("EMBEDDING_MODEL"),
 	}, nil
 }
 

@@ -26,7 +26,7 @@ CREATE TABLE embeddings (
     lang lang NOT NULL DEFAULT 'ar',
     literature_source literature_source NOT NULL,
     embedding_title TEXT NOT NULL,
-    embedding VECTOR (1536) NOT NULL,
+    embedding VECTOR (768) NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 

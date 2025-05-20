@@ -12,6 +12,10 @@ import (
 	"strings"
 
 	"github.com/awbalessa/shaikh/internal/config"
+	"github.com/awbalessa/shaikh/internal/database"
+	"github.com/awbalessa/shaikh/internal/models"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 	"google.golang.org/genai"
 )
 
@@ -20,7 +24,7 @@ type Ayah struct {
 	Text         string
 }
 
-func ParseAyahs(filePath string, startAyah, endAyah int) ([]Ayah, error) {
+func ParseFromMarkdown(filePath string, startAyah, endAyah int) ([]Ayah, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("Error opening file at %s: %w", filePath, err)
@@ -100,9 +104,15 @@ func main() {
 	}
 
 	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	Queries := database.New(pool)
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  cfg.GeminiKey,
-		Backend: genai.BackendGeminiAPI,
+		Project:  "shaikh-460416",
+		Location: "me-central1",
+		Backend:  genai.BackendVertexAI,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -110,27 +120,35 @@ func main() {
 
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Fatalf("Error getting working directory: %v", err)
+		log.Fatal(err)
 	}
 	imlaeiSimpleQuranCom := filepath.Join(wd, "assets", "data-quran", "ayah-text", "imlaei-simple-qurancom.md")
-	baqarah, err := ParseAyahs(imlaeiSimpleQuranCom, 8, 293)
+	batch, err := ParseFromMarkdown(imlaeiSimpleQuranCom, 208, 293)
 	if err != nil {
-		log.Fatalf("Error parsing ayahs: %v", err)
+		log.Fatal(err)
 	}
 
-	contents := []*genai.Content{
-		genai.NewContentFromText("Are you sure that's the meaning of life?", genai.RoleUser),
+	contents := make([]*genai.Content, len(batch))
+	parts := make([]*genai.Part, len(batch))
+	for i := range batch {
+		parts[i] = &genai.Part{
+			Text: batch[i].Text,
+		}
+		contents[i] = &genai.Content{
+			Parts: parts,
+		}
 	}
 
-	fmt.Println("Sending embedding request...")
-	dim := int32(1536)
+	fmt.Printf("Sending embedding request for %d ayat...\n", len(batch))
 	embedCfg := &genai.EmbedContentConfig{
-		TaskType:             "RETRIEVAL_QUERY",
-		OutputDimensionality: &dim,
+		TaskType:     "RETRIEVAL_DOCUMENT",
+		Title:        "Surat Al Imran",
+		AutoTruncate: false,
 	}
+
 	result, err := client.Models.EmbedContent(
 		ctx,
-		"gemini-embedding-exp-03-07",
+		cfg.EmbeddingModel,
 		contents,
 		embedCfg,
 	)
@@ -138,12 +156,32 @@ func main() {
 		log.Fatal(err)
 	}
 
-	dims := len(result.Embeddings[0].Values)
-	fmt.Printf("Genereted an emedding of %d dimensions", dims)
-	embeddings, err := json.MarshalIndent(result.Embeddings, "", "  ")
-	if err != nil {
-		log.Fatal(err)
-	}
+	fmt.Printf("Retreived %d embeddings successfully!\n", len(result.Embeddings))
+	for i := range result.Embeddings {
+		meta := models.AyahLvlMetadata{
+			SurahNumber: models.SurahNumberBaqarah,
+			AyahNumber:  i + 1,
+		}
 
-	fmt.Println(string(embeddings))
+		bytes, err := json.Marshal(meta)
+		if err != nil {
+			log.Fatal(err)
+		}
+		config := database.CreateEmbeddingParams{
+			Granularity:      database.GranularityAyah,
+			ContentType:      database.ContentTypeQuran,
+			Content:          batch[i].Text,
+			Lang:             database.LangAr,
+			LiteratureSource: database.LiteratureSourceQuran,
+			EmbeddingTitle:   embedCfg.Title,
+			Embedding:        pgvector.NewVector(result.Embeddings[i].Values),
+			Metadata:         bytes,
+		}
+
+		fmt.Printf("Inserting embedding #%d...\n", i+1)
+		_, err = Queries.CreateEmbedding(ctx, config)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
