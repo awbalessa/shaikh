@@ -13,7 +13,7 @@ import (
 
 const cosineSimilarity = `-- name: CosineSimilarity :many
 SELECT
-    content,
+    raw_content,
     metadata,
     literature_source,
     (1.0 - (embedding <=> $1))::double precision AS similarity
@@ -28,7 +28,7 @@ type CosineSimilarityParams struct {
 }
 
 type CosineSimilarityRow struct {
-	Content          string
+	RawContent       string
 	Metadata         []byte
 	LiteratureSource LiteratureSource
 	Similarity       float64
@@ -44,7 +44,7 @@ func (q *Queries) CosineSimilarity(ctx context.Context, arg CosineSimilarityPara
 	for rows.Next() {
 		var i CosineSimilarityRow
 		if err := rows.Scan(
-			&i.Content,
+			&i.RawContent,
 			&i.Metadata,
 			&i.LiteratureSource,
 			&i.Similarity,
@@ -62,10 +62,10 @@ func (q *Queries) CosineSimilarity(ctx context.Context, arg CosineSimilarityPara
 const createEmbedding = `-- name: CreateEmbedding :one
 INSERT INTO
     embeddings (
-        created_at,
         granularity,
         content_type,
-        content,
+        raw_content,
+        embedded_content,
         lang,
         literature_source,
         embedding_title,
@@ -73,14 +73,15 @@ INSERT INTO
         metadata
     )
 VALUES
-    (NOW (), $1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, created_at, granularity, content_type, content, lang, literature_source, embedding_title, embedding, metadata
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, created_at, granularity, content_type, raw_content, embedded_content, lang, literature_source, embedding_title, embedding, metadata
 `
 
 type CreateEmbeddingParams struct {
 	Granularity      Granularity
 	ContentType      ContentType
-	Content          string
+	RawContent       string
+	EmbeddedContent  string
 	Lang             Lang
 	LiteratureSource LiteratureSource
 	EmbeddingTitle   string
@@ -92,7 +93,8 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 	row := q.db.QueryRow(ctx, createEmbedding,
 		arg.Granularity,
 		arg.ContentType,
-		arg.Content,
+		arg.RawContent,
+		arg.EmbeddedContent,
 		arg.Lang,
 		arg.LiteratureSource,
 		arg.EmbeddingTitle,
@@ -105,7 +107,8 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 		&i.CreatedAt,
 		&i.Granularity,
 		&i.ContentType,
-		&i.Content,
+		&i.RawContent,
+		&i.EmbeddedContent,
 		&i.Lang,
 		&i.LiteratureSource,
 		&i.EmbeddingTitle,
@@ -113,15 +116,6 @@ func (q *Queries) CreateEmbedding(ctx context.Context, arg CreateEmbeddingParams
 		&i.Metadata,
 	)
 	return i, err
-}
-
-const resetEmbeddings = `-- name: ResetEmbeddings :exec
-DELETE FROM embeddings
-`
-
-func (q *Queries) ResetEmbeddings(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, resetEmbeddings)
-	return err
 }
 
 const updateEmbedding = `-- name: UpdateEmbedding :exec
@@ -144,18 +138,18 @@ func (q *Queries) UpdateEmbedding(ctx context.Context, arg UpdateEmbeddingParams
 const updateEmbeddingAndContent = `-- name: UpdateEmbeddingAndContent :exec
 UPDATE embeddings
 SET
-    content = $1,
+    embedded_content = $1,
     embedding = $2
 WHERE id = $3
 `
 
 type UpdateEmbeddingAndContentParams struct {
-	Content   string
-	Embedding pgvector_go.Vector
-	ID        int64
+	EmbeddedContent string
+	Embedding       pgvector_go.Vector
+	ID              int64
 }
 
 func (q *Queries) UpdateEmbeddingAndContent(ctx context.Context, arg UpdateEmbeddingAndContentParams) error {
-	_, err := q.db.Exec(ctx, updateEmbeddingAndContent, arg.Content, arg.Embedding, arg.ID)
+	_, err := q.db.Exec(ctx, updateEmbeddingAndContent, arg.EmbeddedContent, arg.Embedding, arg.ID)
 	return err
 }

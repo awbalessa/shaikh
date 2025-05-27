@@ -1,10 +1,10 @@
 -- name: CreateEmbedding :one
 INSERT INTO
     embeddings (
-        created_at,
         granularity,
         content_type,
-        content,
+        raw_content,
+        embedded_content,
         lang,
         literature_source,
         embedding_title,
@@ -12,7 +12,7 @@ INSERT INTO
         metadata
     )
 VALUES
-    (NOW (), $1, $2, $3, $4, $5, $6, $7, $8)
+    ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
 -- name: UpdateEmbedding :exec
@@ -24,19 +24,16 @@ WHERE id = $2;
 -- name: UpdateEmbeddingAndContent :exec
 UPDATE embeddings
 SET
-    content = $1,
+    embedded_content = $1,
     embedding = $2
 WHERE id = $3;
 
 -- name: CosineSimilarity :many
 SELECT
-    content,
+    raw_content,
     metadata,
     literature_source,
     (1.0 - (embedding <=> $1))::double precision AS similarity
 FROM embeddings
 ORDER BY similarity DESC
 LIMIT $2;
-
--- name: ResetEmbeddings :exec
-DELETE FROM embeddings;

@@ -194,7 +194,8 @@ type Embedding struct {
 	CreatedAt        pgtype.Timestamp
 	Granularity      Granularity
 	ContentType      ContentType
-	Content          string
+	RawContent       string
+	EmbeddedContent  string
 	Lang             Lang
 	LiteratureSource LiteratureSource
 	EmbeddingTitle   string

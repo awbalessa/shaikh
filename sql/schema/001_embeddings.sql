@@ -32,7 +32,7 @@ CREATE TABLE embeddings (
 );
 
 -- Add composite unique constraint
-ALTER TABLE embeddings ADD CONSTRAINT unique_content_metadata UNIQUE (content, metadata);
+ALTER TABLE embeddings ADD CONSTRAINT unique_content_metadata UNIQUE (raw_content, metadata);
 
 -- Add a GIN index on metadata
 CREATE INDEX idx_embeddings_metadata ON embeddings USING GIN (metadata);

@@ -12,7 +12,6 @@ type Builder struct {
 	instructions      []string
 	query             string
 	documents         []database.CosineSimilarityRow
-	lang              string
 	includeMetadata   bool
 	includeSource     bool
 	includeSimilarity bool
@@ -22,12 +21,12 @@ func NewBuilder() *Builder {
 	return &Builder{}
 }
 
-func (b *Builder) WithUserQuery(q string, l string) *Builder {
+func (b *Builder) WithUserQuery(q string) *Builder {
 	b.query = q
 	return b
 }
 
-func (b *Builder) WithDocuments(docs []database.CosineSimilarityRow, label string) *Builder {
+func (b *Builder) WithDocuments(docs []database.CosineSimilarityRow) *Builder {
 	b.documents = docs
 	return b
 }
@@ -49,11 +48,6 @@ func (b *Builder) WithSource(include bool) *Builder {
 
 func (b *Builder) WithSimilarity(include bool) *Builder {
 	b.includeSimilarity = include
-	return b
-}
-
-func (b *Builder) InLanguage(lang string) *Builder {
-	b.lang = lang
 	return b
 }
 
@@ -90,7 +84,7 @@ func (b *Builder) Build() (systemInstructions string, prompt string, err error) 
 			}
 			sb.WriteString(fmt.Sprintf("Metadata: %s\n", meta.Describe()))
 		}
-		sb.WriteString(fmt.Sprintf("Content: %s\n", doc.Content))
+		sb.WriteString(fmt.Sprintf("Content: %s\n", doc.RawContent))
 		if b.includeSimilarity {
 			sb.WriteString(fmt.Sprintf("\t[similarity: %.2f]\n", doc.Similarity))
 		}
