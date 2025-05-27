@@ -11,6 +11,54 @@ import (
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
+const cosineSimilarity = `-- name: CosineSimilarity :many
+SELECT
+    content,
+    metadata,
+    literature_source,
+    (1.0 - (embedding <=> $1))::double precision AS similarity
+FROM embeddings
+ORDER BY similarity DESC
+LIMIT $2
+`
+
+type CosineSimilarityParams struct {
+	Embedding pgvector_go.Vector
+	Limit     int32
+}
+
+type CosineSimilarityRow struct {
+	Content          string
+	Metadata         []byte
+	LiteratureSource LiteratureSource
+	Similarity       float64
+}
+
+func (q *Queries) CosineSimilarity(ctx context.Context, arg CosineSimilarityParams) ([]CosineSimilarityRow, error) {
+	rows, err := q.db.Query(ctx, cosineSimilarity, arg.Embedding, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CosineSimilarityRow
+	for rows.Next() {
+		var i CosineSimilarityRow
+		if err := rows.Scan(
+			&i.Content,
+			&i.Metadata,
+			&i.LiteratureSource,
+			&i.Similarity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createEmbedding = `-- name: CreateEmbedding :one
 INSERT INTO
     embeddings (
@@ -73,5 +121,41 @@ DELETE FROM embeddings
 
 func (q *Queries) ResetEmbeddings(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, resetEmbeddings)
+	return err
+}
+
+const updateEmbedding = `-- name: UpdateEmbedding :exec
+UPDATE embeddings
+SET
+    embedding = $1
+WHERE id = $2
+`
+
+type UpdateEmbeddingParams struct {
+	Embedding pgvector_go.Vector
+	ID        int64
+}
+
+func (q *Queries) UpdateEmbedding(ctx context.Context, arg UpdateEmbeddingParams) error {
+	_, err := q.db.Exec(ctx, updateEmbedding, arg.Embedding, arg.ID)
+	return err
+}
+
+const updateEmbeddingAndContent = `-- name: UpdateEmbeddingAndContent :exec
+UPDATE embeddings
+SET
+    content = $1,
+    embedding = $2
+WHERE id = $3
+`
+
+type UpdateEmbeddingAndContentParams struct {
+	Content   string
+	Embedding pgvector_go.Vector
+	ID        int64
+}
+
+func (q *Queries) UpdateEmbeddingAndContent(ctx context.Context, arg UpdateEmbeddingAndContentParams) error {
+	_, err := q.db.Exec(ctx, updateEmbeddingAndContent, arg.Content, arg.Embedding, arg.ID)
 	return err
 }

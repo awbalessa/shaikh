@@ -10,11 +10,13 @@ import (
 )
 
 type Config struct {
-	GeminiKey      string
-	Platform       string
-	DatabaseURL    string
-	EmbeddingModel string
-	Queries        *database.Queries
+	Platform        string
+	DatabaseURL     string
+	EmbeddingModel  string
+	Queries         *database.Queries
+	GenerationModel string
+	GCPProject      string
+	GCPRegion       string
 }
 
 func Load() (*Config, error) {
@@ -33,9 +35,11 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		GeminiKey:      os.Getenv("GEMINI_API_KEY"),
-		DatabaseURL:    os.Getenv("DB_URL"),
-		EmbeddingModel: os.Getenv("EMBEDDING_MODEL"),
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		EmbeddingModel:  os.Getenv("EMBEDDING_MODEL"),
+		GenerationModel: os.Getenv("GENERATION_MODEL"),
+		GCPProject:      os.Getenv("GCP_PROJECT"),
+		GCPRegion:       os.Getenv("GCP_REGION"),
 	}, nil
 }
 

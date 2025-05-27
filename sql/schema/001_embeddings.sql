@@ -19,10 +19,11 @@ CREATE TYPE literature_source AS enum (
 
 CREATE TABLE embeddings (
     id BIGSERIAL PRIMARY KEY,
-    created_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     granularity granularity NOT NULL,
     content_type content_type NOT NULL,
-    content TEXT NOT NULL UNIQUE,
+    raw_content TEXT NOT NULL,
+    embedded_content TEXT NOT NULL,
     lang lang NOT NULL DEFAULT 'ar',
     literature_source literature_source NOT NULL,
     embedding_title TEXT NOT NULL,
@@ -30,8 +31,21 @@ CREATE TABLE embeddings (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Add composite unique constraint
+ALTER TABLE embeddings ADD CONSTRAINT unique_content_metadata UNIQUE (content, metadata);
+
+-- Add a GIN index on metadata
+CREATE INDEX idx_embeddings_metadata ON embeddings USING GIN (metadata);
+
 -- +goose Down
 DROP TABLE embeddings;
+
+-- Drop the GIN index
+DROP INDEX IF EXISTS idx_embeddings_metadata;
+
+-- Drop composite unique constraint
+ALTER TABLE embeddings
+DROP CONSTRAINT IF EXISTS unique_content_metadata;
 
 DROP TYPE literature_source;
 DROP TYPE lang;
