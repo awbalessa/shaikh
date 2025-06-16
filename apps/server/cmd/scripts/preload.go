@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/awbalessa/shaikh/internal/config"
-	"github.com/awbalessa/shaikh/internal/database"
-	"github.com/awbalessa/shaikh/internal/models"
+	"github.com/awbalessa/shaikh/apps/server/internal/config"
+	"github.com/awbalessa/shaikh/apps/server/internal/database"
+	"github.com/awbalessa/shaikh/apps/server/internal/models"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"google.golang.org/genai"
@@ -25,118 +25,117 @@ func ptr[T any](v T) *T {
 
 func main() {
 
-	// cfg, err := config.Load()
-	// if err != nil {
-	// 	log.Fatalf("Error loading config: %v", err)
-	// }
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
 
-	// ctx := context.Background()
-	// client, err := genai.NewClient(ctx, &genai.ClientConfig{
-	// 	Project:  "shaikh-460416",
-	// 	Location: "europe-west4",
-	// 	Backend:  genai.BackendVertexAI,
-	// })
-	// if err != nil {
-	// 	log.Fatalf("Error creating genai client: %v", err)
-	// }
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		Project:  "shaikh-460416",
+		Location: "europe-west4",
+		Backend:  genai.BackendVertexAI,
+	})
+	if err != nil {
+		log.Fatalf("Error creating genai client: %v", err)
+	}
 
-	// 	userQuery := "بني إسرائيل خالفوا أوامر الله وتعلموا السحر في عهد سليمان"
-	// 	embedContentResponse, err := embedQuery(ctx, cfg, client, userQuery)
-	// 	if err != nil {
-	// 		log.Fatalf("Error generating embedding: %v", err)
-	// 	}
-	// 	fmt.Println("Embedded query")
+	userQuery := "بني إسرائيل خالفوا أوامر الله وتعلموا السحر في عهد سليمان"
+	embedContentResponse, err := embedQuery(ctx, cfg, client, userQuery)
+	if err != nil {
+		log.Fatalf("Error generating embedding: %v", err)
+	}
+	fmt.Println("Embedded query")
 
-	// 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// 	defer pool.Close()
-	// 	Queries := database.New(pool)
-	// 	// Pull top 10 most relevant documents using Cosine similarity
-	// 	queryVec := pgvector.NewVector(embedContentResponse.Embeddings[0].Values)
-	// 	topFive, err := Queries.CosineSimilarity(ctx, queryVec)
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-	// 	fmt.Println("Fetched top five documents")
+	defer pool.Close()
+	Queries := database.New(pool)
+	// Pull top 10 most relevant documents using Cosine similarity
+	queryVec := pgvector.NewVector(embedContentResponse.Embeddings[0].Values)
+	topFive, err := Queries.CosineSimilarity(ctx, queryVec)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Fetched top five documents")
 
-	// 	promptStr := fmt.Sprintf(`
-	// 		User Question:
-	// 		%s
+	promptStr := fmt.Sprintf(`
+			User Question:
+			%s
 
-	// 		Ayat:
-	// 		%s
-	// 		%s
-	// 		%s
-	// 		%s
-	// 		%s
-	// 		`,
-	// 		userQuery,
-	// 		topFive[0].Content,
-	// 		topFive[1].Content,
-	// 		topFive[2].Content,
-	// 		topFive[3].Content,
-	// 		topFive[4].Content)
+			Ayat:
+			%s
+			%s
+			%s
+			%s
+			%s
+			`,
+		userQuery,
+		topFive[0].Content,
+		topFive[1].Content,
+		topFive[2].Content,
+		topFive[3].Content,
+		topFive[4].Content)
 
-	// 	contents := []*genai.Content{
-	// 		{
-	// 			Role: "user",
-	// 			Parts: []*genai.Part{
-	// 				{
-	// 					Text: promptStr,
-	// 				},
-	// 			},
-	// 		},
-	// 	}
-	// 	fmt.Println("Sending prompt...")
-	// 	generateConfig := &genai.GenerateContentConfig{
-	// 		SystemInstruction: &genai.Content{
-	// 			Parts: []*genai.Part{
-	// 				{
-	// 					Text: `
-	// 					You are a helpful assistant answering a user's question using only the provided ayat.
+	contents := []*genai.Content{
+		{
+			Role: "user",
+			Parts: []*genai.Part{
+				{
+					Text: promptStr,
+				},
+			},
+		},
+	}
+	fmt.Println("Sending prompt...")
+	generateConfig := &genai.GenerateContentConfig{
+		SystemInstruction: &genai.Content{
+			Parts: []*genai.Part{
+				{
+					Text: `
+						You are a helpful assistant answering a user's question using only the provided ayat.
 
-	// 					Instructions:
-	// 					- Answer in the same language and dialect as the user. Always.
-	// 					- Respond clearly and in a way the user can actually understand.
-	// 					- Use only the documents below. Do not use outside knowledge. Ever.
-	// 					- If the answer isn't found in the documents, say "I don't know" in the user's language.
-	// 					- Do not summarize unless asked.
-	// 					- If quoting a verse, mention its surah and ayah number.
-	// `,
-	// 				},
-	// 			},
-	// 		},
-	// 		Temperature: ptr(float32(0.2)),
-	// 		TopP:        ptr(float32(0.8)),
-	// 	}
+						Instructions:
+						- Answer in the same language and dialect as the user. Always.
+						- Respond clearly and in a way the user can actually understand.
+						- Use only the documents below. Do not use outside knowledge. Ever.
+						- If the answer isn't found in the documents, say "I don't know" in the user's language.
+						- Do not summarize unless asked.
+						- If quoting a verse, mention its surah and ayah number.
+	`,
+				},
+			},
+		},
+		Temperature: ptr(float32(0.2)),
+		TopP:        ptr(float32(0.8)),
+	}
 
-	// response, err := client.Models.GenerateContent(
-	//
-	//	ctx,
-	//	cfg.GenerationModel,
-	//	contents,
-	//	generateConfig,
-	//
-	// )
-	//
-	//	if err != nil {
-	//		log.Fatal(err)
-	//	}
-	//
-	// fmt.Println("Sent prompt to Gemini")
-	// fmt.Printf("Vector:\n\n")
-	// fmt.Println(embedContentResponse.Embeddings[0].Values[:5])
-	// fmt.Printf("Documents:\n\n")
-	// fmt.Println(topFive[0].Content)
-	// fmt.Println(topFive[1].Content)
-	// fmt.Println(topFive[2].Content)
-	// fmt.Println(topFive[3].Content)
-	// fmt.Println(topFive[4].Content)
-	// fmt.Printf("Gemini:\n\n")
-	// fmt.Println(response.Candidates[0].Content.Parts[0].Text)
+	response, err := client.Models.GenerateContent(
+
+		ctx,
+		cfg.GenerationModel,
+		contents,
+		generateConfig,
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Sent prompt to Gemini")
+	fmt.Printf("Vector:\n\n")
+	fmt.Println(embedContentResponse.Embeddings[0].Values[:5])
+	fmt.Printf("Documents:\n\n")
+	fmt.Println(topFive[0].Content)
+	fmt.Println(topFive[1].Content)
+	fmt.Println(topFive[2].Content)
+	fmt.Println(topFive[3].Content)
+	fmt.Println(topFive[4].Content)
+	fmt.Printf("Gemini:\n\n")
+	fmt.Println(response.Candidates[0].Content.Parts[0].Text)
 }
 
 func embedQuery(ctx context.Context, cfg *config.Config, client *genai.Client, query string) (*genai.EmbedContentResponse, error) {

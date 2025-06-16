@@ -1,0 +1,2 @@
+-- +goose Up
+-- table documents

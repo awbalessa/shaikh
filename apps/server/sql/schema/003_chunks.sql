@@ -21,7 +21,7 @@ CREATE TYPE literature_source AS enum (
 
 -- You'll probably have to rethink your schema. Some documents belong in a pure relational table.
 -- Ayat, Tafsir, Hadith, Asbab Nozool... etc. Look into strcture of all the literature.
-CREATE TABLE embeddings ( -- Figure out a better name
+CREATE TABLE chunks ( -- Figure out a better name
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMP NOT NULL DEFAULT NOW (),
     granularity granularity NOT NULL,
@@ -32,9 +32,9 @@ CREATE TABLE embeddings ( -- Figure out a better name
     -- context_header + raw_content
     embedded_content TEXT NOT NULL,
     embedding VECTOR (1536) NOT NULL,
-    is_chunk BOOL NOT NULL,
-    -- NULLable columns that depend on is_chunk
-    parent_document TEXT,
+    has_parent BOOL NOT NULL,
+    -- NULLable columns that depend on has_parent
+    parent_id reference,
     -- NULLable columns that depend on granularity
     surah_number INT,
     surah TEXT,

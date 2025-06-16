@@ -1,5 +1,8 @@
 package models
 
+// Needs to be initialized
+var SurahNumToName = map[int]string{}
+
 const (
 	SurahNumberFatiha     int = 1
 	SurahNumberBaqarah    int = 2

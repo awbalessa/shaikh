@@ -1,6 +1,6 @@
--- name: CreateEmbedding :one
+-- name: CreateChunk :one
 INSERT INTO
-    embeddings (
+    chunks (
         granularity,
         content_type,
         raw_content,
@@ -15,8 +15,8 @@ VALUES
     ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
--- name: UpdateEmbedding :exec
-UPDATE embeddings
+-- name: UpdateChunk :exec
+UPDATE chunks
 SET
     embedding = $1
 WHERE id = $2;
