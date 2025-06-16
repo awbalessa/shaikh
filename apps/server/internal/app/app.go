@@ -18,6 +18,7 @@ type App struct {
 }
 
 func New(cfg *config.Config, queries *database.Queries, genaiClient *genai.Client, logger *log.Logger) *App {
+	// Look into instantiating all your wiring here. Probably shouldn't pass in all these things, should create them here.
 	return &App{
 		Cfg:         cfg,
 		Queries:     queries,

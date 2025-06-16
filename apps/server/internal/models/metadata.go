@@ -5,6 +5,11 @@ import (
 	"fmt"
 )
 
+// Chunk metadata
+type ChunkMetadata struct {
+	ParentIeD
+}
+
 // Word-level metadata — used for phrase-based embeddings
 type WordLvlMetadata struct {
 	SurahName   string `json:"surah_name"`
@@ -17,7 +22,8 @@ type WordLvlMetadata struct {
 type AyahLvlMetadata struct {
 	SurahName   string `json:"surah_name"`
 	SurahNumber int    `json:"surah_number"` // 1–114
-	AyahNumber  int    `json:"ayah_number"`  // Local ayah number
+	Ayah        string `json:"ayah"`
+	AyahNumber  int    `json:"ayah_number"` // Local ayah number
 }
 
 // Surah-level metadata — used for surah summaries, themes
