@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE ayat (
+CREATE TABLE IF NOT EXISTS ayat (
     surah INTEGER NOT NULL,
     ayah INTEGER NOT NULL,
     ar TEXT NOT NULL,
@@ -10,4 +10,4 @@ CREATE TABLE ayat (
 
 
 -- +goose Down
-DROP TABLE ayat;
+DROP TABLE IF EXISTS ayat;

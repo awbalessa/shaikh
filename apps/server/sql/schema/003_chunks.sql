@@ -1,23 +1,23 @@
 -- +goose Up
-CREATE EXTENSION vector;
+CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE EXTENSION vectorscale;
+CREATE EXTENSION IF NOT EXISTS vectorscale;
 
-CREATE EXTENSION pg_search;
+CREATE EXTENSION IF NOT EXISTS pg_search;
 
-CREATE TABLE chunks (
-    id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+CREATE TABLE IF NOT EXISTS chunks (
+    id BIGINTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     created_at TIMESTAMP NOT NULL DEFAULT NOW (),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW (),
     granularity granularity NOT NULL,
     content_type content_type NOT NULL,
     source source NOT NULL,
     raw_chunk TEXT NOT NULL,
-    tokenized_chunk TEXT[] NOT NULL,
+    -- Tokenized chunk is used for FTS
+    tokenized_chunk TEXT NOT NULL,
     -- Context header will be a piece of text prepended with every chunk that provides context around the chunk
-    context_header TEXT NOT NULL,
-    -- context_header + raw_chunk
-    -- You will potentially want a chunk title to situate within parent documents.
+    context_header TEXT NOT NULL UNIQUE,
+    -- Embedded chunk is context header plus raw chunk
     embedded_chunk TEXT NOT NULL,
     embedding VECTOR (1536) NOT NULL,
     -- Integer mappings of labels for pre-vector search filtering
@@ -31,32 +31,48 @@ CREATE TABLE chunks (
     FOREIGN KEY (surah, ayah) REFERENCES ayat(surah, ayah)
     );
 
--- Add composite unique constraint
 -- Create B-Tree indices for frequent filters
-CREATE INDEX btree_chunks_surah_ayah ON chunks (surah, ayah);
-CREATE INDEX btree_chunks_source ON chunks (source);
-CREATE INDEX btree_chunks_content_type ON chunks (content_type);
+CREATE INDEX IF NOT EXISTS btree_chunks_surah_ayah ON chunks (surah, ayah);
+CREATE INDEX IF NOT EXISTS btree_chunks_source ON chunks (source);
+CREATE INDEX IF NOT EXISTS btree_chunks_content_type ON chunks (content_type);
 
 -- Create StreamingDiskAnn index on embedding and labels
-CREATE INDEX diskann_chunks_embedding_labels ON chunks
+CREATE INDEX IF NOT EXISTS diskann_chunks_embedding_labels ON chunks
 USING diskann (embedding vector_cosine_ops, labels);
+
+-- Create BM25 index for tokenized chunks
+CREATE INDEX IF NOT EXISTS bm25_chunks_tokenized_chunk ON chunks
+USING bm25 (id, tokenized_chunk, content_type, source, surah, ayah)
+WITH (
+    key_field = 'id',
+    text_fields = '{
+        "tokenized_chunk": {
+            "tokenizer": {"type": "whitespace"}
+        }
+    }',
+    numeric_fields = '{
+        "surah": {"fast": true},
+        "ayah": {"fast": true},
+        "content_type": {"fast": true},
+        "source": {"fast": true}
+    }'
+);
+
 -- +goose Down
 
--- Drop composite unique constraint
-ALTER TABLE chunks
+-- Drop indices
+DROP INDEX IF EXISTS btree_chunks_surah_ayah;
+DROP INDEX IF EXISTS btree_chunks_source;
+DROP INDEX IF EXISTS btree_chunks_content_type;
+DROP INDEX IF EXISTS diskann_chunks_embedding_labels;
+DROP INDEX IF EXISTS bm25_chunks_tokenized_chunk;
 
 -- Drop table chunks
-DROP TABLE chunks;
-
--- Drop indicies
-
-DROP INDEX btree_chunks_surah_ayah;
-DROP INDEX btree_chunks_source;
-DROP INDEX btree_chunks_content_type;
+DROP TABLE IF EXISTS chunks;
 
 -- Drop extensions
-DROP EXTENSION pg_search;
+DROP EXTENSION IF EXISTS pg_search;
 
-DROP EXTENSION vectorscale;
+DROP EXTENSION IF EXISTS vectorscale;
 
-DROP EXTENSION vector;
+DROP EXTENSION IF EXISTS vector;
