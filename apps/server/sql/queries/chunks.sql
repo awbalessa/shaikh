@@ -15,14 +15,14 @@ VALUES
     ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 RETURNING *;
 
--- name: UpdateChunk :exec
+-- name: UpdateEmbedding :exec
 UPDATE chunks
 SET
     embedding = $1
 WHERE id = $2;
 
 -- name: UpdateEmbeddingAndContent :exec
-UPDATE embeddings
+UPDATE chunks
 SET
     embedded_content = $1,
     embedding = $2
@@ -34,6 +34,6 @@ SELECT
     metadata,
     literature_source,
     (1.0 - (embedding <=> $1))::double precision AS similarity
-FROM embeddings
+FROM chunks
 ORDER BY similarity DESC
 LIMIT $2;

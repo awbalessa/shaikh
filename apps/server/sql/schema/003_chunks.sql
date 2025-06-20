@@ -1,70 +1,62 @@
 -- +goose Up
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION vector;
 
--- Embeddings table types
-CREATE TYPE granularity AS enum ('word', 'ayah', 'surah', 'quran');
+CREATE EXTENSION vectorscale;
 
-CREATE TYPE content_type AS enum ('quran', 'tafseer');
+CREATE EXTENSION pg_search;
 
-CREATE TYPE literature_source AS enum (
-    'Al Quran',
-    'Ibn Kathir',
-    'Al Tabari',
-    'Al Qurtubi',
-    'Al Baghawi',
-    'Al Saadi',
-    'Al Muyassar',
-    'Al Wasit',
-    'Al Jalalayn'
-    -- Add more
-);
-
--- You'll probably have to rethink your schema. Some documents belong in a pure relational table.
--- Ayat, Tafsir, Hadith, Asbab Nozool... etc. Look into strcture of all the literature.
-CREATE TABLE chunks ( -- Figure out a better name
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE chunks (
+    id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     created_at TIMESTAMP NOT NULL DEFAULT NOW (),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW (),
     granularity granularity NOT NULL,
     content_type content_type NOT NULL,
-    literature_source literature_source NOT NULL,
-    raw_content TEXT NOT NULL,
+    source source NOT NULL,
+    raw_chunk TEXT NOT NULL,
+    tokenized_chunk TEXT[] NOT NULL,
+    -- Context header will be a piece of text prepended with every chunk that provides context around the chunk
     context_header TEXT NOT NULL,
-    -- context_header + raw_content
-    embedded_content TEXT NOT NULL,
+    -- context_header + raw_chunk
+    -- You will potentially want a chunk title to situate within parent documents.
+    embedded_chunk TEXT NOT NULL,
     embedding VECTOR (1536) NOT NULL,
+    -- Integer mappings of labels for pre-vector search filtering
+    labels SMALLINT[] NOT NULL,
     has_parent BOOL NOT NULL,
-    -- NULLable columns that depend on has_parent
-    parent_id reference,
-    -- NULLable columns that depend on granularity
-    surah_number INT,
-    surah TEXT,
-    ayah_number INT,
-    ayah TEXT,
-    phrase TEXT,
-);
+    -- If chunk has a Parent document
+    parent_id INTEGER REFERENCES documents(id),
+    -- If chunk is Surah or Ayah specific
+    surah INTEGER,
+    ayah INTEGER,
+    FOREIGN KEY (surah, ayah) REFERENCES ayat(surah, ayah)
+    );
 
 -- Add composite unique constraint
---Figure this out ALTER TABLE embeddings ADD CONSTRAINT unique_content_metadata UNIQUE (raw_content, metadata);
--- Add a GIN index on document & chunk metadata
-CREATE INDEX idx_embeddings_document_metadata ON embeddings USING GIN (document_metadata);
+-- Create B-Tree indices for frequent filters
+CREATE INDEX btree_chunks_surah_ayah ON chunks (surah, ayah);
+CREATE INDEX btree_chunks_source ON chunks (source);
+CREATE INDEX btree_chunks_content_type ON chunks (content_type);
 
+-- Create StreamingDiskAnn index on embedding and labels
+CREATE INDEX diskann_chunks_embedding_labels ON chunks
+USING diskann (embedding vector_cosine_ops, labels);
 -- +goose Down
--- Drop the GIN index
-DROP INDEX IF EXISTS idx_embeddings_metadata;
 
 -- Drop composite unique constraint
-ALTER TABLE documents
-DROP CONSTRAINT IF EXISTS unique_content_metadata;
+ALTER TABLE chunks
 
--- Drop table embeddings
-DROP TABLE embeddings;
+-- Drop table chunks
+DROP TABLE chunks;
 
--- Drop types
-DROP TYPE literature_source;
+-- Drop indicies
 
-DROP TYPE content_type;
+DROP INDEX btree_chunks_surah_ayah;
+DROP INDEX btree_chunks_source;
+DROP INDEX btree_chunks_content_type;
 
-DROP TYPE granularity;
+-- Drop extensions
+DROP EXTENSION pg_search;
 
--- Drop pgvector
-DROP EXTENSION IF EXISTS vector;
+DROP EXTENSION vectorscale;
+
+DROP EXTENSION vector;

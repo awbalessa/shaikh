@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/awbalessa/shaikh/internal/database"
-	"github.com/awbalessa/shaikh/internal/models"
+	"github.com/awbalessa/shaikh/apps/server/internal/database"
+	"github.com/awbalessa/shaikh/apps/server/internal/models"
 )
 
 type Builder struct {
