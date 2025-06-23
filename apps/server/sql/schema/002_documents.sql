@@ -1,11 +1,11 @@
 -- +goose Up
 
 -- Documents table types
-CREATE TYPE IF NOT EXISTS granularity AS enum ('phrase', 'ayah', 'surah', 'quran');
+CREATE TYPE granularity AS enum ('phrase', 'ayah', 'surah', 'quran');
 
-CREATE TYPE IF NOT EXISTS content_type AS enum ('tafsir');
+CREATE TYPE content_type AS enum ('tafsir');
 
-CREATE TYPE IF NOT EXISTS source AS enum (
+CREATE TYPE source AS enum (
     'Tafsir Ibn Kathir',
     'Tafsir Al Tabari',
     'Tafsir Al Qurtubi',

@@ -18,7 +18,7 @@ type Pipeline struct {
 	Context     context.Context
 }
 
-func NewPipeline(cfg *config.Config, ctx context.Context, queries *database.Queries, logger *slog.Logger) (*Pipeline, err) {
+func NewPipeline(cfg *config.Config, ctx context.Context, queries *database.Queries, logger *slog.Logger) (*Pipeline, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		Project:  cfg.GCPProject,
 		Location: cfg.GCPRegion,

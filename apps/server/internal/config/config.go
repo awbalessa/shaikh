@@ -10,7 +10,7 @@ import (
 
 type Config struct {
 	Platform        string
-	DatabaseURL     string
+	PostgresURL     string
 	EmbeddingModel  string
 	GenerationModel string
 	GCPProject      string
@@ -30,7 +30,7 @@ func Load() (*Config, error) {
 
 	return &Config{
 		Platform:        os.Getenv("PLATFORM"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		PostgresURL:     os.Getenv("POSTGRES_URL"),
 		EmbeddingModel:  os.Getenv("EMBEDDING_MODEL"),
 		GenerationModel: os.Getenv("GENERATION_MODEL"),
 		GCPProject:      os.Getenv("GCP_PROJECT"),
