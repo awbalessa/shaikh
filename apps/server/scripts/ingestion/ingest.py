@@ -1,6 +1,8 @@
 import psycopg2
 from pathlib import Path
 quran_dir = Path.cwd() / "assets" / "quran"
+tafsir_dir = Path.cwd() / "assets" / "tafsir"
+tafsir_file = tafsir_dir / "ar-al-wasit-qurancom.md"
 ar_file = quran_dir / "imlaei-simple-qurancom.md"
 ar_uthmani_file = quran_dir / "uthmani-qurancom.md"
 en_file = quran_dir / "en-sahih-tanzil.md"
@@ -123,7 +125,7 @@ surah_ranges = {
 
 def file_to_dict(filepath: str, startAyah: int, endAyah: int) -> dict[int, str]:
     with open(file=filepath, mode="r", encoding="utf-8") as file:
-        ayah_dict: dict[int, str] = {}
+        tafsir_dict: dict[int, str] = {}
         reading: bool = False
         current_number: int = 0
         for line in file:
@@ -133,10 +135,9 @@ def file_to_dict(filepath: str, startAyah: int, endAyah: int) -> dict[int, str]:
                 elif line.startswith("#"):
                     current_number += 1
                     if current_number > endAyah:
-                        return ayah_dict
+                        return tafsir_dict
                     continue
-                cleaned = line.strip().replace(r"\[", "(").replace(r"\]", ")")
-                ayah_dict[current_number] = cleaned
+                tafsir_dict[current_number] = line.strip()
             else:
                 if not line.startswith("#"):
                     continue
@@ -144,9 +145,9 @@ def file_to_dict(filepath: str, startAyah: int, endAyah: int) -> dict[int, str]:
                 if current_number < startAyah:
                     continue
                 reading = True
-    return ayah_dict
+    return tafsir_dict
 
-def load_surah_into_postgres(surah: int, ayat: dict[int, tuple[str, str, str]]):
+def load_into_postgres(surah: int, tafsir: dict[int, str]):
     with psycopg2.connect(
         dbname="shaikh",
         user="azizalessa",
@@ -154,14 +155,17 @@ def load_surah_into_postgres(surah: int, ayat: dict[int, tuple[str, str, str]]):
         port="5432"
     ) as conn:
         with conn.cursor() as cur:
-            for ayah_num in ayat:
-                ar = ayat[ayah_num][0]
-                ar_uthmani = ayat[ayah_num][1]
-                en = ayat[ayah_num][2]
+            gran = "ayah"
+            content_type = "tafsir"
+            source = "Tafsir Al Wasit"
+            for ayah in tafsir:
+                context_header = f"This is {source} for Ayah {surah}:{ayah}"
                 try:
                     cur.execute(
-                        "INSERT INTO ayat (surah, ayah, ar, ar_uthmani, en) VALUES (%s, %s, %s, %s, %s)",
-                        (surah, ayah_num, ar, ar_uthmani, en),
+                        """INSERT INTO documents
+                        (granularity, content_type, source, context_header, document, surah, ayah)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                        (gran, content_type, source, context_header, tafsir[ayah], surah, ayah),
                     )
                 except Exception:
                     raise
@@ -170,15 +174,9 @@ for surah in surah_ranges:
     start = surah_ranges[surah][0]
     end = surah_ranges[surah][1]
     offset_from_one = start - 1
-    ar_dict = file_to_dict(str(ar_file), start, end)
-    ar_uthmani = file_to_dict(str(ar_uthmani_file), start, end)
-    en_dict = file_to_dict(str(en_file), start, end)
-    final_dict: dict[int, tuple[str, str, str]] = {}
-    for num in ar_dict:
-        final_dict[num-offset_from_one] = (
-            ar_dict[num],
-            ar_uthmani[num],
-            en_dict[num],
-        )
-    load_surah_into_postgres(surah=surah, ayat=final_dict)
-    print(f"Ingested surah: {surah}")
+    tafsir_dict = file_to_dict(str(tafsir_file), start, end)
+    localized_ibn_kathir_dict: dict[int, str] = {}
+    for ayah in tafsir_dict:
+        localized_ibn_kathir_dict[ayah-offset_from_one] = tafsir_dict[ayah]
+    load_into_postgres(surah=surah, tafsir=localized_ibn_kathir_dict)
+    print(f"Ingested tafsir {str(tafsir_file.name)} for surah: {surah}")

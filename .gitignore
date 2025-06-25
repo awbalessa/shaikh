@@ -4,3 +4,5 @@ assets/
 go.sum
 .ropeproject
 pyrightconfig.json
+backups
+scratch
