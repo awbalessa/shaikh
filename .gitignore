@@ -7,4 +7,5 @@ pyrightconfig.json
 backups
 scratch
 agents/parsing_agent/assets/
+agents/parsing-agent/_pycache_
 agents/parsing-agent/__pycache__
