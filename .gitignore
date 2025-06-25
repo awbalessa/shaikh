@@ -6,3 +6,4 @@ go.sum
 pyrightconfig.json
 backups
 scratch
+agents/parsing_agent/assets/
