@@ -3,17 +3,16 @@ import time
 import logging
 from pathlib import Path
 from src.gemini import get_gemini_response
-from src.ocr import image_to_text, pdf_to_images, preprocess_image
+from src.ocr import image_to_text, pdf_to_image, preprocess_image
 from src.write import append_page_to_file
 
 logger = logging.getLogger(__name__)
 
 def run_pipeline(pdf: Path, firstPage: int, lastPage: int, output_file: Path):
-    for i, image in enumerate(pdf_to_images(pdf, firstPage, lastPage)):
-        page_num = i + firstPage
-        logger.info(msg=f"Parsing page {page_num}...")
+    for page_num in range(firstPage, lastPage + 1):
         start_time = time.time()
         try:
+            image = pdf_to_image(pdf, page_num=page_num)
             processed_image = preprocess_image(image)
             text = image_to_text(processed_image)
             page = get_gemini_response(text, processed_image, page_num)

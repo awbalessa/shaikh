@@ -4,7 +4,7 @@ from google.genai.types import Part, UserContent, GenerateContentConfig
 from PIL.Image import Image as ImageClass
 from io import BytesIO
 from PIL.Image import Image as ImageClass
-from config import GCP_PROJECT, GCP_REGION, GEMINI, SYSTEM_INSTRUCTION
+from config import GCP_PROJECT, GCP_REGION, GEMINI, GEMINI_LITE, SYSTEM_INSTRUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def get_gemini_response(ocr_output: str, image: ImageClass, page_num: int) -> st
 
     logger.info(msg=f"Sending Page #{page_num} to Gemini...")
     response = client.models.generate_content(
-        model=str(GEMINI),
+        model=str(GEMINI_LITE),
         contents=contents,
         config=config,
     )

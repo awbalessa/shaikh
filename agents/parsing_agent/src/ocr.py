@@ -10,17 +10,17 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def pdf_to_images(pdf: Path, firstPage: int, lastPage: int):
-    for i, page in enumerate(convert_from_path(
+def pdf_to_image(pdf: Path, page_num: int) -> ImageClass:
+    logger.info(msg=f"Converting page {page_num} from {pdf.name}...")
+    img = convert_from_path(
         pdf_path=pdf,
         dpi=IMAGE_DPI,
         fmt=IMAGE_FMT,
-        first_page=firstPage,
-        last_page=lastPage,
-    )):
-        logger.info(msg=f"Converting page {firstPage + i} from {pdf.name}...")
-        yield page
-        logger.info("Successfully converted")
+        first_page=page_num,
+        last_page=page_num
+    )
+    logger.info("Successfully converted")
+    return img[0]
 
 def preprocess_image(image: ImageClass) -> ImageClass:
     logger.info(msg=f"Preprocessing image...")

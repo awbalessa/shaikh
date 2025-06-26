@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 GEMINI = os.getenv("GEMINI")
+GEMINI_LITE = os.getenv("GEMINI_LITE")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_PROJECT = os.getenv("GCP_PROJECT")
 BASE_DIR = Path(__file__).resolve().parent
