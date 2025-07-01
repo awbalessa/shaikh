@@ -114,6 +114,6 @@ surah_dict: Dict[int, Tuple[str, int, int]]= {
     110: ("an-nasr", 2042, 2043),
     111: ("al-masad", 2044, 2045),
     112: ("al-ikhlas", 2046, 2050),
-    113: ("al-falaq", 2051, 2051),
-    114: ("an-nas", 2051, 2051)
+    113: ("al-falaq", 2051, 2056),
+    114: ("an-nas", 2051, 2056)
 }

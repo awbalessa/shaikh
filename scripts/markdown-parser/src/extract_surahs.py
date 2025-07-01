@@ -1,6 +1,3 @@
-from src.models import surah_dict
-from config import ASSETS_DIR, OUTPUT_DIR
-from src.extract_surahs import extract_surah_range
 import regex as re
 import logging
 from pathlib import Path
@@ -59,12 +56,3 @@ def extract_surah_range(input_path: Path, range: Tuple[str, int, int], output_pa
             f.write("\n\n")
 
     logger.info(msg="Done!")
-
-
-SURAH_DIR = OUTPUT_DIR / "surahs"
-for num in surah_dict:
-   extract_surah_range(
-       input_path=ASSETS_DIR / "tafsir-ibn-kathir.md",
-       range=surah_dict[num],
-       output_path=SURAH_DIR / f"{num}.md"
-   )
