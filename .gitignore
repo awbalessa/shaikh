@@ -7,6 +7,7 @@ pyrightconfig.json
 backups
 scratch
 agents/parsing_agent/assets/
+.scripts
 **/output/**
 **/output/surahs/**
 __pycache__/
