@@ -7,25 +7,25 @@ CREATE EXTENSION IF NOT EXISTS pg_search;
 
 CREATE TABLE IF NOT EXISTS chunks (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    sequence_id INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW (),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW (),
     granularity granularity NOT NULL,
     content_type content_type NOT NULL,
     source source NOT NULL,
+
     raw_chunk TEXT NOT NULL,
-    -- Tokenized chunk is used for FTS
     tokenized_chunk TEXT NOT NULL,
-    -- Context header will be a piece of text prepended with every chunk that provides context around the chunk
     context_header TEXT NOT NULL UNIQUE,
-    -- Embedded chunk is context header plus raw chunk
+    chunk_title TEXT NOT NULL,
     embedded_chunk TEXT NOT NULL,
-    embedding VECTOR (1536) NOT NULL,
-    -- Integer mappings of labels for pre-vector search filtering
+    embedding VECTOR (1024) NOT NULL,
+
     labels SMALLINT[] NOT NULL,
     has_parent BOOL NOT NULL,
-    -- If chunk has a Parent document
+
     parent_id INTEGER REFERENCES documents(id),
-    -- If chunk is Surah or Ayah specific
+
     surah INTEGER,
     ayah INTEGER,
     FOREIGN KEY (surah, ayah) REFERENCES ayat(surah, ayah)
@@ -42,11 +42,14 @@ USING diskann (embedding vector_cosine_ops, labels);
 
 -- Create BM25 index for tokenized chunks
 CREATE INDEX IF NOT EXISTS bm25_chunks_tokenized_chunk ON chunks
-USING bm25 (id, tokenized_chunk, content_type, source, surah, ayah)
+USING bm25 (id, tokenized_chunk, chunk_title, content_type, source, surah, ayah)
 WITH (
     key_field = 'id',
     text_fields = '{
         "tokenized_chunk": {
+            "tokenizer": {"type": "whitespace"}
+        },
+        "chunk_title": {
             "tokenizer": {"type": "whitespace"}
         }
     }',

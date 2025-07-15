@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 class TafsirObj:
     surah_num: int
     ayah_nums: List[int]
-    source: str
     tafsir: str
     context_header: str
 
@@ -18,7 +17,20 @@ class TafsirObj:
         self.ayah_nums = ayah_nums
         self.tafsir = tafsir
         self.context_header = context_header
-        self.source = SOURCE
+
+class Document:
+    id: int
+    surah: int
+    ayah: int
+    document: str
+    context_header: str
+
+    def __init__(self, id: int, surah: int, ayah: int, document: str, context_header: str):
+        self.id = id
+        self.surah = surah
+        self.ayah = ayah
+        self.document = document
+        self.context_header = context_header
 
 def find_ayah_keys(row: Any) -> List[Tuple[int, int]]:
     list_of_ayat: List[Tuple[int, int]] = []
@@ -83,15 +95,39 @@ def create_documents(tafsirs_objs: List[TafsirObj]):
     logger.info(msg=f"Inserting {len(tafsirs_objs)} tafsirs into documents table...")
     for obj in tafsirs_objs:
         for ayah in obj.ayah_nums:
-            context_header = f"{obj.source} for Ayah {obj.surah_num}:{ayah}"
+            context_header = f"{SOURCE} for Ayah {obj.surah_num}:{ayah}"
             POSTGRES_CURSOR.execute(
                 query="""
                 INSERT INTO documents
                 (granularity, content_type, source, context_header, document, surah, ayah)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                vars=(GRANULARITY, CONTENT_TYPE, obj.source, context_header, preprocess(obj.tafsir), obj.surah_num, ayah)
+                vars=(GRANULARITY, CONTENT_TYPE, SOURCE, context_header, preprocess(obj.tafsir), obj.surah_num, ayah)
             )
             logger.info(msg=f"Inserted {context_header}")
     POSTGRES_CURSOR.connection.commit()
     logger.info(msg=f"Committed to documents table!")
+
+def get_documents_by_keys(keys: List[Tuple[int, int]]) -> List[Document]:
+    docs: List[Document] = []
+    for key in keys:
+        [surah, ayah] = key
+        POSTGRES_CURSOR.execute(
+            query="""
+            SELECT id, surah, ayah, document, context_header
+            FROM documents
+            WHERE surah = %s
+                AND ayah = %s
+            """,
+            vars=(surah, ayah)
+        )
+        result = POSTGRES_CURSOR.fetchone()
+        assert result is not None, "No result"
+        docs.append(Document(
+            id=result[0],
+            surah=result[1],
+            ayah=result[2],
+            document=result[3],
+            context_header=result[4]
+        ))
+    return docs
