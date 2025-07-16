@@ -18,7 +18,7 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	root, err := findRoot()
+	root, err := findDotEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -38,14 +38,14 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-func findRoot() (string, error) {
+func findDotEnv() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("Error getting working directory: %v", err)
+		return "", fmt.Errorf("error getting working directory: %v", err)
 	}
 
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, ".env")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)

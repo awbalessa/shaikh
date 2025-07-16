@@ -1,16 +1,16 @@
-package logger
+package config
 
 import (
 	"log/slog"
 	"os"
 )
 
-type Options struct {
+type LoggerOptions struct {
 	Level slog.Level
 	JSON  bool
 }
 
-func New(opts Options) *slog.Logger {
+func NewLogger(opts LoggerOptions) *slog.Logger {
 	var handler slog.Handler
 	if opts.JSON {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

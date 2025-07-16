@@ -11,12 +11,9 @@ from config import VOYAGE_API_KEY, gemini_client, GEMINI_LITE
 
 assert GEMINI_LITE is not None, "Gemini Lite is None"
 
-SYSTEM_INSTRUCTION="""I will provide you with a set of Arabic chunks taken from a larger document.
+SYSTEM_INSTRUCTION="""I will provide you an Arabic chunk taken from a larger document.
 
-Please generate a self-contained, succinct Arabic title that captures the main idea of each chunk, and situates it within the overall document for the purposes of improving search retrieval of the chunk.
-
-IMPORTANT NOTE: Do not treat the chunks as if they're related. Provide titles that are independent of each other.
-"""
+Please generate a self-contained, succinct Arabic title that captures the main idea of the chunk, and situates it within the overall document for the purposes of improving search retrieval of the chunk."""
 
 RESPONSE_SCHEMA = {
     "type": "OBJECT",
@@ -88,7 +85,8 @@ def recursive_semantic_splitter(
     logger.info(msg=f"Final list has {len(final_chunks)} chunks")
     return final_chunks
 
-def find_chunk_titles(chunks: List[LangchainDocument]) -> List[LangchainDocument] | None:
+def find_chunk_titles(chunks: List[LangchainDocument]) -> List[LangchainDocument]:
+    logger.info(msg=f"Sending {len(chunks)} to Gemini...")
     for i, chunk in enumerate(chunks):
         prompt = UserContent(
             parts= [
@@ -103,9 +101,10 @@ def find_chunk_titles(chunks: List[LangchainDocument]) -> List[LangchainDocument
             "response_mime_type": RESPONSE_MIME_TYPE,
             "response_schema": RESPONSE_SCHEMA,
             "system_instruction": SYSTEM_INSTRUCTION,
-        }
+            }
         )
+        logger.info(msg=f"Found title for Chunk #{i+1}")
 
         response_dict = json.loads(str(res.text))
-        print(response_dict["title"])
-    return None
+        chunks[i].metadata["title"] = response_dict["title"]
+    return chunks

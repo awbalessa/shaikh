@@ -11,7 +11,7 @@ output_file = OUTPUT_DIR / "surah_starts"
 
 tafsir_documents = get_documents_by_keys(
     keys=[
-        (1, 1)
+        (1, 5)
     ]
 )
 
@@ -33,9 +33,8 @@ for i, doc in enumerate(docs):
     )
     nil = find_chunk_titles(chunks)
     for j, chunk in enumerate(chunks):
-        with open(file=output_file, mode="a", encoding="utf-8") as f:
-            f.write(f"""
-                ===DOCUMENT {i+1} CHUNK {j+1}===
-                Tokens: {voyage_token_counter([chunk.page_content])}\n
-                {chunk.page_content}\n
-            """)
+        print(f"Title: {chunk.metadata['title']}\n")
+        print(chunk.page_content)
+        print(f"\n\n")
+
+# Use Tasaphyne for ingestion phase. And implement your own light stemmer in Go. You have the code in front of you. It's not hard. The last step now before ingesting is using Tasaphyne to stem the chunk titles and chunks for bm25 search.

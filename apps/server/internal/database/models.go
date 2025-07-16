@@ -19,7 +19,7 @@ const (
 	ContentTypeTafseer ContentType = "tafseer"
 )
 
-func (e *ContentType) Scan(src interface{}) error {
+func (e *ContentType) Scan(src any) error {
 	switch s := src.(type) {
 	case []byte:
 		*e = ContentType(s)
@@ -36,8 +36,7 @@ type NullContentType struct {
 	Valid       bool // Valid is true if ContentType is not NULL
 }
 
-// Scan implements the Scanner interface.
-func (ns *NullContentType) Scan(value interface{}) error {
+// Scan implements the Scanner anyfunc (ns *NullContentType) Scan(value any) error {
 	if value == nil {
 		ns.ContentType, ns.Valid = "", false
 		return nil
@@ -63,7 +62,7 @@ const (
 	GranularityQuran Granularity = "quran"
 )
 
-func (e *Granularity) Scan(src interface{}) error {
+func (e *Granularity) Scan(src any) error {
 	switch s := src.(type) {
 	case []byte:
 		*e = Granularity(s)
@@ -80,8 +79,7 @@ type NullGranularity struct {
 	Valid       bool // Valid is true if Granularity is not NULL
 }
 
-// Scan implements the Scanner interface.
-func (ns *NullGranularity) Scan(value interface{}) error {
+// Scan implements the Scanner anyfunc (ns *NullGranularity) Scan(value any) error {
 	if value == nil {
 		ns.Granularity, ns.Valid = "", false
 		return nil
@@ -105,7 +103,7 @@ const (
 	LangEn Lang = "en"
 )
 
-func (e *Lang) Scan(src interface{}) error {
+func (e *Lang) Scan(src any) error {
 	switch s := src.(type) {
 	case []byte:
 		*e = Lang(s)
@@ -122,8 +120,7 @@ type NullLang struct {
 	Valid bool // Valid is true if Lang is not NULL
 }
 
-// Scan implements the Scanner interface.
-func (ns *NullLang) Scan(value interface{}) error {
+// Scan implements the Scanner anyfunc (ns *NullLang) Scan(value any) error {
 	if value == nil {
 		ns.Lang, ns.Valid = "", false
 		return nil
@@ -154,7 +151,7 @@ const (
 	LiteratureSourceAlJalalayn LiteratureSource = "Al Jalalayn"
 )
 
-func (e *LiteratureSource) Scan(src interface{}) error {
+func (e *LiteratureSource) Scan(src any) error {
 	switch s := src.(type) {
 	case []byte:
 		*e = LiteratureSource(s)
@@ -171,8 +168,7 @@ type NullLiteratureSource struct {
 	Valid            bool // Valid is true if LiteratureSource is not NULL
 }
 
-// Scan implements the Scanner interface.
-func (ns *NullLiteratureSource) Scan(value interface{}) error {
+// Scan implements the Scanner anyfunc (ns *NullLiteratureSource) Scan(value any) error {
 	if value == nil {
 		ns.LiteratureSource, ns.Valid = "", false
 		return nil

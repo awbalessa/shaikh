@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS chunks (
 
     raw_chunk TEXT NOT NULL,
     tokenized_chunk TEXT NOT NULL,
-    context_header TEXT NOT NULL UNIQUE,
     chunk_title TEXT NOT NULL,
+    tokenized_chunk_title TEXT NOT NULL,
+    context_header TEXT NOT NULL UNIQUE,
     embedded_chunk TEXT NOT NULL,
     embedding VECTOR (1024) NOT NULL,
 
@@ -42,14 +43,14 @@ USING diskann (embedding vector_cosine_ops, labels);
 
 -- Create BM25 index for tokenized chunks
 CREATE INDEX IF NOT EXISTS bm25_chunks_tokenized_chunk ON chunks
-USING bm25 (id, tokenized_chunk, chunk_title, content_type, source, surah, ayah)
+USING bm25 (id, tokenized_chunk, tokenized_chunk_title, content_type, source, surah, ayah)
 WITH (
     key_field = 'id',
     text_fields = '{
         "tokenized_chunk": {
             "tokenizer": {"type": "whitespace"}
         },
-        "chunk_title": {
+        "tokenized_chunk_title": {
             "tokenizer": {"type": "whitespace"}
         }
     }',
