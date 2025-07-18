@@ -1,8 +1,13 @@
+from tashaphyne.stopwords import STOPWORDS
 import camel_tools.utils.dediac as camel
 import regex as re
 from typing import List, Tuple, Any
 from bs4 import BeautifulSoup
 from regex.regex import Match
+
+not_arabic_char = re.compile(
+    pattern = r"[^\p{IsArabic}]+"
+)
 
 inline_annotations = re.compile(
     pattern=r"\s*\[\[.*?\]\]\s*"
@@ -43,9 +48,6 @@ heading_block = re.compile(
     flags=re.VERBOSE
 )
 
-def strip_diacritics(text: str) -> str:
-    return camel.dediac_ar(text)
-
 def strip_line_diacritics(text: str) -> str:
     final: List[str] = []
     for part in re.split(pattern=r"\*\*", string=text):
@@ -76,3 +78,26 @@ def preprocess(text: str) -> str:
     text = strip_line_diacritics(text)
     text = text.strip()
     return text
+
+def strip_diacritics(text: str) -> str:
+    return camel.dediac_ar(text)
+
+def remove_punctuation(text: str) -> str:
+    return re.sub(not_arabic_char, ' ', text)
+
+def filter_stopwords(text: str) -> str:
+    words: List[str] = text.split(" ")
+    filtered: List[str] = []
+    for word in words:
+        stripped = word.strip()
+        if stripped in STOPWORDS:
+            continue
+        filtered.append(stripped)
+    return " ".join(filtered)
+
+def tokenize_for_bm25(text: str) -> str:
+    return filter_stopwords(
+        remove_punctuation(
+            strip_diacritics(text)
+        )
+    )

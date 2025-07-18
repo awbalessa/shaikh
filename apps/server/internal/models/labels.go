@@ -10,7 +10,6 @@ const (
 	LabelSourceTafsirAlMuyassar           int = 106
 	LabelSourceTafsirAlWasit              int = 107
 	LabelSourceTafsirAlJalalayn           int = 108
-	LabelSourceTafsirTanwirAlMiqbas       int = 109
 	LabelSurahNumberOne                   int = 1001
 	LabelSurahNumberTwo                   int = 1002
 	LabelSurahNumberThree                 int = 1003

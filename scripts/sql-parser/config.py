@@ -2,6 +2,7 @@ from pydantic import SecretStr
 from dotenv import load_dotenv
 from pathlib import Path
 from google import genai
+from pgvector.psycopg2 import register_vector
 import os
 import logging
 import sqlite3
@@ -41,6 +42,10 @@ SQLITE_CURSOR = sqlite3.connect(
     database=SQLITE_PATH
 ).cursor()
 
-POSTGRES_CURSOR = psycopg2.connect(
+POSTGRES_CONN = psycopg2.connect(
     dsn=POSTGRES_DSN
-).cursor()
+)
+
+register_vector(POSTGRES_CONN)
+
+POSTGRES_CURSOR = POSTGRES_CONN.cursor()

@@ -1,8 +1,10 @@
 import logging
+from dataclasses import dataclass
 import regex as re
+from pgvector import Vector
 from src.preprocess import preprocess
 from config import CONTENT_TYPE, GRANULARITY, SQLITE_CURSOR, SOURCE, POSTGRES_CURSOR
-from typing import List, Any, Tuple
+from typing import List, Any, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +25,31 @@ class Document:
     surah: int
     ayah: int
     document: str
-    context_header: str
 
-    def __init__(self, id: int, surah: int, ayah: int, document: str, context_header: str):
+    def __init__(self, id: int, surah: int, ayah: int, document: str):
         self.id = id
         self.surah = surah
         self.ayah = ayah
         self.document = document
-        self.context_header = context_header
+
+@dataclass
+class ChunkWithoutEmbeddings:
+    seq_id: int
+    raw_chunk: str
+    tokenized_chunk: str
+    chunk_title: str
+    tokenized_chunk_title: str
+    context_header: str
+    embedded_chunk: str
+    labels: List[int]
+    has_parent: bool
+    parent_id: Optional[int]
+    surah: Optional[int]
+    ayah: Optional[int]
+
+@dataclass
+class Chunk(ChunkWithoutEmbeddings):
+    embedding: Vector
 
 def find_ayah_keys(row: Any) -> List[Tuple[int, int]]:
     list_of_ayat: List[Tuple[int, int]] = []
@@ -128,6 +147,20 @@ def get_documents_by_keys(keys: List[Tuple[int, int]]) -> List[Document]:
             surah=result[1],
             ayah=result[2],
             document=result[3],
-            context_header=result[4]
         ))
     return docs
+
+def create_chunks(chunks: List[Chunk]):
+    logger.info(msg=f"Inserting {len(chunks)} chunks into chunks table...")
+    for ch in chunks:
+        POSTGRES_CURSOR.execute(
+            query="""
+            INSERT INTO chunks
+            (sequence_id, granularity, content_type, source, raw_chunk, tokenized_chunk, chunk_title, tokenized_chunk_title, context_header, embedded_chunk, labels, embedding, has_parent, parent_id, surah, ayah)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            vars=(ch.seq_id, GRANULARITY, CONTENT_TYPE, SOURCE, ch.raw_chunk, ch.tokenized_chunk, ch.chunk_title, ch.tokenized_chunk_title, ch.context_header, ch.embedded_chunk, ch.labels, ch.embedding, ch.has_parent, ch.parent_id, ch.surah, ch.ayah)
+        )
+        logger.info(msg=f"Inserted Chunk #{ch.seq_id} from {SOURCE} for {ch.surah}:{ch.ayah}")
+    POSTGRES_CURSOR.connection.commit()
+    logger.info(msg=f"Committed to chunks table!")

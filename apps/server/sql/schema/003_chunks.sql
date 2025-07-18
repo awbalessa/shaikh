@@ -18,18 +18,19 @@ CREATE TABLE IF NOT EXISTS chunks (
     tokenized_chunk TEXT NOT NULL,
     chunk_title TEXT NOT NULL,
     tokenized_chunk_title TEXT NOT NULL,
-    context_header TEXT NOT NULL UNIQUE,
+    context_header TEXT NOT NULL,
     embedded_chunk TEXT NOT NULL,
+    labels SMALLINT[] NOT NULL,
     embedding VECTOR (1024) NOT NULL,
 
-    labels SMALLINT[] NOT NULL,
     has_parent BOOL NOT NULL,
-
     parent_id INTEGER REFERENCES documents(id),
 
     surah INTEGER,
     ayah INTEGER,
-    FOREIGN KEY (surah, ayah) REFERENCES ayat(surah, ayah)
+    FOREIGN KEY (surah, ayah) REFERENCES ayat(surah, ayah),
+
+    CONSTRAINT unique_context_header_sequence_id_key UNIQUE(context_header, sequence_id)
     );
 
 -- Create B-Tree indices for frequent filters
@@ -41,17 +42,17 @@ CREATE INDEX IF NOT EXISTS btree_chunks_content_type ON chunks (content_type);
 CREATE INDEX IF NOT EXISTS diskann_chunks_embedding_labels ON chunks
 USING diskann (embedding vector_cosine_ops, labels);
 
--- Create BM25 index for tokenized chunks
+-- Create BM25 index
 CREATE INDEX IF NOT EXISTS bm25_chunks_tokenized_chunk ON chunks
 USING bm25 (id, tokenized_chunk, tokenized_chunk_title, content_type, source, surah, ayah)
 WITH (
     key_field = 'id',
     text_fields = '{
         "tokenized_chunk": {
-            "tokenizer": {"type": "whitespace"}
+            "tokenizer": {"type": "whitespace", "stemmer": "Arabic"}
         },
         "tokenized_chunk_title": {
-            "tokenizer": {"type": "whitespace"}
+            "tokenizer": {"type": "whitespace", "stemmer": "Arabic"}
         }
     }',
     numeric_fields = '{

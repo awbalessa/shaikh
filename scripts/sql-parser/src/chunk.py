@@ -1,5 +1,8 @@
 import logging
 import json
+import time
+from src.query import ChunkWithoutEmbeddings
+from pgvector import Vector
 from google.genai.chats import Part
 from google.genai.types import UserContent
 from voyageai import Client as VoyageClient
@@ -10,6 +13,7 @@ from langchain_core.documents import Document as LangchainDocument
 from config import VOYAGE_API_KEY, gemini_client, GEMINI_LITE
 
 assert GEMINI_LITE is not None, "Gemini Lite is None"
+assert VOYAGE_API_KEY is not None, "Voyage API Key is None"
 
 SYSTEM_INSTRUCTION="""I will provide you an Arabic chunk taken from a larger document.
 
@@ -27,7 +31,7 @@ RESPONSE_MIME_TYPE = "application/json"
 logger = logging.getLogger(__name__)
 
 vo_client = VoyageClient(
-    api_key=str(VOYAGE_API_KEY)
+    api_key=VOYAGE_API_KEY.get_secret_value()
 )
 
 vo_embed = VoyageAIEmbeddings(
@@ -108,3 +112,22 @@ def find_chunk_titles(chunks: List[LangchainDocument]) -> List[LangchainDocument
         response_dict = json.loads(str(res.text))
         chunks[i].metadata["title"] = response_dict["title"]
     return chunks
+
+def embed_chunks(chunks: List[ChunkWithoutEmbeddings]) -> List[Vector]:
+    texts: List[str] = [ch.embedded_chunk for ch in chunks]
+    logger.info(msg=f"Sending {len(texts)} chunks to Voyage to embed...")
+    start_time = time.time()
+    embedding_obj = vo_client.embed(
+        texts=texts,
+        model="voyage-3.5",
+        input_type="document",
+        truncation=False,
+        output_dimension=1024,
+        output_dtype="float",
+    )
+
+    logger.info(msg=f"Returned {len(embedding_obj.embeddings)} embeddings in {time.time() - start_time}")
+    vectors: List[Vector] = []
+    for list_of_float in embedding_obj.embeddings:
+        vectors.append(Vector(list_of_float))
+    return vectors
