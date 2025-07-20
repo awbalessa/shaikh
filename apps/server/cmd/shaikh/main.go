@@ -1,34 +1,55 @@
 package main
 
 import (
-	"fmt"
-	"strings"
+	"context"
+	"log/slog"
+	"os"
 
-	"github.com/awbalessa/shaikh/apps/server/internal/stemmer"
+	"github.com/awbalessa/shaikh/apps/server/internal/app"
+	"github.com/awbalessa/shaikh/apps/server/internal/config"
 )
 
 func main() {
-	diac_text := `كانَ الطِّفْلُ يَرْكُضُ في الحَدِيقَةِ بَيْنَما كانَتِ الطُّيُورُ تُغَرِّدُ فَوْقَ الأَشْجارِ. قَرَّرَ الأَبُ أَنْ يَأْخُذَ أُسْرَتَهُ في نُزْهَةٍ إِلَى البَحْرِ حَيْثُ يُمْكِنُهُمُ الاسْتِمْتاعُ بِنَسِيمِ الهَوَاءِ العَلِيلِ وَمُشَاهَدَةِ الأَمْواجِ. قَرَأَتِ الأُمُّ كِتابًا عَنِ التَّارِيخِ الإِسْلَامِيِّ وَجَلَسَتْ تَتَأَمَّلُ في المَعَانِي العَمِيقَةِ الَّتِي حَمَلَتْهَا السُّطُورُ. في المَسَاءِ، تَنَاوَلَتِ العَائِلَةُ العَشَاءَ مَعًا وَتَحَدَّثُوا عَنْ أَحْلَامِهِمُ المُسْتَقْبَلِيَّةِ وَطُمُوحَاتِهِمْ. بِالرَّغْمِ مِنَ التَّعَبِ، شَعَرَ الجَمِيعُ بِالسَّعَادَةِ وَالرِّضَا عَنْ يَوْمِهِمُ الجَمِيلِ وَالمَلِيءِ بِالحَيَوِيَّةِ.`
-
-	stemmer := stemmer.NewArabicLightStemmer()
-
-	finalWords := []string{}
-	finalStems := []string{}
-	for _, word := range strings.Fields(diac_text) {
-		stripped := stemmer.WordProcessor.StripTashkeel(strings.TrimSpace(word))
-		if stemmer.StopWordManager.IsStopword(stripped) {
-			continue
-		}
-		finalWords = append(finalWords, stripped)
-		finalStems = append(
-			finalStems,
-			stemmer.LightStem(stripped),
-		)
+	loggerOpts := config.LoggerOptions{
+		Level:  slog.LevelInfo,
+		JSON:   true,
+		Writer: os.Stdout,
 	}
 
-	fmt.Printf(
-		"Words: %s\n\nStems: %s",
-		strings.Join(finalWords, " "),
-		strings.Join(finalStems, " "),
+	slog.SetDefault(
+		config.NewLogger(loggerOpts),
 	)
+
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error(
+			"failed to load config",
+			"error",
+			err,
+		)
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	defer cancel()
+
+	appCfg := app.AppConfig{
+		Config:  cfg,
+		Context: ctx,
+	}
+
+	app, err := app.Start(&appCfg)
+	if err != nil {
+		slog.Error(
+			"failed to start app",
+			"error",
+			err,
+		)
+		os.Exit(1)
+	}
+
+	defer app.DatabasePool.Close()
+
 }

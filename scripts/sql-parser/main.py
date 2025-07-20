@@ -1,10 +1,9 @@
-from pprint import pprint
 import logging
 from config import CHUNK_TOKEN_LIMIT
 from typing import List
 from src.labels import AyahLabelOffset, LabelContentTypeTafsir, LabelSourceTafsirIbnKathir, SurahLabelOffset
 from src.preprocess import tokenize_for_bm25
-from src.query import Chunk, ChunkWithoutEmbeddings, Document, create_chunks, get_documents_by_keys
+from src.query import Chunk, ChunkWithoutEmbeddings, Document, create_chunks, get_documents_by_id
 from src.chunk import embed_chunks, find_chunk_titles, recursive_semantic_splitter, semantic_chunker, voyage_token_counter
 
 logger = logging.getLogger(__name__)
@@ -70,17 +69,14 @@ def get_chunks_with_embedding(chunks: List[ChunkWithoutEmbeddings]) -> List[Chun
     return final
 
 
-tafsir_documents = get_documents_by_keys(
-    keys=[
-        (2, i) for i in range (1, 287)
-    ]
+tafsir_documents = get_documents_by_id(
+    ids=list(range(6031, 6237))
 )
 
 logger.info(
-    msg=f"""Fetched documents by keys:
+    msg=f"""Fetched documents by ids:
         Surahs: {sorted({row.surah for row in tafsir_documents})}
-        Ayahs: {sorted({row.ayah for row in tafsir_documents})}
-    """
+        Ayahs: {sorted({row.ayah for row in tafsir_documents})}"""
 )
 
 for doc in tafsir_documents:

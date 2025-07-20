@@ -150,6 +150,27 @@ def get_documents_by_keys(keys: List[Tuple[int, int]]) -> List[Document]:
         ))
     return docs
 
+def get_documents_by_id(ids: List[int]) -> List[Document]:
+    docs: List[Document] = []
+    for id in ids:
+        POSTGRES_CURSOR.execute(
+            query="""
+            SELECT id, surah, ayah, document
+            FROM documents
+            WHERE id = %s
+            """,
+            vars=(id,)
+        )
+        result = POSTGRES_CURSOR.fetchone()
+        assert result is not None, "No result"
+        docs.append(Document(
+            id=result[0],
+            surah=result[1],
+            ayah=result[2],
+            document=result[3],
+        ))
+    return docs
+
 def create_chunks(chunks: List[Chunk]):
     logger.info(msg=f"Inserting {len(chunks)} chunks into chunks table...")
     for ch in chunks:
@@ -161,6 +182,6 @@ def create_chunks(chunks: List[Chunk]):
             """,
             vars=(ch.seq_id, GRANULARITY, CONTENT_TYPE, SOURCE, ch.raw_chunk, ch.tokenized_chunk, ch.chunk_title, ch.tokenized_chunk_title, ch.context_header, ch.embedded_chunk, ch.labels, ch.embedding, ch.has_parent, ch.parent_id, ch.surah, ch.ayah)
         )
-        logger.info(msg=f"Inserted Chunk #{ch.seq_id} from {SOURCE} for {ch.surah}:{ch.ayah}")
+        logger.info(msg=f"Inserted Chunk #{ch.seq_id} from document {ch.parent_id} from {SOURCE} for {ch.surah}:{ch.ayah}")
     POSTGRES_CURSOR.connection.commit()
     logger.info(msg=f"Committed to chunks table!")

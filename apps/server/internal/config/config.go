@@ -9,12 +9,8 @@ import (
 )
 
 type Config struct {
-	Platform        string
-	PostgresURL     string
-	EmbeddingModel  string
-	GenerationModel string
-	GCPProject      string
-	GCPRegion       string
+	PostgresURL  string
+	VoyageAPIKey string
 }
 
 func Load() (*Config, error) {
@@ -29,12 +25,8 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Platform:        os.Getenv("PLATFORM"),
-		PostgresURL:     os.Getenv("POSTGRES_URL"),
-		EmbeddingModel:  os.Getenv("EMBEDDING_MODEL"),
-		GenerationModel: os.Getenv("GENERATION_MODEL"),
-		GCPProject:      os.Getenv("GCP_PROJECT"),
-		GCPRegion:       os.Getenv("GCP_REGION"),
+		PostgresURL:  os.Getenv("POSTGRES_URL"),
+		VoyageAPIKey: os.Getenv("VOYAGE_API_KEY"),
 	}, nil
 }
 

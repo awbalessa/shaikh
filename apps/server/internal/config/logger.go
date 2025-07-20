@@ -1,23 +1,24 @@
 package config
 
 import (
+	"io"
 	"log/slog"
-	"os"
 )
 
 type LoggerOptions struct {
-	Level slog.Level
-	JSON  bool
+	Level  slog.Level
+	JSON   bool
+	Writer io.Writer
 }
 
 func NewLogger(opts LoggerOptions) *slog.Logger {
 	var handler slog.Handler
 	if opts.JSON {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		handler = slog.NewJSONHandler(opts.Writer, &slog.HandlerOptions{
 			Level: opts.Level,
 		})
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		handler = slog.NewTextHandler(opts.Writer, &slog.HandlerOptions{
 			Level: opts.Level,
 		})
 	}
