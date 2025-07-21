@@ -28,6 +28,7 @@ const (
 	VoyageRerankV2            RerankingModel               = "rerank-2"
 	Top5Documents             TopK                         = 5
 	Top10Documents            TopK                         = 10
+	Top20Documents            TopK                         = 20
 )
 
 type VoyageClientConfig struct {
@@ -37,9 +38,9 @@ type VoyageClientConfig struct {
 }
 
 type VoyageClient struct {
-	Client *retryablehttp.Client
-	APIKey string
-	Logger *slog.Logger
+	client *retryablehttp.Client
+	apiKey string
+	logger *slog.Logger
 }
 
 type EmbeddingModel string
@@ -119,14 +120,16 @@ func NewVoyageClient(cfg VoyageClientConfig) *VoyageClient {
 	retryClient.RetryMax = cfg.MaxRetries
 
 	return &VoyageClient{
-		Client: retryClient,
-		APIKey: cfg.Config.VoyageAPIKey,
-		Logger: logger,
+		client: retryClient,
+		apiKey: cfg.Config.VoyageAPIKey,
+		logger: logger,
 	}
 }
 
-func (vc *VoyageClient) EmbedQuery(ctx context.Context, texts []string) ([]pgvector.Vector, error) {
-	start := time.Now()
+func (vc *VoyageClient) EmbedQuery(
+	ctx context.Context,
+	texts []string,
+) ([]pgvector.Vector, error) {
 	const method = "EmbedQuery"
 	reqBody := VoyageEmbeddingRequest{
 		Input:               texts,
@@ -137,17 +140,14 @@ func (vc *VoyageClient) EmbedQuery(ctx context.Context, texts []string) ([]pgvec
 		OutputDimensionType: OutputDimensionTypeFloat,
 	}
 
-	log := vc.Logger.With(
+	log := vc.logger.With(
 		slog.String("method", method),
 		slog.String("model", string(reqBody.Model)),
 		slog.String("input_type", string(reqBody.InputType)),
 		slog.Int("input_len", len(texts)),
 	)
 
-	duration := time.Since(start)
-	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
-	).InfoContext(ctx, "sending voyage embedding request...")
+	log.InfoContext(ctx, "sending voyage embedding request...")
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -173,9 +173,10 @@ func (vc *VoyageClient) EmbedQuery(ctx context.Context, texts []string) ([]pgvec
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+vc.APIKey)
+	req.Header.Set("Authorization", "Bearer "+vc.apiKey)
 
-	resp, err := vc.Client.Do(req)
+	start := time.Now()
+	resp, err := vc.client.Do(req)
 	if err != nil {
 		log.With(
 			slog.Any("err", err),
@@ -199,7 +200,7 @@ func (vc *VoyageClient) EmbedQuery(ctx context.Context, texts []string) ([]pgvec
 		return nil, fmt.Errorf("voyage returned non-200 status: %w", err)
 	}
 
-	duration = time.Since(start)
+	duration := time.Since(start)
 	log.With(
 		slog.Int64("duration_ms", duration.Milliseconds()),
 	).InfoContext(ctx, "voyage response received: decoding response...")
@@ -229,8 +230,12 @@ func (vc *VoyageClient) EmbedQuery(ctx context.Context, texts []string) ([]pgvec
 	return vectors, nil
 }
 
-func (vc *VoyageClient) RerankDocuments(ctx context.Context, query string, docs []string, topk TopK) ([]VoyageReranking, error) {
-	start := time.Now()
+func (vc *VoyageClient) RerankDocuments(
+	ctx context.Context,
+	query string,
+	docs []string,
+	topk TopK,
+) ([]VoyageReranking, error) {
 	const method = "RerankDocuments"
 	reqBody := VoyageRerankingRequest{
 		Query:           query,
@@ -241,7 +246,7 @@ func (vc *VoyageClient) RerankDocuments(ctx context.Context, query string, docs 
 		Truncation:      false,
 	}
 
-	log := vc.Logger.With(
+	log := vc.logger.With(
 		slog.String("method", method),
 		slog.String("model", string(reqBody.Model)),
 		slog.String("query", string(reqBody.Query)),
@@ -250,10 +255,7 @@ func (vc *VoyageClient) RerankDocuments(ctx context.Context, query string, docs 
 		slog.Bool("return_documents", false),
 	)
 
-	duration := time.Since(start)
-	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
-	).InfoContext(ctx, "sending voyage reranking request...")
+	log.InfoContext(ctx, "sending voyage reranking request...")
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -279,9 +281,10 @@ func (vc *VoyageClient) RerankDocuments(ctx context.Context, query string, docs 
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+vc.APIKey)
+	req.Header.Set("Authorization", "Bearer "+vc.apiKey)
 
-	resp, err := vc.Client.Do(req)
+	start := time.Now()
+	resp, err := vc.client.Do(req)
 	if err != nil {
 		log.With(
 			slog.Any("err", err),
@@ -305,7 +308,7 @@ func (vc *VoyageClient) RerankDocuments(ctx context.Context, query string, docs 
 		return nil, fmt.Errorf("voyage returned non-200 status: %w", err)
 	}
 
-	duration = time.Since(start)
+	duration := time.Since(start)
 	log.With(
 		slog.Int64("duration_ms", duration.Milliseconds()),
 	).InfoContext(ctx, "voyage response received: decoding response...")
