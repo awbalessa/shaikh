@@ -13,62 +13,76 @@ import (
 )
 
 const lexicalSearch = `-- name: LexicalSearch :many
-SELECT
-  id,
-  paradedb.score(id)::float8 AS score,
-  embedded_chunk,
-  source,
-  surah,
-  ayah
-FROM chunks
-WHERE id @@@ paradedb.boolean(
-  must => ARRAY[
-    paradedb.boolean(
-      should => ARRAY[
-        paradedb.match('tokenized_chunk', $1::text),
-        paradedb.match('tokenized_chunk_title', $1::text)
-      ]
+WITH ranked_chunks AS (
+    SELECT
+    id,
+    paradedb.score(id)::float8 AS score,
+    embedded_chunk,
+    raw_chunk,
+    source,
+    surah,
+    ayah
+    FROM chunks
+    WHERE id @@@ paradedb.boolean(
+    must => ARRAY[
+        paradedb.boolean(
+        should => ARRAY[
+            paradedb.match('tokenized_chunk', $2::text),
+            paradedb.match('tokenized_chunk_title', $2::text)
+        ]
+        )
+    ]
+    ||
+    CASE
+        WHEN $3::content_type IS NOT NULL
+        THEN ARRAY[paradedb.term('content_type', $3::content_type)]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+        WHEN $4::source IS NOT NULL
+        THEN ARRAY[paradedb.term('source', $4::source)]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+        WHEN $5::int IS NOT NULL
+        THEN ARRAY[paradedb.term('surah', $5::int)]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+        WHEN $5::int IS NOT NULL
+        AND $6::int IS NOT NULL
+        AND $7::int IS NOT NULL
+        THEN ARRAY[paradedb.range('ayah', int4range($6, $7, '[]'))]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
     )
-  ]
-  ||
-  CASE
-    WHEN $2::content_type IS NOT NULL
-    THEN ARRAY[paradedb.term('content_type', $2::content_type)]
-    ELSE ARRAY[]::paradedb.searchqueryinput[]
-  END
-  ||
-  CASE
-    WHEN $3::source IS NOT NULL
-    THEN ARRAY[paradedb.term('source', $3::source)]
-    ELSE ARRAY[]::paradedb.searchqueryinput[]
-  END
-  ||
-  CASE
-    WHEN $4::int IS NOT NULL
-    THEN ARRAY[paradedb.term('surah', $4::int)]
-    ELSE ARRAY[]::paradedb.searchqueryinput[]
-  END
-  ||
-  CASE
-    WHEN $4::int IS NOT NULL
-     AND $5::int IS NOT NULL
-     AND $6::int IS NOT NULL
-    THEN ARRAY[paradedb.range('ayah', int4range($5, $6, '[]'))]
-    ELSE ARRAY[]::paradedb.searchqueryinput[]
-  END
+), deduped_chunks AS (
+  SELECT DISTINCT ON (raw_chunk)
+    id,
+    score,
+    embedded_chunk,
+    source,
+    surah,
+    ayah
+  FROM ranked_chunks
+  ORDER BY raw_chunk, score DESC
 )
+SELECT id, score, embedded_chunk, source, surah, ayah FROM deduped_chunks
 ORDER BY score DESC
-LIMIT $7
+LIMIT $1
 `
 
 type LexicalSearchParams struct {
+	NumberOfChunks int32
 	Query          string
 	ContentType    NullContentType
 	Source         NullSource
 	Surah          pgtype.Int4
 	AyahStart      pgtype.Int4
 	AyahEnd        pgtype.Int4
-	NumberOfChunks int32
 }
 
 type LexicalSearchRow struct {
@@ -82,13 +96,13 @@ type LexicalSearchRow struct {
 
 func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error) {
 	rows, err := q.db.Query(ctx, lexicalSearch,
+		arg.NumberOfChunks,
 		arg.Query,
 		arg.ContentType,
 		arg.Source,
 		arg.Surah,
 		arg.AyahStart,
 		arg.AyahEnd,
-		arg.NumberOfChunks,
 	)
 	if err != nil {
 		return nil, err
@@ -116,26 +130,40 @@ func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([
 }
 
 const semanticSearch = `-- name: SemanticSearch :many
-SELECT
-    id,
-    (1 - embedding <=> $1::vector)::float8 as score,
-    embedded_chunk,
-    source,
-    surah,
-    ayah
-FROM chunks
-WHERE (
-  cardinality($2::smallint[]) = 0
-  OR labels && $2::smallint[]
-)
+WITH ranked_chunks AS (
+    SELECT
+        id,
+        (1 - (embedding <=> $2::vector))::float8 as score,
+        embedded_chunk,
+        raw_chunk,
+        source,
+        surah,
+        ayah
+    FROM chunks
+    WHERE (
+    cardinality($3::smallint[]) = 0
+    OR labels && $3::smallint[]
+    )
+), deduped_chunks AS (
+    SELECT DISTINCT ON (raw_chunk)
+        id,
+        score,
+        embedded_chunk,
+        source,
+        surah,
+        ayah
+    FROM ranked_chunks
+    ORDER BY raw_chunk, score DESC
+    )
+SELECT id, score, embedded_chunk, source, surah, ayah FROM deduped_chunks
 ORDER BY score DESC
-LIMIT $3
+LIMIT $1
 `
 
 type SemanticSearchParams struct {
+	NumberOfChunks int32
 	Vector         pgvector_go.Vector
 	LabelFilters   []int16
-	NumberOfChunks int32
 }
 
 type SemanticSearchRow struct {
@@ -148,7 +176,7 @@ type SemanticSearchRow struct {
 }
 
 func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error) {
-	rows, err := q.db.Query(ctx, semanticSearch, arg.Vector, arg.LabelFilters, arg.NumberOfChunks)
+	rows, err := q.db.Query(ctx, semanticSearch, arg.NumberOfChunks, arg.Vector, arg.LabelFilters)
 	if err != nil {
 		return nil, err
 	}
