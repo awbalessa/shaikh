@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -33,6 +34,10 @@ func Load() (*Config, error) {
 func findDotEnv() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
+		slog.With(
+			"working_directory", dir,
+			"err", err,
+		).Error("error getting working directory")
 		return "", fmt.Errorf("error getting working directory: %v", err)
 	}
 
@@ -42,6 +47,9 @@ func findDotEnv() (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
+			slog.With(
+				"parent", parent,
+			).Error("file does not exist")
 			return "", os.ErrNotExist
 		}
 		dir = parent

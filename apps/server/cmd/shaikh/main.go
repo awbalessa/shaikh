@@ -1,16 +1,19 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
+	"github.com/awbalessa/shaikh/apps/server/internal/app"
 	"github.com/awbalessa/shaikh/apps/server/internal/config"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
 	loggerOpts := config.LoggerOptions{
 		Level:  slog.LevelInfo,
-		JSON:   false,
+		JSON:   true,
 		Writer: os.Stdout,
 	}
 
@@ -18,56 +21,47 @@ func main() {
 		config.NewLogger(loggerOpts),
 	)
 
-	dude := "duuuuuude"
-	man := "maaaaaaan"
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error(
+			"failed to load config",
+			"err",
+			err,
+		)
+		os.Exit(1)
+	}
 
-	slog.Info(
-		"here's my message",
-		"dude", dude,
-		"man", man,
+	ctx, cancel := context.WithCancel(
+		context.Background(),
 	)
+	defer cancel()
 
-	// cfg, err := config.Load()
-	// if err != nil {
-	// 	slog.Error(
-	// 		"failed to load config",
-	// 		"err",
-	// 		err,
-	// 	)
-	// 	os.Exit(1)
-	// }
+	conn, err := pgxpool.New(ctx, cfg.PostgresURL)
+	if err != nil {
+		slog.Error(
+			"failed to create pgxpool",
+			"error",
+			err,
+			"postgres_url",
+			cfg.PostgresURL,
+		)
+		os.Exit(1)
+	}
+	defer conn.Close()
 
-	// ctx, cancel := context.WithCancel(
-	// 	context.Background(),
-	// )
-	// defer cancel()
+	appCfg := app.AppConfig{
+		Config:  cfg,
+		Context: ctx,
+		Pool:    conn,
+	}
 
-	// conn, err := pgxpool.New(ctx, cfg.PostgresURL)
-	// if err != nil {
-	// 	slog.Error(
-	// 		"failed to create pgxpool",
-	// 		"error",
-	// 		err,
-	// 		"postgres_url",
-	// 		cfg.PostgresURL,
-	// 	)
-	// 	os.Exit(1)
-	// }
-	// defer conn.Close()
-
-	// appCfg := app.AppConfig{
-	// 	Config:  cfg,
-	// 	Context: ctx,
-	// 	Pool:    conn,
-	// }
-
-	// _, err = app.New(&appCfg)
-	// if err != nil {
-	// 	slog.Error(
-	// 		"failed to start app",
-	// 		"error",
-	// 		err,
-	// 	)
-	// 	os.Exit(1)
-	// }
+	_, err = app.New(&appCfg)
+	if err != nil {
+		slog.Error(
+			"failed to start app",
+			"error",
+			err,
+		)
+		os.Exit(1)
+	}
 }

@@ -82,7 +82,7 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 		inQuotes := false
 		escapeNext := false
 
-		for i := 0; i < len(p); i++ {
+		for i := range p {
 			ch := p[i]
 
 			if escapeNext {

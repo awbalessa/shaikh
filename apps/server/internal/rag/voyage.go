@@ -3,8 +3,10 @@ package rag
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -14,21 +16,24 @@ import (
 )
 
 const (
-	VoyageBaseURL             string                       = "https://api.voyageai.com/v1"
-	VoyageTimeout             time.Duration                = 10 * time.Second
-	VoyageMaxRetries          int                          = 3
-	VoyageMaxIdleConns        int                          = 100
-	VoyageMaxIdleConnsPerHost int                          = 10
-	VoyageIdleConnTimeout     time.Duration                = 90 * time.Second
-	VoyageEmbedV3p5           EmbeddingModel               = "voyage-3.5"
-	InputTypeQuery            EmbeddingInputType           = "query"
-	InputTypeDocument         EmbeddingInputType           = "document"
-	OutputDimension1024       EmbeddingOutputDimension     = 1024
-	OutputDimensionTypeFloat  EmbeddingOutputDimensionType = "float"
-	VoyageRerankV2            RerankingModel               = "rerank-2"
-	Top5Documents             TopK                         = 5
-	Top10Documents            TopK                         = 10
-	Top20Documents            TopK                         = 20
+	VoyageBaseURL              string                       = "https://api.voyageai.com/v1"
+	VoyageTimeout              time.Duration                = 10 * time.Second
+	VoyageMaxRetries           int                          = 3
+	VoyageMaxIdleConns         int                          = 100
+	VoyageMaxIdleConnsPerHost  int                          = 10
+	VoyageIdleConnTimeout      time.Duration                = 90 * time.Second
+	VoyageDialContextTimeout   time.Duration                = 5 * time.Second
+	VoyageDialContextKeepAlive time.Duration                = 30 * time.Second
+	VoyageTLSHandshakeTimeout  time.Duration                = 10 * time.Second
+	VoyageEmbedV3p5            EmbeddingModel               = "voyage-3.5"
+	InputTypeQuery             EmbeddingInputType           = "query"
+	InputTypeDocument          EmbeddingInputType           = "document"
+	OutputDimension1024        EmbeddingOutputDimension     = 1024
+	OutputDimensionTypeFloat   EmbeddingOutputDimensionType = "float"
+	VoyageRerankV2             RerankingModel               = "rerank-2"
+	Top5Documents              TopK                         = 5
+	Top10Documents             TopK                         = 10
+	Top20Documents             TopK                         = 20
 )
 
 type VoyageClientConfig struct {
@@ -104,9 +109,14 @@ func NewVoyageClient(cfg VoyageClientConfig) *VoyageClient {
 	client := &http.Client{
 		Timeout: cfg.Timeout,
 		Transport: &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   VoyageDialContextTimeout,
+				KeepAlive: VoyageDialContextKeepAlive,
+			}).DialContext,
 			MaxIdleConns:        VoyageMaxIdleConns,
 			MaxIdleConnsPerHost: VoyageMaxIdleConnsPerHost,
 			IdleConnTimeout:     VoyageIdleConnTimeout,
+			TLSHandshakeTimeout: VoyageTLSHandshakeTimeout,
 		},
 	}
 
@@ -126,13 +136,13 @@ func NewVoyageClient(cfg VoyageClientConfig) *VoyageClient {
 	}
 }
 
-func (vc *VoyageClient) EmbedQuery(
+func (vc *VoyageClient) EmbedQueries(
 	ctx context.Context,
-	texts []string,
+	queries []string,
 ) ([]pgvector.Vector, error) {
 	const method = "EmbedQuery"
 	reqBody := VoyageEmbeddingRequest{
-		Input:               texts,
+		Input:               queries,
 		Model:               VoyageEmbedV3p5,
 		InputType:           InputTypeQuery,
 		Truncation:          false,
@@ -144,7 +154,7 @@ func (vc *VoyageClient) EmbedQuery(
 		slog.String("method", method),
 		slog.String("model", string(reqBody.Model)),
 		slog.String("input_type", string(reqBody.InputType)),
-		slog.Int("input_len", len(texts)),
+		slog.Int("input_len", len(queries)),
 	)
 
 	log.InfoContext(ctx, "sending voyage embedding request...")
@@ -219,6 +229,10 @@ func (vc *VoyageClient) EmbedQuery(
 		vectors[i] = pgvector.NewVector(
 			item.Embedding[:],
 		)
+	}
+
+	if len(vectors) != len(queries) {
+		return nil, errors.New("error: vectors and queries are one-to-one")
 	}
 
 	duration = time.Since(start)
