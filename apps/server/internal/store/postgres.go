@@ -57,6 +57,8 @@ func (s *Store) RunLexicalSearch(
 		slog.String("query", arg.Query),
 		slog.String("content_type", string(arg.ContentType.ContentType)),
 		slog.String("source", string(arg.Source.Source)),
+		slog.Int("surah_start", int(arg.SurahStart.Int32)),
+		slog.Int("surah_end", int(arg.SurahEnd.Int32)),
 		slog.Int("surah", int(arg.Surah.Int32)),
 		slog.Int("ayah_start", int(arg.AyahStart.Int32)),
 		slog.Int("ayah_end", int(arg.AyahEnd.Int32)),
@@ -74,7 +76,7 @@ func (s *Store) RunLexicalSearch(
 	arg.Query = tokenized
 	log.With(
 		"tokenized_query", arg.Query,
-	).InfoContext(ctx, "tokenized query: running semantic search...")
+	).InfoContext(ctx, "tokenized query: running lexical search...")
 
 	start := time.Now()
 	rows, err := s.pg.queries.LexicalSearch(

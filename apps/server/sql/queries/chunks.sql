@@ -32,16 +32,24 @@ WITH ranked_chunks AS (
     END
     ||
     CASE
+        -- Case 1: Range of surahs
+        WHEN sqlc.narg('surah_start')::int IS NOT NULL
+          AND sqlc.narg('surah_end')::int IS NOT NULL
+        THEN ARRAY[paradedb.range('surah', int4range(sqlc.narg('surah_start'), sqlc.narg('surah_end'), '[]'))]
+
+        -- Case 2: Single surah + optional ayah range
+        WHEN sqlc.narg('surah')::int IS NOT NULL
+             AND sqlc.narg('ayah_start')::int IS NOT NULL
+             AND sqlc.narg('ayah_end')::int IS NOT NULL
+        THEN ARRAY[
+            paradedb.term('surah', sqlc.narg('surah')::int),
+            paradedb.range('ayah', int4range(sqlc.narg('ayah_start'), sqlc.narg('ayah_end'), '[]'))
+        ]
+
+        -- Case 3: Only single surah
         WHEN sqlc.narg('surah')::int IS NOT NULL
         THEN ARRAY[paradedb.term('surah', sqlc.narg('surah')::int)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        WHEN sqlc.narg('surah')::int IS NOT NULL
-        AND sqlc.narg('ayah_start')::int IS NOT NULL
-        AND sqlc.narg('ayah_end')::int IS NOT NULL
-        THEN ARRAY[paradedb.range('ayah', int4range(sqlc.narg('ayah_start'), sqlc.narg('ayah_end'), '[]'))]
+
         ELSE ARRAY[]::paradedb.searchqueryinput[]
     END
     )

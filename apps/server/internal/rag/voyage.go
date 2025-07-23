@@ -239,7 +239,7 @@ func (vc *VoyageClient) EmbedQueries(
 	log.With(
 		slog.Int64("duration_ms", duration.Milliseconds()),
 		slog.Int("embedding_count", len(vectors)),
-	).InfoContext(ctx, "decoded response: returning...")
+	).InfoContext(ctx, "embedding completed: returning...")
 
 	return vectors, nil
 }
@@ -340,7 +340,7 @@ func (vc *VoyageClient) RerankDocuments(
 	log.With(
 		slog.Int64("duration_ms", duration.Milliseconds()),
 		slog.Int("index_count", len(result.Data)),
-	).InfoContext(ctx, "decoded response: returning...")
+	).InfoContext(ctx, "reranking completed: returning...")
 
 	return result.Data, nil
 }

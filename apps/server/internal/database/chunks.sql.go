@@ -46,16 +46,24 @@ WITH ranked_chunks AS (
     END
     ||
     CASE
+        -- Case 1: Range of surahs
         WHEN $5::int IS NOT NULL
-        THEN ARRAY[paradedb.term('surah', $5::int)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        WHEN $5::int IS NOT NULL
-        AND $6::int IS NOT NULL
-        AND $7::int IS NOT NULL
-        THEN ARRAY[paradedb.range('ayah', int4range($6, $7, '[]'))]
+          AND $6::int IS NOT NULL
+        THEN ARRAY[paradedb.range('surah', int4range($5, $6, '[]'))]
+
+        -- Case 2: Single surah + optional ayah range
+        WHEN $7::int IS NOT NULL
+             AND $8::int IS NOT NULL
+             AND $9::int IS NOT NULL
+        THEN ARRAY[
+            paradedb.term('surah', $7::int),
+            paradedb.range('ayah', int4range($8, $9, '[]'))
+        ]
+
+        -- Case 3: Only single surah
+        WHEN $7::int IS NOT NULL
+        THEN ARRAY[paradedb.term('surah', $7::int)]
+
         ELSE ARRAY[]::paradedb.searchqueryinput[]
     END
     )
@@ -80,6 +88,8 @@ type LexicalSearchParams struct {
 	Query          string
 	ContentType    NullContentType
 	Source         NullSource
+	SurahStart     pgtype.Int4
+	SurahEnd       pgtype.Int4
 	Surah          pgtype.Int4
 	AyahStart      pgtype.Int4
 	AyahEnd        pgtype.Int4
@@ -100,6 +110,8 @@ func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([
 		arg.Query,
 		arg.ContentType,
 		arg.Source,
+		arg.SurahStart,
+		arg.SurahEnd,
 		arg.Surah,
 		arg.AyahStart,
 		arg.AyahEnd,

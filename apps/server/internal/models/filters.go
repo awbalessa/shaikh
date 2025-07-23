@@ -434,7 +434,7 @@ var SourceToLabel = map[database.Source]LabelSource{
 	database.SourceTafsirAlJalalayn: LabelSourceTafsirAlJalalayn,
 }
 
-var SurahNumberToLabel = map[int]LabelSurahNumber{
+var SurahNumberToLabel = map[int32]LabelSurahNumber{
 	1:   LabelSurahNumberOne,
 	2:   LabelSurahNumberTwo,
 	3:   LabelSurahNumberThree,
@@ -551,7 +551,7 @@ var SurahNumberToLabel = map[int]LabelSurahNumber{
 	114: LabelSurahNumberOneHundredFourteen,
 }
 
-var AyahNumberToLabel = map[int]LabelAyahNumber{
+var AyahNumberToLabel = map[int32]LabelAyahNumber{
 	1:   LabelAyahNumberOne,
 	2:   LabelAyahNumberTwo,
 	3:   LabelAyahNumberThree,
@@ -839,5 +839,3 @@ var AyahNumberToLabel = map[int]LabelAyahNumber{
 	285: LabelAyahNumberTwoHundredEightyFive,
 	286: LabelAyahNumberTwoHundredEightySix,
 }
-
-func ConvertToLabels()
