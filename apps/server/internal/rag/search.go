@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -9,21 +10,92 @@ import (
 
 	"github.com/awbalessa/shaikh/apps/server/internal/database"
 	"github.com/awbalessa/shaikh/apps/server/internal/models"
-	"github.com/awbalessa/shaikh/apps/server/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 )
 
+type FilterContentType string
+type FilterSource string
+type FilterSurahNumber models.SurahNumber
+type FilterSurahRange struct {
+	SurahStart FilterSurahNumber
+	SurahEnd   FilterSurahNumber
+}
+type FilterAyahNumber models.AyahNumber
+type FilterAyahRange struct {
+	AyahStart FilterAyahNumber
+	AyahEnd   FilterAyahNumber
+}
+
+type PromptWithFilters struct {
+	Prompt      string
+	ContentType *FilterContentType
+	Source      *FilterSource
+	SurahRange  *FilterSurahRange
+	Surah       *FilterSurahNumber
+	AyahRange   *FilterAyahRange
+}
+
+type SearchParameters struct {
+	RawPrompt          string
+	PromptsWithFilters []PromptWithFilters
+	FinalChunks        TopK
+}
+
+type SearchResult struct {
+	ID            int64
+	Relevance     float64
+	EmbeddedChunk string
+	Source        string
+	Surah         *int32
+	Ayah          *int32
+}
+
+func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
+	mode, err := validateSearchParams(arg)
+	if err != nil {
+		return nil, err
+	}
+	numOfQueries := len(arg.PromptsWithFilters)
+
+	log := p.logger.With(
+		slog.String("method", "Search"),
+		slog.Int("num_of_prompts", len(arg.PromptsWithFilters)),
+		slog.Int("final_chunks", int(arg.FinalChunks)),
+	)
+	hybParams := appDomainToDbDomain(arg, mode)
+
+	log.InfoContext(ctx, "starting search...")
+	start := time.Now()
+
+	hybResult, err := p.hybridSearch(ctx, hybParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed search: %w", err)
+	}
+
+	rrfResult, err := p.parallelRRFusion(ctx, hybResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed search: %w", err)
+	}
+
+	queries := make([]string, 0, numOfQueries)
+	for _, item := range arg.PromptsWithFilters {
+		queries = append(
+			queries,
+			item.Prompt,
+		)
+	}
+}
+
 const (
-	rrf60 rrfConstant = 60
+	surahRange     surahAyahFilterMode = 1
+	surahAyahRange surahAyahFilterMode = 2
+	surahOnly      surahAyahFilterMode = 3
+	rrf60          rrfConstant         = 60
 )
 
-type Pipeline struct {
-	store  *store.Store
-	vc     *VoyageClient
-	logger *slog.Logger
-}
+type surahAyahFilterMode int
 
 type parallelSemanticSearchParams struct {
 	totalChunks int
@@ -96,15 +168,145 @@ type idScorePair struct {
 	score float64
 }
 
-func NewPipeline(store *store.Store, vc *VoyageClient) *Pipeline {
-	log := slog.Default().With(
-		"component", "pipeline",
-	)
+func validateSearchParams(arg SearchParameters) (surahAyahFilterMode, error) {
+	if arg.PromptsWithFilters == nil {
+		return 0, errors.New("error: must pass in at least one prompt")
+	}
+	if len(arg.PromptsWithFilters) < 1 {
+		return 0, errors.New("error: must pass in at least one prompt")
+	}
+	if len(arg.PromptsWithFilters) > 3 {
+		return 0, errors.New("error: cannot pass in more than 3 sub-prompts")
+	}
 
-	return &Pipeline{
-		store:  store,
-		vc:     vc,
-		logger: log,
+	var mode surahAyahFilterMode
+	for _, item := range arg.PromptsWithFilters {
+		if item.SurahRange != nil {
+			if item.Surah != nil || item.AyahRange != nil {
+				return 0, errors.New("error: cannot specify single surah filters with surah range")
+			}
+			if item.SurahRange.SurahStart >= item.SurahRange.SurahEnd {
+				return 0, errors.New("error: SurahEnd less than or equal to SurahStart")
+			}
+			mode = surahRange
+		} else if item.AyahRange != nil {
+			if item.Surah == nil {
+				return 0, errors.New("error: cannot specify ayah range without surah filter")
+			}
+			if item.AyahRange.AyahStart > item.AyahRange.AyahEnd {
+				return 0, errors.New("error: AyahEnd less than AyahStart")
+			}
+			mode = surahAyahRange
+		} else {
+			mode = surahOnly
+		}
+	}
+	return mode, nil
+}
+
+func appDomainToDbDomain(arg SearchParameters, mode surahAyahFilterMode) hybridSearchParams {
+	initialChunks := int(10 * arg.FinalChunks)
+	qwf := make([]queryWithFilters, 0, len(arg.PromptsWithFilters))
+
+	for _, item := range arg.PromptsWithFilters {
+		var ct database.NullContentType
+		var source database.NullSource
+		var surahStart pgtype.Int4
+		var surahEnd pgtype.Int4
+		var surah pgtype.Int4
+		var ayahStart pgtype.Int4
+		var ayahEnd pgtype.Int4
+		if item.ContentType != nil {
+			ct = database.NullContentType{
+				ContentType: database.ContentType(*item.ContentType),
+				Valid:       true,
+			}
+		} else {
+			ct = database.NullContentType{
+				Valid: false,
+			}
+		}
+		if item.Source != nil {
+			source = database.NullSource{
+				Source: database.Source(*item.Source),
+				Valid:  true,
+			}
+		} else {
+			source = database.NullSource{
+				Valid: false,
+			}
+		}
+
+		if mode == surahRange {
+			surahStart = pgtype.Int4{
+				Int32: int32(item.SurahRange.SurahStart),
+				Valid: true,
+			}
+			surahEnd = pgtype.Int4{
+				Int32: int32(item.SurahRange.SurahEnd),
+				Valid: true,
+			}
+			surah = pgtype.Int4{
+				Valid: false,
+			}
+			ayahStart = pgtype.Int4{
+				Valid: false,
+			}
+			ayahEnd = pgtype.Int4{
+				Valid: false,
+			}
+		} else if mode == surahAyahRange {
+			surah = pgtype.Int4{
+				Int32: int32(*item.Surah),
+				Valid: true,
+			}
+			ayahStart = pgtype.Int4{
+				Int32: int32(item.AyahRange.AyahStart),
+				Valid: true,
+			}
+			ayahEnd = pgtype.Int4{
+				Int32: int32(item.AyahRange.AyahEnd),
+				Valid: true,
+			}
+			surahStart = pgtype.Int4{
+				Valid: false,
+			}
+			surahEnd = pgtype.Int4{
+				Valid: false,
+			}
+		} else if mode == surahOnly {
+			surah = pgtype.Int4{
+				Int32: int32(*item.Surah),
+				Valid: true,
+			}
+			ayahStart = pgtype.Int4{
+				Valid: false,
+			}
+			ayahEnd = pgtype.Int4{
+				Valid: false,
+			}
+			surahStart = pgtype.Int4{
+				Valid: false,
+			}
+			surahEnd = pgtype.Int4{
+				Valid: false,
+			}
+		}
+		qwf = append(qwf, queryWithFilters{
+			query:       item.Prompt,
+			contentType: ct,
+			source:      source,
+			surahStart:  surahStart,
+			surahEnd:    surahEnd,
+			surah:       surah,
+			ayahStart:   ayahStart,
+			ayahEnd:     ayahEnd,
+		})
+	}
+
+	return hybridSearchParams{
+		totalChunks: initialChunks,
+		items:       qwf,
 	}
 }
 
@@ -234,11 +436,9 @@ func (p *Pipeline) hybridSearch(
 
 	g.Go(func() error {
 		qwl := make([]queryWithLabels, 0, numOfQueries)
+		queries := make([]string, 0, numOfQueries)
 		for _, item := range arg.items {
 			qwl = append(qwl, filtersToLabels(item))
-		}
-		queries := make([]string, 0, numOfQueries)
-		for _, item := range qwl {
 			queries = append(queries, item.query)
 		}
 		vecs, err := p.vc.EmbedQueries(ctx, queries)
@@ -296,8 +496,6 @@ func (p *Pipeline) hybridSearch(
 	)
 	return result, nil
 }
-
-// func (p *Pipeline) Search() -> top level full. hybrid then parallel then rrf then reranker. Scrutinize all filters heavily. Don't allow any bs. This is the top level tool call that was called after the agent returns the JSON. Make it heavily strongly typed. Enumerate everything. Sends the main original user prompt to reranker. Add guard on number of items. Check everything is good before calling the wrapped tool.
 
 func filtersToLabels(qwf queryWithFilters) queryWithLabels {
 	var qwl queryWithLabels

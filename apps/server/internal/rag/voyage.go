@@ -33,6 +33,7 @@ const (
 	VoyageRerankV2             RerankingModel               = "rerank-2"
 	Top5Documents              TopK                         = 5
 	Top10Documents             TopK                         = 10
+	Top15Documents             TopK                         = 15
 	Top20Documents             TopK                         = 20
 )
 
@@ -94,8 +95,8 @@ type VoyageRerankingRequest struct {
 }
 
 type VoyageReranking struct {
-	Index          int `json:"index"`
-	RelevanceScore int `json:"relevance_score"`
+	Index          int     `json:"index"`
+	RelevanceScore float64 `json:"relevance_score"`
 }
 
 type VoyageRerankingResponse struct {

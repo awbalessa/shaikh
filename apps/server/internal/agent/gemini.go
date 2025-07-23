@@ -1,4 +1,4 @@
-package rag
+package agent
 
 import (
 	"context"
