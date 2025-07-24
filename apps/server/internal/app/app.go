@@ -41,7 +41,7 @@ func New(app *AppConfig) (*App, error) {
 		Timeout:        agent.GeminiTimeout,
 		GCPProjectID:   agent.GCPProjectID,
 		GeminiBackend:  agent.GeminiBackend,
-		GeminiLocation: agent.GeminiLocation,
+		GeminiLocation: agent.GeminiLocationGlobal,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new app: %w", err)

@@ -36,14 +36,26 @@ func main() {
 	)
 	defer cancel()
 
-	conn, err := pgxpool.New(ctx, cfg.PostgresURL)
+	pgxCfg, err := pgxpool.ParseConfig(cfg.PostgresConnString)
 	if err != nil {
 		slog.Error(
 			"failed to create pgxpool",
 			"error",
 			err,
 			"postgres_url",
-			cfg.PostgresURL,
+			cfg.PostgresConnString,
+		)
+		os.Exit(1)
+	}
+
+	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
+	if err != nil {
+		slog.Error(
+			"failed to create pgxpool",
+			"error",
+			err,
+			"postgres_url",
+			cfg.PostgresConnString,
 		)
 		os.Exit(1)
 	}

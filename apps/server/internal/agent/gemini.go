@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	GeminiFlashLiteV2p5        string        = "gemini-2.5-flash-lite-preview-06-17"
-	GeminiLocation             string        = "global"
+	GeminiFlashLiteV2p5        GeminiModel   = "gemini-2.5-flash-lite-preview-06-17"
+	GeminiFlashV2p5            GeminiModel   = "gemini-2.5-flash"
+	GeminiLocationUSCentral1   string        = "us-central1"
+	GeminiLocationGlobal       string        = "global"
 	GeminiBackend              genai.Backend = genai.BackendVertexAI
 	GCPProjectID               string        = "shaikh-460416"
 	GeminiTimeout              time.Duration = 15 * time.Second
@@ -26,6 +28,8 @@ const (
 	GeminiDialContextKeepAlive time.Duration = 30 * time.Second
 	GeminiTLSHandshakeTimeout  time.Duration = 10 * time.Second
 )
+
+type GeminiModel string
 
 type GeminiClient struct {
 	client *genai.Client

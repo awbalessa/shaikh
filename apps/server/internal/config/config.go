@@ -9,9 +9,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	PostgresSSLMode               string = "sslmode=disable"
+	PostgresMaxConns              string = "pool_max_conns=8"
+	PostgresMinConns              string = "pool_min_conns=2"
+	PostgresMinIdleConns          string = "pool_min_idle_conns=2"
+	PostgresMaxConnLifetime       string = "pool_max_conn_lifetime=30m"
+	PostgresMaxConnLifetimeJitter string = "pool_max_conn_lifetime_jitter=5m"
+	PostgresMaxConnIdleTime       string = "pool_max_conn_idle_time=15m"
+	PostgresPoolHealthCheckPeriod string = "pool_health_check_period=30s"
+)
+
 type Config struct {
-	PostgresURL  string
-	VoyageAPIKey string
+	PostgresConnString string
+	VoyageAPIKey       string
 }
 
 func Load() (*Config, error) {
@@ -25,9 +36,22 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("Error loading .env file: %v", err)
 	}
 
+	connStr := fmt.Sprintf(
+		"%s?%s&%s&%s&%s&%s&%s&%s&%s",
+		os.Getenv("POSTGRES_URL"),
+		PostgresSSLMode,
+		PostgresMaxConns,
+		PostgresMinConns,
+		PostgresMinIdleConns,
+		PostgresMaxConnLifetime,
+		PostgresMaxConnLifetimeJitter,
+		PostgresMaxConnIdleTime,
+		PostgresPoolHealthCheckPeriod,
+	)
+
 	return &Config{
-		PostgresURL:  os.Getenv("POSTGRES_URL"),
-		VoyageAPIKey: os.Getenv("VOYAGE_API_KEY"),
+		PostgresConnString: connStr,
+		VoyageAPIKey:       os.Getenv("VOYAGE_API_KEY"),
 	}, nil
 }
 
