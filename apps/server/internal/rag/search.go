@@ -52,7 +52,7 @@ type SearchResult struct {
 	Ayah          *int32
 }
 
-func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
+func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
 	queries, initialChunks, err := validateSearchParams(arg)
 	if err != nil {
 		return nil, err
@@ -117,8 +117,10 @@ const (
 	surahAyahRange surahAyahFilterMode = 2
 	surahOnly      surahAyahFilterMode = 3
 	rrf60          rrfConstant         = 60
+	max3           maxSubPrompts       = 3
 )
 
+type maxSubPrompts int
 type surahAyahFilterMode int
 
 type queryFilters struct {
@@ -187,7 +189,7 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 	if arg.PromptsWithFilters == nil || len(arg.PromptsWithFilters) == 0 {
 		return nil, 0, errors.New("must pass in at least one prompt")
 	}
-	if len(arg.PromptsWithFilters) > 3 {
+	if len(arg.PromptsWithFilters) > int(max3) {
 		return nil, 0, errors.New("cannot pass in more than 3 sub-prompts")
 	}
 

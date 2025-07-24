@@ -70,7 +70,7 @@ def get_chunks_with_embedding(chunks: List[ChunkWithoutEmbeddings]) -> List[Chun
 
 
 tafsir_documents = get_documents_by_id(
-    ids=list(range(6031, 6237))
+    ids=list(range(8, 8))
 )
 
 logger.info(
@@ -81,5 +81,7 @@ logger.info(
 
 for doc in tafsir_documents:
     chunk_objs = get_chunks_without_embedding(doc)
-    chunk_objs = get_chunks_with_embedding(chunk_objs)
-    create_chunks(chunk_objs)
+    # chunk_objs = get_chunks_with_embedding(chunk_objs)
+    # create_chunks(chunk_objs)
+    for i, chunk in enumerate(chunk_objs):
+        print(f"Chunk #{i}:\n\n{chunk.embedded_chunk}")
