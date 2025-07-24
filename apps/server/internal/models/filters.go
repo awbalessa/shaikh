@@ -839,3 +839,14 @@ var AyahNumberToLabel = map[int32]LabelAyahNumber{
 	285: LabelAyahNumberTwoHundredEightyFive,
 	286: LabelAyahNumberTwoHundredEightySix,
 }
+
+type NullableContentType database.NullContentType
+type NullableSource database.NullSource
+type NullableSurahNumber struct {
+	SurahNumber SurahNumber
+	Valid       bool
+}
+type NullableAyahNumber struct {
+	AyahNumber AyahNumber
+	Valid      bool
+}
