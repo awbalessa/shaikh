@@ -37,9 +37,8 @@ func (s *Store) RunSemanticSearch(
 		return nil, fmt.Errorf("failed to run semantic search: %w", err)
 	}
 
-	duration := time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("duration", time.Since(start).String()),
 		slog.Int("result_count", len(rows)),
 	).InfoContext(ctx, "ran semantic search: returning...")
 
@@ -91,9 +90,9 @@ func (s *Store) RunLexicalSearch(
 		return nil, fmt.Errorf("failed to run lexical search: %w", err)
 	}
 
-	duration := time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("tokenized_query", arg.Query),
+		slog.String("duration", time.Since(start).String()),
 		slog.Int("result_count", len(rows)),
 	).InfoContext(ctx, "ran lexical search: returning...")
 

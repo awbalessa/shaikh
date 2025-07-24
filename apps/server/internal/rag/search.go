@@ -39,8 +39,8 @@ type PromptWithFilters struct {
 
 type SearchParameters struct {
 	RawPrompt          string
+	ChunkLimit         TopK
 	PromptsWithFilters []PromptWithFilters
-	FinalChunks        TopK
 }
 
 type SearchResult struct {
@@ -52,7 +52,7 @@ type SearchResult struct {
 	Ayah          *int32
 }
 
-func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
+func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
 	queries, initialChunks, err := validateSearchParams(arg)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]Se
 	log := p.logger.With(
 		slog.String("method", "Search"),
 		slog.Int("num_of_prompts", numOfPrompts),
-		slog.Int("final_chunks", int(arg.FinalChunks)),
+		slog.Int("chunk_limit", int(arg.ChunkLimit)),
 	)
 
 	log.InfoContext(ctx, "starting search...")
@@ -73,28 +73,22 @@ func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]Se
 	}
 
 	log.With(
-		slog.Duration("duration", time.Since(start)),
+		slog.String("duration", time.Since(start).String()),
 	).InfoContext(ctx, "search completed: sending to reranker...")
 
-	var (
-		flat []resultChunks
-		docs []string
-	)
-	for _, group := range results {
-		for _, chunk := range group {
-			docs = append(docs, chunk.embeddedChunk)
-			flat = append(flat, chunk)
-		}
+	docs := make([]string, 0, len(results))
+	for _, chunk := range results {
+		docs = append(docs, chunk.embeddedChunk)
 	}
 
-	ranks, err := p.vc.RerankDocuments(ctx, arg.RawPrompt, docs, arg.FinalChunks)
+	ranks, err := p.vc.RerankDocuments(ctx, arg.RawPrompt, docs, arg.ChunkLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed search: %w", err)
 	}
 
 	final := make([]SearchResult, 0, len(ranks))
 	for _, rank := range ranks {
-		chunk := flat[rank.Index]
+		chunk := results[rank.Index]
 		final = append(final, SearchResult{
 			ID:            chunk.id,
 			Relevance:     rank.RelevanceScore,
@@ -106,7 +100,8 @@ func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]Se
 	}
 
 	log.With(
-		slog.Duration("duration", time.Since(start)),
+		slog.String("duration", time.Since(start).String()),
+		slog.Int("chunks_returned", len(final)),
 	).InfoContext(ctx, "reranking completed: returning...")
 
 	return final, nil
@@ -159,7 +154,7 @@ type idScorePair struct {
 }
 
 func filtersToLabels(f queryFilters) []int16 {
-	var labels []int16
+	var labels []int16 = []int16{}
 
 	if f.contentType.Valid {
 		labels = append(labels, int16(models.ContentTypeToLabel[f.contentType.ContentType]))
@@ -193,11 +188,11 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 		return nil, 0, errors.New("cannot pass in more than 3 sub-prompts")
 	}
 
-	initialChunks := int(10 * arg.FinalChunks)
+	initialChunks := int(10 * arg.ChunkLimit)
 	queries := make([]queryContext, 0, len(arg.PromptsWithFilters))
 
 	for _, item := range arg.PromptsWithFilters {
-		var mode surahAyahFilterMode
+		var mode surahAyahFilterMode = 0
 
 		// Determine filtering mode
 		if item.NullableSurahRange != nil {
@@ -216,7 +211,7 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 				return nil, 0, errors.New("AyahEnd must be >= AyahStart")
 			}
 			mode = surahAyahRange
-		} else {
+		} else if item.NullableSurah != nil {
 			mode = surahOnly
 		}
 
@@ -259,6 +254,11 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 				contentType: ct,
 				source:      src,
 				surah:       pgtype.Int4{Int32: int32(item.NullableSurah.SurahNumber), Valid: true},
+			}
+		default:
+			f = queryFilters{
+				contentType: ct,
+				source:      src,
 			}
 		}
 
@@ -331,7 +331,7 @@ func (p *Pipeline) parallelSemanticSearch(
 	}
 
 	log.With(
-		slog.Duration("duration", time.Since(start)),
+		slog.String("duration", time.Since(start).String()),
 	).InfoContext(ctx, "semantic search completed: returning...")
 
 	return results, nil
@@ -399,7 +399,7 @@ func (p *Pipeline) parallelLexicalSearch(
 	}
 
 	log.With(
-		slog.Duration("duration", time.Since(start)),
+		slog.String("duration", time.Since(start).String()),
 	).InfoContext(ctx, "lexical search completed: returning...")
 	return results, nil
 }
@@ -408,7 +408,7 @@ func (p *Pipeline) hybridSearch(
 	ctx context.Context,
 	queries []queryContext,
 	totalChunks int,
-) ([][]resultChunks, error) {
+) ([]resultChunks, error) {
 	semChan := make(chan [][]resultChunks, 1)
 	lexChan := make(chan [][]resultChunks, 1)
 
@@ -425,7 +425,7 @@ func (p *Pipeline) hybridSearch(
 	start := time.Now()
 
 	g.Go(func() error {
-		queriesSlice := make([]string, 0, numOfQueries)
+		queriesSlice := make([]string, numOfQueries)
 		for i, q := range queries {
 			queriesSlice[i] = q.query
 		}
@@ -470,12 +470,31 @@ func (p *Pipeline) hybridSearch(
 		fused[i] = p.runRRFusion(semRes[i], lexRes[i])
 	}
 
-	log.InfoContext(
-		ctx,
-		"hybrid search completed: returning...",
-		slog.Duration("duration", time.Since(start)),
-	)
-	return fused, nil
+	// Flatten all fused results into one slice
+	var allChunks []resultChunks
+	for _, group := range fused {
+		allChunks = append(allChunks, group...)
+	}
+
+	// Deduplicate based on rawChunk content
+	seen := make(map[string]bool)
+	deduped := make([]resultChunks, 0, len(allChunks))
+	for _, chunk := range allChunks {
+		if !seen[chunk.embeddedChunk] {
+			seen[chunk.embeddedChunk] = true
+			deduped = append(deduped, chunk)
+		}
+	}
+
+	// Log final deduped result count
+	log.With(
+		slog.String("duration", time.Since(start).String()),
+		slog.Int("fused_count", len(allChunks)),
+		slog.Int("deduped_count", len(deduped)),
+	).InfoContext(ctx, "hybrid search completed: returning...")
+
+	// Return final deduped slice (wrapped in [][]resultChunks to match method signature)
+	return deduped, nil
 }
 
 func (p *Pipeline) runRRFusion(

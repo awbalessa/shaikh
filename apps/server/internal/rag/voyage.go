@@ -211,9 +211,8 @@ func (vc *VoyageClient) EmbedQueries(
 		return nil, fmt.Errorf("voyage returned non-200 status: %w", err)
 	}
 
-	duration := time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("duration", time.Since(start).String()),
 	).InfoContext(ctx, "voyage response received: decoding response...")
 
 	var result VoyageEmbeddingResponse
@@ -236,9 +235,8 @@ func (vc *VoyageClient) EmbedQueries(
 		return nil, errors.New("error: vectors and queries are one-to-one")
 	}
 
-	duration = time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("duration", time.Since(start).String()),
 		slog.Int("embedding_count", len(vectors)),
 	).InfoContext(ctx, "embedding completed: returning...")
 
@@ -323,9 +321,8 @@ func (vc *VoyageClient) RerankDocuments(
 		return nil, fmt.Errorf("voyage returned non-200 status: %w", err)
 	}
 
-	duration := time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("duration", time.Since(start).String()),
 	).InfoContext(ctx, "voyage response received: decoding response...")
 
 	var result VoyageRerankingResponse
@@ -337,9 +334,8 @@ func (vc *VoyageClient) RerankDocuments(
 		return nil, fmt.Errorf("failed to decode voyage response: %w", err)
 	}
 
-	duration = time.Since(start)
 	log.With(
-		slog.Int64("duration_ms", duration.Milliseconds()),
+		slog.String("duration", time.Since(start).String()),
 		slog.Int("index_count", len(result.Data)),
 	).InfoContext(ctx, "reranking completed: returning...")
 
