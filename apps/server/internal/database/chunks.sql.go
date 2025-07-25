@@ -34,36 +34,53 @@ WITH ranked_chunks AS (
     ]
     ||
     CASE
-        WHEN $3::content_type IS NOT NULL
-        THEN ARRAY[paradedb.term('content_type', $3::content_type)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        WHEN $4::source IS NOT NULL
-        THEN ARRAY[paradedb.term('source', $4::source)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        -- Case 1: Range of surahs
-        WHEN $5::int IS NOT NULL
-          AND $6::int IS NOT NULL
-        THEN ARRAY[paradedb.range('surah', int4range($5, $6, '[]'))]
-
-        -- Case 2: Single surah + optional ayah range
-        WHEN $7::int IS NOT NULL
-             AND $8::int IS NOT NULL
-             AND $9::int IS NOT NULL
+        WHEN cardinality($3::content_type[]) > 0
         THEN ARRAY[
-            paradedb.term('surah', $7::int),
-            paradedb.range('ayah', int4range($8, $9, '[]'))
+           paradedb.term_set(terms => (
+            SELECT ARRAY_AGG(paradedb.term('content_type', ct))
+            FROM UNNEST($3::content_type[]) AS ct
+           ))
         ]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+      WHEN cardinality($4::source[]) > 0
+      THEN ARRAY[
+        paradedb.term_set(terms => (
+          SELECT ARRAY_AGG(paradedb.term('source', s))
+          FROM UNNEST($4::source[]) AS s
+        ))
+      ]
+      ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+        -- Case 1: surahs length > 1 → filter by surahs only
+        WHEN cardinality($5::int[]) > 1 THEN
+            ARRAY[
+                paradedb.term_set(terms => (
+                    SELECT ARRAY_AGG(paradedb.term('surah', s))
+                    FROM UNNEST($5::int[]) AS s
+                ))
+            ]
 
-        -- Case 3: Only single surah
-        WHEN $7::int IS NOT NULL
-        THEN ARRAY[paradedb.term('surah', $7::int)]
+        -- Case 2: surahs length = 1 → filter by that surah and optional ayahs
+        WHEN cardinality($5::int[]) = 1 THEN
+            ARRAY[
+                paradedb.term('surah', (SELECT s FROM UNNEST($5::int[]) AS s))
+            ] || (
+                CASE
+                    WHEN cardinality($6::int[]) > 0 THEN
+                        (
+                            SELECT ARRAY_AGG(paradedb.term('ayah', a))
+                            FROM UNNEST($6::int[]) AS a
+                        )
+                    ELSE ARRAY[]::paradedb.searchqueryinput[]
+                END
+            )
 
+        -- Case 3: no surahs → nothing
         ELSE ARRAY[]::paradedb.searchqueryinput[]
     END
     )
@@ -86,13 +103,10 @@ LIMIT $1
 type LexicalSearchParams struct {
 	NumberOfChunks int32
 	Query          string
-	ContentType    NullContentType
-	Source         NullSource
-	SurahStart     pgtype.Int4
-	SurahEnd       pgtype.Int4
-	Surah          pgtype.Int4
-	AyahStart      pgtype.Int4
-	AyahEnd        pgtype.Int4
+	ContentTypes   []ContentType
+	Sources        []Source
+	Surahs         []int32
+	Ayahs          []int32
 }
 
 type LexicalSearchRow struct {
@@ -108,13 +122,10 @@ func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([
 	rows, err := q.db.Query(ctx, lexicalSearch,
 		arg.NumberOfChunks,
 		arg.Query,
-		arg.ContentType,
-		arg.Source,
-		arg.SurahStart,
-		arg.SurahEnd,
-		arg.Surah,
-		arg.AyahStart,
-		arg.AyahEnd,
+		arg.ContentTypes,
+		arg.Sources,
+		arg.Surahs,
+		arg.Ayahs,
 	)
 	if err != nil {
 		return nil, err

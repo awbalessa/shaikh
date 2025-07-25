@@ -10,31 +10,16 @@ import (
 
 	"github.com/awbalessa/shaikh/apps/server/internal/database"
 	"github.com/awbalessa/shaikh/apps/server/internal/models"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 )
 
-type FilterContentType models.NullableContentType
-type FilterSource models.NullableSource
-type FilterSurahNumber models.NullableSurahNumber
-type FilterSurahRange struct {
-	SurahStart FilterSurahNumber
-	SurahEnd   FilterSurahNumber
-}
-type FilterAyahNumber models.NullableAyahNumber
-type FilterAyahRange struct {
-	AyahStart FilterAyahNumber
-	AyahEnd   FilterAyahNumber
-}
-
 type PromptWithFilters struct {
-	Prompt              string
-	NullableContentType *FilterContentType
-	NullableSource      *FilterSource
-	NullableSurahRange  *FilterSurahRange
-	NullableSurah       *FilterSurahNumber
-	NullableAyahRange   *FilterAyahRange
+	Prompt               string
+	NullableContentTypes []database.ContentType
+	NullableSources      []database.Source
+	NullableSurahs       []models.SurahNumber
+	NullableAyahs        []models.AyahNumber
 }
 
 type SearchParameters struct {
@@ -52,7 +37,7 @@ type SearchResult struct {
 	Ayah          *int32
 }
 
-func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
+func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
 	queries, initialChunks, err := validateSearchParams(arg)
 	if err != nil {
 		return nil, err
@@ -108,24 +93,20 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 }
 
 const (
-	surahRange     surahAyahFilterMode = 1
-	surahAyahRange surahAyahFilterMode = 2
-	surahOnly      surahAyahFilterMode = 3
-	rrf60          rrfConstant         = 60
-	max3           maxSubPrompts       = 3
+	surahs        surahAyahFilterMode = 1
+	surahAndAyahs surahAyahFilterMode = 2
+	rrf60         rrfConstant         = 60
+	max3          maxSubPrompts       = 3
 )
 
 type maxSubPrompts int
 type surahAyahFilterMode int
 
 type queryFilters struct {
-	contentType database.NullContentType
-	source      database.NullSource
-	surahStart  pgtype.Int4
-	surahEnd    pgtype.Int4
-	surah       pgtype.Int4
-	ayahStart   pgtype.Int4
-	ayahEnd     pgtype.Int4
+	contentTypes []database.ContentType
+	sources      []database.Source
+	surahs       []int32
+	ayahs        []int32
 }
 
 type queryContext struct {
@@ -153,33 +134,6 @@ type idScorePair struct {
 	score float64
 }
 
-func filtersToLabels(f queryFilters) []int16 {
-	var labels []int16 = []int16{}
-
-	if f.contentType.Valid {
-		labels = append(labels, int16(models.ContentTypeToLabel[f.contentType.ContentType]))
-	}
-
-	if f.source.Valid {
-		labels = append(labels, int16(models.SourceToLabel[f.source.Source]))
-	}
-
-	if f.surahStart.Valid && f.surahEnd.Valid {
-		for i := f.surahStart.Int32; i <= f.surahEnd.Int32; i++ {
-			labels = append(labels, int16(models.SurahNumberToLabel[i]))
-		}
-	} else if f.surah.Valid && f.ayahStart.Valid && f.ayahEnd.Valid {
-		labels = append(labels, int16(models.SurahNumberToLabel[f.surah.Int32]))
-		for i := f.ayahStart.Int32; i <= f.ayahEnd.Int32; i++ {
-			labels = append(labels, int16(models.AyahNumberToLabel[i]))
-		}
-	} else if f.surah.Valid {
-		labels = append(labels, int16(models.SurahNumberToLabel[f.surah.Int32]))
-	}
-
-	return labels
-}
-
 func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 	if arg.PromptsWithFilters == nil || len(arg.PromptsWithFilters) == 0 {
 		return nil, 0, errors.New("must pass in at least one prompt")
@@ -192,74 +146,45 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 	queries := make([]queryContext, 0, len(arg.PromptsWithFilters))
 
 	for _, item := range arg.PromptsWithFilters {
-		var mode surahAyahFilterMode = 0
+		var cts []database.ContentType
+		var srcs []database.Source
+		var surahs []int32
+		var ayahs []int32
 
-		// Determine filtering mode
-		if item.NullableSurahRange != nil {
-			if item.NullableSurah != nil || item.NullableAyahRange != nil {
-				return nil, 0, errors.New("cannot combine surah range with surah/ayah filters")
-			}
-			if item.NullableSurahRange.SurahStart.SurahNumber >= item.NullableSurahRange.SurahEnd.SurahNumber {
-				return nil, 0, errors.New("SurahEnd must be greater than SurahStart")
-			}
-			mode = surahRange
-		} else if item.NullableAyahRange != nil {
-			if item.NullableSurah == nil {
-				return nil, 0, errors.New("AyahRange filter must be paired with a Surah filter")
-			}
-			if item.NullableAyahRange.AyahStart.AyahNumber > item.NullableAyahRange.AyahEnd.AyahNumber {
-				return nil, 0, errors.New("AyahEnd must be >= AyahStart")
-			}
-			mode = surahAyahRange
-		} else if item.NullableSurah != nil {
-			mode = surahOnly
+		if len(item.NullableContentTypes) > 0 {
+			cts = append(cts, item.NullableContentTypes...)
+		} else {
+			cts = nil
 		}
 
-		// Build database-compatible filters
-		ct := database.NullContentType{Valid: false}
-		if item.NullableContentType != nil {
-			ct = database.NullContentType{
-				ContentType: item.NullableContentType.ContentType,
-				Valid:       true,
-			}
+		if len(item.NullableSources) > 0 {
+			srcs = append(srcs, item.NullableSources...)
+		} else {
+			srcs = nil
 		}
 
-		src := database.NullSource{Valid: false}
-		if item.NullableSource != nil {
-			src = database.NullSource{
-				Source: item.NullableSource.Source,
-				Valid:  true,
+		if len(item.NullableAyahs) > 0 && len(item.NullableSurahs) != 1 {
+			return nil, 0, errors.New("must specify exactly one surah to specify ayah filters")
+		} else if len(item.NullableAyahs) > 0 && len(item.NullableSurahs) == 1 {
+			for _, s := range item.NullableSurahs {
+				surahs = append(surahs, int32(s))
 			}
+			for _, a := range item.NullableAyahs {
+				ayahs = append(ayahs, int32(a))
+			}
+		} else if len(item.NullableSurahs) > 1 {
+			for _, s := range item.NullableSurahs {
+				surahs = append(surahs, int32(s))
+			}
+			ayahs = nil
 		}
 
 		var f queryFilters
-		switch mode {
-		case surahRange:
-			f = queryFilters{
-				contentType: ct,
-				source:      src,
-				surahStart:  pgtype.Int4{Int32: int32(item.NullableSurahRange.SurahStart.SurahNumber), Valid: true},
-				surahEnd:    pgtype.Int4{Int32: int32(item.NullableSurahRange.SurahEnd.SurahNumber), Valid: true},
-			}
-		case surahAyahRange:
-			f = queryFilters{
-				contentType: ct,
-				source:      src,
-				surah:       pgtype.Int4{Int32: int32(item.NullableSurah.SurahNumber), Valid: true},
-				ayahStart:   pgtype.Int4{Int32: int32(item.NullableAyahRange.AyahStart.AyahNumber), Valid: true},
-				ayahEnd:     pgtype.Int4{Int32: int32(item.NullableAyahRange.AyahEnd.AyahNumber), Valid: true},
-			}
-		case surahOnly:
-			f = queryFilters{
-				contentType: ct,
-				source:      src,
-				surah:       pgtype.Int4{Int32: int32(item.NullableSurah.SurahNumber), Valid: true},
-			}
-		default:
-			f = queryFilters{
-				contentType: ct,
-				source:      src,
-			}
+		f = queryFilters{
+			contentTypes: cts,
+			sources:      srcs,
+			surahs:       surahs,
+			ayahs:        ayahs,
 		}
 
 		queries = append(queries, queryContext{
@@ -271,6 +196,36 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 	}
 
 	return queries, initialChunks, nil
+}
+
+func filtersToLabels(f queryFilters) []int16 {
+	var labels []int16 = []int16{}
+
+	if len(f.contentTypes) > 0 {
+		for _, ct := range f.contentTypes {
+			labels = append(labels, int16(models.ContentTypeToLabel[ct]))
+		}
+	}
+
+	if len(f.sources) > 0 {
+		for _, src := range f.sources {
+			labels = append(labels, int16(models.SourceToLabel[src]))
+		}
+	}
+
+	if len(f.surahs) > 0 {
+		for _, sur := range f.surahs {
+			labels = append(labels, int16(models.SurahNumberToLabel[sur]))
+		}
+	}
+
+	if len(f.ayahs) > 0 {
+		for _, aya := range f.ayahs {
+			labels = append(labels, int16(models.AyahNumberToLabel[aya]))
+		}
+	}
+
+	return labels
 }
 
 func semChunksToResultChunks(rows []database.SemanticSearchRow) []resultChunks {
@@ -376,13 +331,10 @@ func (p *Pipeline) parallelLexicalSearch(
 			rows, err := p.store.RunLexicalSearch(ctx, database.LexicalSearchParams{
 				NumberOfChunks: int32(chunksPerThread),
 				Query:          query.query,
-				ContentType:    query.filters.contentType,
-				Source:         query.filters.source,
-				SurahStart:     query.filters.surahStart,
-				SurahEnd:       query.filters.surahEnd,
-				Surah:          query.filters.surah,
-				AyahStart:      query.filters.ayahStart,
-				AyahEnd:        query.filters.ayahEnd,
+				ContentTypes:   query.filters.contentTypes,
+				Sources:        query.filters.sources,
+				Surahs:         query.filters.surahs,
+				Ayahs:          query.filters.ayahs,
 			},
 			)
 			if err != nil {

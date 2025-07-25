@@ -20,36 +20,53 @@ WITH ranked_chunks AS (
     ]
     ||
     CASE
-        WHEN sqlc.narg('content_type')::content_type IS NOT NULL
-        THEN ARRAY[paradedb.term('content_type', sqlc.narg('content_type')::content_type)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        WHEN sqlc.narg('source')::source IS NOT NULL
-        THEN ARRAY[paradedb.term('source', sqlc.narg('source')::source)]
-        ELSE ARRAY[]::paradedb.searchqueryinput[]
-    END
-    ||
-    CASE
-        -- Case 1: Range of surahs
-        WHEN sqlc.narg('surah_start')::int IS NOT NULL
-          AND sqlc.narg('surah_end')::int IS NOT NULL
-        THEN ARRAY[paradedb.range('surah', int4range(sqlc.narg('surah_start'), sqlc.narg('surah_end'), '[]'))]
-
-        -- Case 2: Single surah + optional ayah range
-        WHEN sqlc.narg('surah')::int IS NOT NULL
-             AND sqlc.narg('ayah_start')::int IS NOT NULL
-             AND sqlc.narg('ayah_end')::int IS NOT NULL
+        WHEN cardinality(sqlc.narg('content_types')::content_type[]) > 0
         THEN ARRAY[
-            paradedb.term('surah', sqlc.narg('surah')::int),
-            paradedb.range('ayah', int4range(sqlc.narg('ayah_start'), sqlc.narg('ayah_end'), '[]'))
+           paradedb.term_set(terms => (
+            SELECT ARRAY_AGG(paradedb.term('content_type', ct))
+            FROM UNNEST(sqlc.narg('content_types')::content_type[]) AS ct
+           ))
         ]
+        ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+      WHEN cardinality(sqlc.narg('sources')::source[]) > 0
+      THEN ARRAY[
+        paradedb.term_set(terms => (
+          SELECT ARRAY_AGG(paradedb.term('source', s))
+          FROM UNNEST(sqlc.narg('sources')::source[]) AS s
+        ))
+      ]
+      ELSE ARRAY[]::paradedb.searchqueryinput[]
+    END
+    ||
+    CASE
+        -- Case 1: surahs length > 1 → filter by surahs only
+        WHEN cardinality(sqlc.narg('surahs')::int[]) > 1 THEN
+            ARRAY[
+                paradedb.term_set(terms => (
+                    SELECT ARRAY_AGG(paradedb.term('surah', s))
+                    FROM UNNEST(sqlc.narg('surahs')::int[]) AS s
+                ))
+            ]
 
-        -- Case 3: Only single surah
-        WHEN sqlc.narg('surah')::int IS NOT NULL
-        THEN ARRAY[paradedb.term('surah', sqlc.narg('surah')::int)]
+        -- Case 2: surahs length = 1 → filter by that surah and optional ayahs
+        WHEN cardinality(sqlc.narg('surahs')::int[]) = 1 THEN
+            ARRAY[
+                paradedb.term('surah', (SELECT s FROM UNNEST(sqlc.narg('surahs')::int[]) AS s))
+            ] || (
+                CASE
+                    WHEN cardinality(sqlc.narg('ayahs')::int[]) > 0 THEN
+                        (
+                            SELECT ARRAY_AGG(paradedb.term('ayah', a))
+                            FROM UNNEST(sqlc.narg('ayahs')::int[]) AS a
+                        )
+                    ELSE ARRAY[]::paradedb.searchqueryinput[]
+                END
+            )
 
+        -- Case 3: no surahs → nothing
         ELSE ARRAY[]::paradedb.searchqueryinput[]
     END
     )

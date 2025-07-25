@@ -19,7 +19,7 @@ func (s *Store) RunSemanticSearch(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.Int("vector_len", len(arg.Vector.Slice())),
-		slog.Any("label_filters", arg.LabelFilters),
+		slog.String("label_filters", fmt.Sprint(arg.LabelFilters)),
 	)
 
 	log.InfoContext(ctx, "running semantic search...")
@@ -54,13 +54,10 @@ func (s *Store) RunLexicalSearch(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.String("query", arg.Query),
-		slog.String("content_type", string(arg.ContentType.ContentType)),
-		slog.String("source", string(arg.Source.Source)),
-		slog.Int("surah_start", int(arg.SurahStart.Int32)),
-		slog.Int("surah_end", int(arg.SurahEnd.Int32)),
-		slog.Int("surah", int(arg.Surah.Int32)),
-		slog.Int("ayah_start", int(arg.AyahStart.Int32)),
-		slog.Int("ayah_end", int(arg.AyahEnd.Int32)),
+		slog.String("content_types", fmt.Sprint(arg.ContentTypes)),
+		slog.String("sources", fmt.Sprint(arg.Sources)),
+		slog.String("surahs", fmt.Sprint(arg.Surahs)),
+		slog.String("ayahs", fmt.Sprint(arg.Ayahs)),
 	)
 
 	tokenized, err := tokenizeQuery(arg.Query)

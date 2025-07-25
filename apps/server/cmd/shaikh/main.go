@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/awbalessa/shaikh/apps/server/internal/app"
 	"github.com/awbalessa/shaikh/apps/server/internal/config"
+	"github.com/awbalessa/shaikh/apps/server/internal/models"
+	"github.com/awbalessa/shaikh/apps/server/internal/rag"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -67,7 +70,7 @@ func main() {
 		Pool:    conn,
 	}
 
-	_, err = app.New(&appCfg)
+	app, err := app.New(&appCfg)
 	if err != nil {
 		slog.Error(
 			"failed to start app",
@@ -75,5 +78,31 @@ func main() {
 			err,
 		)
 		os.Exit(1)
+	}
+
+	res, err := app.Pipe.SearchChunks(ctx, rag.SearchParameters{
+		RawPrompt:  "من هو ذو القرنين",
+		ChunkLimit: rag.Top20Documents,
+		PromptsWithFilters: []rag.PromptWithFilters{
+			{
+				Prompt: "من هو ذو القرنين",
+				NullableSurahs: []models.SurahNumber{
+					models.SurahNumberEighteen,
+					models.SurahNumberFourtyFour,
+				},
+			},
+		},
+	})
+	if err != nil {
+		slog.Error(
+			"failed to search",
+			"error",
+			err,
+		)
+		os.Exit(1)
+	}
+
+	for _, r := range res {
+		fmt.Printf("Relevance: %.2f\n\n%s\n\n", r.Relevance, r.EmbeddedChunk)
 	}
 }
