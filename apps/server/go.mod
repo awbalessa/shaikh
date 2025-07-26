@@ -8,6 +8,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
+	github.com/lmittmann/tint v1.1.2
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.14.0

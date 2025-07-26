@@ -8,10 +8,17 @@ import (
 )
 
 const (
-	Search FunctionName = "SearchChunks"
+	RAG    ToolName     = "RAG"
+	Search FunctionName = "Search"
 )
 
+type ToolName string
 type FunctionName string
+
+type Tool interface {
+	GetName() ToolName
+	ListFunctions() []*Function
+}
 
 type Function interface {
 	GetName() FunctionName

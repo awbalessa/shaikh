@@ -33,7 +33,10 @@ func Load() (*Config, error) {
 
 	envPath := filepath.Join(root, ".env")
 	if err = godotenv.Load(envPath); err != nil {
-		return nil, fmt.Errorf("Error loading .env file: %v", err)
+		slog.With(
+			"envPath", envPath,
+		).Error("error loading .env file")
+		return nil, fmt.Errorf("error loading .env file: %v", err)
 	}
 
 	connStr := fmt.Sprintf(
@@ -73,7 +76,7 @@ func findDotEnv() (string, error) {
 		if parent == dir {
 			slog.With(
 				"parent", parent,
-			).Error("file does not exist")
+			).Error(".env file does not exist")
 			return "", os.ErrNotExist
 		}
 		dir = parent

@@ -37,7 +37,7 @@ type SearchResult struct {
 	Ayah          *int32
 }
 
-func (p *Pipeline) SearchChunks(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
+func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
 	queries, initialChunks, err := validateSearchParams(arg)
 	if err != nil {
 		return nil, err
@@ -257,7 +257,7 @@ func (p *Pipeline) parallelSemanticSearch(
 		slog.Int("chunks_per_thread", chunksPerThread),
 		slog.Int("num_of_threads", len(queries)),
 	)
-	log.InfoContext(ctx, "starting parallel semantic search...")
+	log.DebugContext(ctx, "starting parallel semantic search...")
 
 	start := time.Now()
 	for i, query := range queries {
@@ -287,7 +287,7 @@ func (p *Pipeline) parallelSemanticSearch(
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),
-	).InfoContext(ctx, "semantic search completed: returning...")
+	).DebugContext(ctx, "semantic search completed: returning...")
 
 	return results, nil
 }
@@ -322,7 +322,7 @@ func (p *Pipeline) parallelLexicalSearch(
 		slog.Int("chunks_per_thread", chunksPerThread),
 		slog.Int("num_of_threads", len(queries)),
 	)
-	log.InfoContext(ctx, "starting parallel lexical search...")
+	log.DebugContext(ctx, "starting parallel lexical search...")
 
 	start := time.Now()
 	for i, query := range queries {
@@ -352,7 +352,7 @@ func (p *Pipeline) parallelLexicalSearch(
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),
-	).InfoContext(ctx, "lexical search completed: returning...")
+	).DebugContext(ctx, "lexical search completed: returning...")
 	return results, nil
 }
 
@@ -373,7 +373,7 @@ func (p *Pipeline) hybridSearch(
 		slog.Int("chunks_per_thread", chunksPerKind),
 		slog.Int("num_of_threads", 2),
 	)
-	log.InfoContext(ctx, "starting hybrid search...")
+	log.DebugContext(ctx, "starting hybrid search...")
 	start := time.Now()
 
 	g.Go(func() error {
@@ -443,7 +443,7 @@ func (p *Pipeline) hybridSearch(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("fused_count", len(allChunks)),
 		slog.Int("deduped_count", len(deduped)),
-	).InfoContext(ctx, "hybrid search completed: returning...")
+	).DebugContext(ctx, "hybrid search completed: returning...")
 
 	// Return final deduped slice (wrapped in [][]resultChunks to match method signature)
 	return deduped, nil

@@ -158,7 +158,7 @@ func (vc *VoyageClient) EmbedQueries(
 		slog.Int("input_len", len(queries)),
 	)
 
-	log.InfoContext(ctx, "sending voyage embedding request...")
+	log.DebugContext(ctx, "sending voyage embedding request...")
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -213,7 +213,7 @@ func (vc *VoyageClient) EmbedQueries(
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),
-	).InfoContext(ctx, "voyage response received: decoding response...")
+	).DebugContext(ctx, "voyage response received: decoding response...")
 
 	var result VoyageEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -238,7 +238,7 @@ func (vc *VoyageClient) EmbedQueries(
 	log.With(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("embedding_count", len(vectors)),
-	).InfoContext(ctx, "embedding completed: returning...")
+	).DebugContext(ctx, "embedding completed: returning...")
 
 	return vectors, nil
 }
@@ -268,7 +268,7 @@ func (vc *VoyageClient) RerankDocuments(
 		slog.Bool("return_documents", false),
 	)
 
-	log.InfoContext(ctx, "sending voyage reranking request...")
+	log.DebugContext(ctx, "sending voyage reranking request...")
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
@@ -323,7 +323,7 @@ func (vc *VoyageClient) RerankDocuments(
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),
-	).InfoContext(ctx, "voyage response received: decoding response...")
+	).DebugContext(ctx, "voyage response received: decoding response...")
 
 	var result VoyageRerankingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -337,7 +337,7 @@ func (vc *VoyageClient) RerankDocuments(
 	log.With(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("index_count", len(result.Data)),
-	).InfoContext(ctx, "reranking completed: returning...")
+	).DebugContext(ctx, "reranking completed: returning...")
 
 	return result.Data, nil
 }

@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"time"
+
+	"github.com/lmittmann/tint"
 )
 
 type LoggerOptions struct {
-	Level  slog.Level
-	JSON   bool
-	Writer io.Writer
+	Prod bool
 }
 
 type prettyWriter struct {
@@ -127,23 +129,25 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 }
 
 func NewLogger(opts LoggerOptions) *slog.Logger {
-	prettyWriter := &prettyWriter{
-		target: opts.Writer,
-		format: map[bool]string{
-			true:  "json",
-			false: "text",
-		}[opts.JSON],
+	if !opts.Prod {
+		// Development: tint with colors to stderr
+		handler := tint.NewHandler(os.Stderr, &tint.Options{
+			AddSource:  true,
+			Level:      slog.LevelDebug,
+			TimeFormat: time.Kitchen,
+			NoColor:    false,
+		})
+		return slog.New(handler)
 	}
 
-	var handler slog.Handler
-	if opts.JSON {
-		handler = slog.NewJSONHandler(prettyWriter, &slog.HandlerOptions{
-			Level: opts.Level,
-		})
-	} else {
-		handler = slog.NewTextHandler(prettyWriter, &slog.HandlerOptions{
-			Level: opts.Level,
-		})
+	// Production: JSON handler to stdout (can still pretty-print via your custom writer)
+	writer := &prettyWriter{
+		target: os.Stdout,
+		format: "json",
 	}
+
+	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
 	return slog.New(handler)
 }

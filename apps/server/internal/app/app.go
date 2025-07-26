@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/awbalessa/shaikh/apps/server/internal/agent"
 	"github.com/awbalessa/shaikh/apps/server/internal/config"
@@ -44,7 +45,12 @@ func New(app *AppConfig) (*App, error) {
 		GeminiLocation: agent.GeminiLocationGlobal,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new app: %w", err)
+		slog.Error(
+			"failed to start app",
+			"error",
+			err,
+		)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	pipe := rag.NewPipeline(store, vc)

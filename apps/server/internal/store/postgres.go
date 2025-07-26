@@ -22,7 +22,7 @@ func (s *Store) RunSemanticSearch(
 		slog.String("label_filters", fmt.Sprint(arg.LabelFilters)),
 	)
 
-	log.InfoContext(ctx, "running semantic search...")
+	log.DebugContext(ctx, "running semantic search...")
 
 	start := time.Now()
 	rows, err := s.pg.queries.SemanticSearch(
@@ -40,7 +40,7 @@ func (s *Store) RunSemanticSearch(
 	log.With(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("result_count", len(rows)),
-	).InfoContext(ctx, "ran semantic search: returning...")
+	).DebugContext(ctx, "ran semantic search: returning...")
 
 	return rows, nil
 }
@@ -72,7 +72,7 @@ func (s *Store) RunLexicalSearch(
 	arg.Query = tokenized
 	log.With(
 		"tokenized_query", arg.Query,
-	).InfoContext(ctx, "tokenized query: running lexical search...")
+	).DebugContext(ctx, "tokenized query: running lexical search...")
 
 	start := time.Now()
 	rows, err := s.pg.queries.LexicalSearch(
@@ -91,7 +91,7 @@ func (s *Store) RunLexicalSearch(
 		slog.String("tokenized_query", arg.Query),
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("result_count", len(rows)),
-	).InfoContext(ctx, "ran lexical search: returning...")
+	).DebugContext(ctx, "ran lexical search: returning...")
 
 	return rows, nil
 }
