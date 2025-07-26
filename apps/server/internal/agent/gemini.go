@@ -13,49 +13,53 @@ import (
 )
 
 const (
-	GeminiFlashLiteV2p5        GeminiModel   = "gemini-2.5-flash-lite-preview-06-17"
-	GeminiFlashV2p5            GeminiModel   = "gemini-2.5-flash"
-	GeminiLocationUSCentral1   string        = "us-central1"
-	GeminiLocationGlobal       string        = "global"
-	GeminiBackend              genai.Backend = genai.BackendVertexAI
-	GCPProjectID               string        = "shaikh-460416"
-	GeminiTimeout              time.Duration = 15 * time.Second
-	GeminiMaxRetries           int           = 3
-	GeminiMaxIdleConns         int           = 100
-	GeminiMaxIdleConnsPerHost  int           = 10
-	GeminiIdleConnTimeout      time.Duration = 90 * time.Second
-	GeminiDialContextTimeout   time.Duration = 5 * time.Second
-	GeminiDialContextKeepAlive time.Duration = 30 * time.Second
-	GeminiTLSHandshakeTimeout  time.Duration = 10 * time.Second
+	geminiFlashLiteV2p5         geminiModel      = "gemini-2.5-flash-lite-preview-06-17"
+	geminiFlashV2p5             geminiModel      = "gemini-2.5-flash"
+	geminiLocationUSCentral1    string           = "us-central1"
+	geminiLocationGlobal        string           = "global"
+	geminiBackend               genai.Backend    = genai.BackendVertexAI
+	gcpProjectID                string           = "shaikh-460416"
+	geminiTimeoutFifteenSeconds time.Duration    = 15 * time.Second
+	geminiMaxRetriesThree       int              = 3
+	geminiMaxIdleConns          int              = 100
+	geminiMaxIdleConnsPerHost   int              = 10
+	geminiIdleConnTimeout       time.Duration    = 90 * time.Second
+	geminiDialContextTimeout    time.Duration    = 5 * time.Second
+	geminiDialContextKeepAlive  time.Duration    = 30 * time.Second
+	geminiTLSHandshakeTimeout   time.Duration    = 10 * time.Second
+	geminiTemperatureZero       temperature      = 0
+	geminiResponseMimeJSON      responseMimeType = "application/json"
 )
 
-type GeminiModel string
+type geminiModel string
+type temperature float32
+type responseMimeType string
 
-type GeminiClient struct {
+type geminiClient struct {
 	client *genai.Client
 	logger *slog.Logger
 }
 
-type GeminiClientConfig struct {
-	MaxRetries     int
-	Timeout        time.Duration
-	GCPProjectID   string
-	GeminiBackend  genai.Backend
-	GeminiLocation string
+type geminiClientConfig struct {
+	maxRetries     int
+	timeout        time.Duration
+	gcpProjectID   string
+	geminiBackend  genai.Backend
+	geminiLocation string
 }
 
-func NewGeminiClient(ctx context.Context, gcc *GeminiClientConfig) (*GeminiClient, error) {
+func newGeminiClient(ctx context.Context, gcc geminiClientConfig) (*geminiClient, error) {
 	baseClient := &http.Client{
-		Timeout: gcc.Timeout,
+		Timeout: gcc.timeout,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
-				Timeout:   GeminiDialContextTimeout,
-				KeepAlive: GeminiDialContextKeepAlive,
+				Timeout:   geminiDialContextTimeout,
+				KeepAlive: geminiDialContextKeepAlive,
 			}).DialContext,
-			MaxIdleConns:        GeminiMaxIdleConns,
-			MaxIdleConnsPerHost: GeminiMaxIdleConnsPerHost,
-			IdleConnTimeout:     GeminiIdleConnTimeout,
-			TLSHandshakeTimeout: GeminiTLSHandshakeTimeout,
+			MaxIdleConns:        geminiMaxIdleConns,
+			MaxIdleConnsPerHost: geminiMaxIdleConnsPerHost,
+			IdleConnTimeout:     geminiIdleConnTimeout,
+			TLSHandshakeTimeout: geminiTLSHandshakeTimeout,
 		},
 	}
 
@@ -66,14 +70,14 @@ func NewGeminiClient(ctx context.Context, gcc *GeminiClientConfig) (*GeminiClien
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient = baseClient
 	retryClient.Logger = logger
-	retryClient.RetryMax = GeminiMaxRetries
+	retryClient.RetryMax = geminiMaxRetriesThree
 
 	standard := retryClient.StandardClient()
 
 	cc := &genai.ClientConfig{
-		Backend:    gcc.GeminiBackend,
-		Project:    gcc.GCPProjectID,
-		Location:   gcc.GeminiLocation,
+		Backend:    gcc.geminiBackend,
+		Project:    gcc.gcpProjectID,
+		Location:   gcc.geminiLocation,
 		HTTPClient: standard,
 	}
 
@@ -85,7 +89,7 @@ func NewGeminiClient(ctx context.Context, gcc *GeminiClientConfig) (*GeminiClien
 		return nil, fmt.Errorf("failed to create new gemini client: %w", err)
 	}
 
-	return &GeminiClient{
+	return &geminiClient{
 		client: gc,
 		logger: logger,
 	}, nil

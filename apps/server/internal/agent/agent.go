@@ -2,50 +2,72 @@ package agent
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 
 	"google.golang.org/genai"
 )
 
 const (
-	RAG    ToolName     = "RAG"
-	Search FunctionName = "Search"
+	Router AgentName = "router"
 )
 
-type ToolName string
-type FunctionName string
+type AgentName string
 
-type Tool interface {
-	GetName() ToolName
-	ListFunctions() []*Function
+type Agent interface {
+	GetName() AgentName
+	GetTool(toolName) (tool, error)
 }
 
-type Function interface {
-	GetName() FunctionName
-	Call(ctx context.Context, json []byte) (any, error)
+type AgentRouter struct {
+	name             AgentName
+	tools            map[toolName]tool
+	gc               *geminiClient
+	model            geminiModel
+	generationConfig *genai.GenerateContentConfig
 }
 
-type Temperature float32
-
-type AgentConfig struct {
-	Gc           *GeminiClient
-	Model        GeminiModel
-	Tools        map[FunctionName]Function
-	Instructions genai.Content
-	Temperature  Temperature
+func (r *AgentRouter) GetName() AgentName {
+	return r.name
 }
 
-type Agent struct {
-	gc     *GeminiClient
-	model  GeminiModel
-	tools  map[FunctionName]Function
-	logger *slog.Logger
+func (r *AgentRouter) GetTool(t toolName) (tool, error) {
+	tool, ok := r.tools[t]
+	if !ok {
+		return nil, fmt.Errorf("tool %s does not exist", string(t))
+	}
+
+	return tool, nil
 }
 
-// func NewAgent(gc *GeminiClient, model GeminiModel, tools []Function) *Agent {
-// 	for _, tool := range tools {
-// 		if tool.GetName() == Search {
+func BuildRouter(ctx context.Context) (*AgentRouter, error) {
+	gc, err := newGeminiClient(ctx, geminiClientConfig{
+		maxRetries:     geminiMaxRetriesThree,
+		timeout:        geminiTimeoutFifteenSeconds,
+		gcpProjectID:   gcpProjectID,
+		geminiBackend:  geminiBackend,
+		geminiLocation: geminiLocationGlobal,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build router agent: %w", err)
+	}
 
-// 		}
-// 	}
-// }
+	return nil, nil
+}
+
+const (
+	RAG    toolName     = "RAG"
+	Search functionName = "Search"
+)
+
+type toolName string
+type functionName string
+
+type tool interface {
+	getName() toolName
+	getFunction(functionName) (function, error)
+}
+
+type function interface {
+	getName() functionName
+	call(ctx context.Context, jsonBytes []byte) (any, error)
+}

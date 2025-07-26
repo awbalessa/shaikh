@@ -12,54 +12,95 @@ import (
 	"google.golang.org/genai"
 )
 
-type ToolRAG struct {
-	Name      ToolName
-	Functions []*Function
-	Pipeline  *rag.Pipeline
-	Logger    *slog.Logger
+type toolRAG struct {
+	name      toolName
+	functions map[functionName]function
+	pipeline  *rag.Pipeline
+	logger    *slog.Logger
 }
 
-type FunctionSearchChunks struct {
-	Name        FunctionName
-	Declaration *genai.FunctionDeclaration
-	Pipeline    *rag.Pipeline
-	Logger      *slog.Logger
+type functionSearch struct {
+	name        functionName
+	declaration *genai.FunctionDeclaration
+	pipeline    *rag.Pipeline
+	logger      *slog.Logger
 }
 
-type SurahAyahFilters struct {
+type surahAyahFilters struct {
 	Surahs []int `json:"surahs,omitempty"`
 	Ayahs  []int `json:"ayahs,omitempty"`
 }
 
-type PromptWithFilter struct {
+type promptWithFilter struct {
 	Prompt             string           `json:"prompt,omitempty"`
 	ContentTypeFilters []string         `json:"content_type_filters,omitempty"`
 	SourceFilters      []string         `json:"source_filters,omitempty"`
-	SurahAyahFilters   SurahAyahFilters `json:"surah_ayah_filters"`
+	SurahAyahFilters   surahAyahFilters `json:"surah_ayah_filters"`
 }
 
-type FunctionSearchSchema struct {
+type functionSearchSchema struct {
 	FullPrompt         string             `json:"full_prompt"`
-	PromptsWithFilters []PromptWithFilter `json:"prompts_with_filters"`
+	PromptsWithFilters []promptWithFilter `json:"prompts_with_filters"`
 }
 
-func (t *ToolRAG) GetName() ToolName {
-	return t.Name
+func (t *toolRAG) getName() toolName {
+	return t.name
 }
 
-func (t *ToolRAG) ListFunctions() []*Function {
-	return t.Functions
+func (t *toolRAG) getFunction(fn functionName) (function, error) {
+	function, ok := t.functions[fn]
+	if !ok {
+		return nil, fmt.Errorf("function %s does not exist", string(fn))
+	}
+
+	return function, nil
 }
 
-// func BuildToolRAG() *ToolRAG {
-// 	search := BuildFunctionSearch()
-// 	return &ToolRAG{
-// 		Name:      RAG,
-// 		Functions: []*Function{search},
-// 	}
-// }
+func buildToolRAG(p *rag.Pipeline, log *slog.Logger) *toolRAG {
+	search := buildFunctionSearch(log)
+	return &toolRAG{
+		name: RAG,
+		functions: map[functionName]function{
+			Search: search,
+		},
+		pipeline: p,
+		logger:   log,
+	}
+}
 
-func BuildFunctionSearch() *FunctionSearchChunks {
+func (t *functionSearch) getName() functionName {
+	return t.name
+}
+
+func (t *functionSearch) call(ctx context.Context, bytes []byte) (any, error) {
+	var inp functionSearchSchema
+	if err := json.Unmarshal(bytes, &inp); err != nil {
+		t.logger.With(
+			slog.String("function", string(t.name)),
+		).ErrorContext(ctx, "failed to unmarshal agent output")
+		return nil, fmt.Errorf("failed to unmarshal agent output: %w", err)
+	}
+
+	pwf := make([]rag.PromptWithFilters, len(inp.PromptsWithFilters))
+	for i, p := range inp.PromptsWithFilters {
+		pwf[i] = rag.PromptWithFilters{
+			Prompt:               p.Prompt,
+			NullableContentTypes: toContentTypes(p.ContentTypeFilters),
+			NullableSources:      toSources(p.SourceFilters),
+			NullableSurahs:       toSurahNumbers(p.SurahAyahFilters.Surahs),
+			NullableAyahs:        toAyahNumbers(p.SurahAyahFilters.Ayahs),
+		}
+	}
+
+	arg := rag.SearchParameters{
+		RawPrompt:          inp.FullPrompt,
+		ChunkLimit:         rag.Top20Documents,
+		PromptsWithFilters: pwf,
+	}
+	return t.pipeline.Search(ctx, arg)
+}
+
+func buildFunctionSearch(log *slog.Logger) *functionSearch {
 	filterCts := &genai.Schema{
 		Title:       "Optional Content Types Filter",
 		Type:        genai.TypeArray,
@@ -181,46 +222,15 @@ func BuildFunctionSearch() *FunctionSearchChunks {
 		},
 	}
 
-	return &FunctionSearchChunks{
-		Name: Search,
-		Declaration: &genai.FunctionDeclaration{
+	return &functionSearch{
+		name: Search,
+		declaration: &genai.FunctionDeclaration{
 			Name:        string(Search),
 			Description: "Performs a hybrid search over Quranic content using a fully normalized prompt. Combines semantic understanding with keyword-based matching. The prompt may be optionally split into sub-prompts with filters to target specific content types, sources, surahs, or ayahs.",
 			Parameters:  fullSchema,
 		},
+		logger: log,
 	}
-}
-
-func (t *FunctionSearchChunks) GetName() FunctionName {
-	return t.Name
-}
-
-func (t *FunctionSearchChunks) Call(ctx context.Context, jsonBytes []byte) ([]rag.SearchResult, error) {
-	var inp FunctionSearchSchema
-	if err := json.Unmarshal(jsonBytes, &inp); err != nil {
-		t.Logger.With(
-			slog.String("function", string(t.Name)),
-		).ErrorContext(ctx, "failed to unmarshal agent output")
-		return nil, fmt.Errorf("failed to unmarshal agent output: %w", err)
-	}
-
-	pwf := make([]rag.PromptWithFilters, len(inp.PromptsWithFilters))
-	for i, p := range inp.PromptsWithFilters {
-		pwf[i] = rag.PromptWithFilters{
-			Prompt:               p.Prompt,
-			NullableContentTypes: toContentTypes(p.ContentTypeFilters),
-			NullableSources:      toSources(p.SourceFilters),
-			NullableSurahs:       toSurahNumbers(p.SurahAyahFilters.Surahs),
-			NullableAyahs:        toAyahNumbers(p.SurahAyahFilters.Ayahs),
-		}
-	}
-
-	arg := rag.SearchParameters{
-		RawPrompt:          inp.FullPrompt,
-		ChunkLimit:         rag.Top20Documents,
-		PromptsWithFilters: pwf,
-	}
-	return t.Pipeline.Search(ctx, arg)
 }
 
 func toContentTypes(in []string) []database.ContentType {

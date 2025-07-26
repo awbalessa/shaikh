@@ -16,108 +16,103 @@ import (
 )
 
 const (
-	VoyageBaseURL              string                       = "https://api.voyageai.com/v1"
-	VoyageTimeout              time.Duration                = 10 * time.Second
-	VoyageMaxRetries           int                          = 3
-	VoyageMaxIdleConns         int                          = 100
-	VoyageMaxIdleConnsPerHost  int                          = 10
-	VoyageIdleConnTimeout      time.Duration                = 90 * time.Second
-	VoyageDialContextTimeout   time.Duration                = 5 * time.Second
-	VoyageDialContextKeepAlive time.Duration                = 30 * time.Second
-	VoyageTLSHandshakeTimeout  time.Duration                = 10 * time.Second
-	VoyageEmbedV3p5            EmbeddingModel               = "voyage-3.5"
-	InputTypeQuery             EmbeddingInputType           = "query"
-	InputTypeDocument          EmbeddingInputType           = "document"
-	OutputDimension1024        EmbeddingOutputDimension     = 1024
-	OutputDimensionTypeFloat   EmbeddingOutputDimensionType = "float"
-	VoyageRerankV2             RerankingModel               = "rerank-2"
-	Top5Documents              TopK                         = 5
-	Top10Documents             TopK                         = 10
-	Top15Documents             TopK                         = 15
-	Top20Documents             TopK                         = 20
+	voyageBaseURL              string                       = "https://api.voyageai.com/v1"
+	voyageTimeoutTenSeconds    time.Duration                = 10 * time.Second
+	voyageMaxRetriesThree      int                          = 3
+	voyageMaxIdleConns         int                          = 100
+	voyageMaxIdleConnsPerHost  int                          = 10
+	voyageIdleConnTimeout      time.Duration                = 90 * time.Second
+	voyageDialContextTimeout   time.Duration                = 5 * time.Second
+	voyageDialContextKeepAlive time.Duration                = 30 * time.Second
+	voyageTLSHandshakeTimeout  time.Duration                = 10 * time.Second
+	voyageEmbedV3p5            embeddingModel               = "voyage-3.5"
+	inputTypeQuery             embeddingInputType           = "query"
+	inputTypeDocument          embeddingInputType           = "document"
+	outputDimension1024        embeddingOutputDimension     = 1024
+	outputDimensionTypeFloat   embeddingOutputDimensionType = "float"
+	voyageRerankV2             rerankingModel               = "rerank-2"
 )
 
-type VoyageClientConfig struct {
-	Config     *config.Config
-	MaxRetries int
-	Timeout    time.Duration
+type voyageClientConfig struct {
+	config     *config.Config
+	maxRetries int
+	timeout    time.Duration
 }
 
-type VoyageClient struct {
+type voyageClient struct {
 	client *retryablehttp.Client
 	apiKey string
 	logger *slog.Logger
 }
 
-type EmbeddingModel string
-type EmbeddingInputType string
-type EmbeddingOutputDimension int
-type EmbeddingOutputDimensionType string
-type EmbeddingEncodingFormat *string
-type Embedding1024 [1024]float32
+type embeddingModel string
+type embeddingInputType string
+type embeddingOutputDimension int
+type embeddingOutputDimensionType string
+type embeddingEncodingFormat *string
+type embedding1024 [1024]float32
 
-type VoyageEmbeddingRequest struct {
+type voyageEmbeddingRequest struct {
 	Input               []string                     `json:"input"`
-	Model               EmbeddingModel               `json:"model"`
-	InputType           EmbeddingInputType           `json:"input_type"`
+	Model               embeddingModel               `json:"model"`
+	InputType           embeddingInputType           `json:"input_type"`
 	Truncation          bool                         `json:"truncation"`
-	OutputDimension     EmbeddingOutputDimension     `json:"output_dimension"`
-	OutputDimensionType EmbeddingOutputDimensionType `json:"output_dtype"`
+	OutputDimension     embeddingOutputDimension     `json:"output_dimension"`
+	OutputDimensionType embeddingOutputDimensionType `json:"output_dtype"`
 }
 
-type VoyageEmbedding struct {
+type voyageEmbedding struct {
 	ObjectType string        `json:"object"`
-	Embedding  Embedding1024 `json:"embedding"`
+	Embedding  embedding1024 `json:"embedding"`
 	Index      int           `json:"index"`
 }
 
-type Usage struct {
+type usage struct {
 	TokensUsed int `json:"total_tokens"`
 }
 
-type VoyageEmbeddingResponse struct {
+type voyageEmbeddingResponse struct {
 	ObjectType string            `json:"object"`
-	Data       []VoyageEmbedding `json:"data"`
-	Model      EmbeddingModel    `json:"model"`
-	Usage      Usage             `json:"usage"`
+	Data       []voyageEmbedding `json:"data"`
+	Model      embeddingModel    `json:"model"`
+	Usage      usage             `json:"usage"`
 }
 
-type RerankingModel string
-type TopK int
+type rerankingModel string
 
-type VoyageRerankingRequest struct {
+type voyageRerankingRequest struct {
 	Query           string         `json:"query"`
 	Documents       []string       `json:"documents"`
-	Model           RerankingModel `json:"model"`
+	Model           rerankingModel `json:"model"`
 	TopK            TopK           `json:"top_k"`
 	ReturnDocuments bool           `json:"return_documents"`
 	Truncation      bool           `json:"truncation"`
 }
 
-type VoyageReranking struct {
+type voyageReranking struct {
 	Index          int     `json:"index"`
 	RelevanceScore float64 `json:"relevance_score"`
 }
 
-type VoyageRerankingResponse struct {
+type voyageRerankingResponse struct {
 	Object string            `json:"object"`
-	Data   []VoyageReranking `json:"data"`
+	Data   []voyageReranking `json:"data"`
 	Model  string            `json:"model"`
-	Usage  Usage             `json:"usage"`
+	Usage  usage             `json:"usage"`
 }
 
-func NewVoyageClient(cfg VoyageClientConfig) *VoyageClient {
+func newVoyageClient(cfg voyageClientConfig) *voyageClient {
 	client := &http.Client{
-		Timeout: cfg.Timeout,
+		Timeout: cfg.timeout,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
-				Timeout:   VoyageDialContextTimeout,
-				KeepAlive: VoyageDialContextKeepAlive,
+				Timeout:   voyageDialContextTimeout,
+				KeepAlive: voyageDialContextKeepAlive,
 			}).DialContext,
-			MaxIdleConns:        VoyageMaxIdleConns,
-			MaxIdleConnsPerHost: VoyageMaxIdleConnsPerHost,
-			IdleConnTimeout:     VoyageIdleConnTimeout,
-			TLSHandshakeTimeout: VoyageTLSHandshakeTimeout,
+			MaxIdleConns:        voyageMaxIdleConns,
+			MaxIdleConnsPerHost: voyageMaxIdleConnsPerHost,
+			IdleConnTimeout:     voyageIdleConnTimeout,
+			TLSHandshakeTimeout: voyageTLSHandshakeTimeout,
 		},
 	}
 
@@ -128,27 +123,27 @@ func NewVoyageClient(cfg VoyageClientConfig) *VoyageClient {
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient = client
 	retryClient.Logger = logger
-	retryClient.RetryMax = cfg.MaxRetries
+	retryClient.RetryMax = cfg.maxRetries
 
-	return &VoyageClient{
+	return &voyageClient{
 		client: retryClient,
-		apiKey: cfg.Config.VoyageAPIKey,
+		apiKey: cfg.config.VoyageAPIKey,
 		logger: logger,
 	}
 }
 
-func (vc *VoyageClient) EmbedQueries(
+func (vc *voyageClient) EmbedQueries(
 	ctx context.Context,
 	queries []string,
 ) ([]pgvector.Vector, error) {
 	const method = "EmbedQuery"
-	reqBody := VoyageEmbeddingRequest{
+	reqBody := voyageEmbeddingRequest{
 		Input:               queries,
-		Model:               VoyageEmbedV3p5,
-		InputType:           InputTypeQuery,
+		Model:               voyageEmbedV3p5,
+		InputType:           inputTypeQuery,
 		Truncation:          false,
-		OutputDimension:     OutputDimension1024,
-		OutputDimensionType: OutputDimensionTypeFloat,
+		OutputDimension:     outputDimension1024,
+		OutputDimensionType: outputDimensionTypeFloat,
 	}
 
 	log := vc.logger.With(
@@ -172,7 +167,7 @@ func (vc *VoyageClient) EmbedQueries(
 	req, err := retryablehttp.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		VoyageBaseURL+"/embeddings",
+		voyageBaseURL+"/embeddings",
 		payload,
 	)
 	if err != nil {
@@ -215,7 +210,7 @@ func (vc *VoyageClient) EmbedQueries(
 		slog.String("duration", time.Since(start).String()),
 	).DebugContext(ctx, "voyage response received: decoding response...")
 
-	var result VoyageEmbeddingResponse
+	var result voyageEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		log.With("err", err).ErrorContext(
 			ctx,
@@ -243,17 +238,17 @@ func (vc *VoyageClient) EmbedQueries(
 	return vectors, nil
 }
 
-func (vc *VoyageClient) RerankDocuments(
+func (vc *voyageClient) RerankDocuments(
 	ctx context.Context,
 	query string,
 	docs []string,
 	topk TopK,
-) ([]VoyageReranking, error) {
+) ([]voyageReranking, error) {
 	const method = "RerankDocuments"
-	reqBody := VoyageRerankingRequest{
+	reqBody := voyageRerankingRequest{
 		Query:           query,
 		Documents:       docs,
-		Model:           VoyageRerankV2,
+		Model:           voyageRerankV2,
 		TopK:            topk,
 		ReturnDocuments: false,
 		Truncation:      false,
@@ -282,7 +277,7 @@ func (vc *VoyageClient) RerankDocuments(
 	req, err := retryablehttp.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		VoyageBaseURL+"/rerank",
+		voyageBaseURL+"/rerank",
 		payload,
 	)
 	if err != nil {
@@ -325,7 +320,7 @@ func (vc *VoyageClient) RerankDocuments(
 		slog.String("duration", time.Since(start).String()),
 	).DebugContext(ctx, "voyage response received: decoding response...")
 
-	var result VoyageRerankingResponse
+	var result voyageRerankingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		log.With("err", err).ErrorContext(
 			ctx,

@@ -61,7 +61,7 @@ func main() {
 		Pool:    conn,
 	}
 
-	_, err = app.New(&appCfg)
+	_, err = app.New(appCfg)
 	if err != nil {
 		log.Fatal(err)
 	}

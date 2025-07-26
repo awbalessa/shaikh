@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/awbalessa/shaikh/apps/server/internal/agent"
 	"github.com/awbalessa/shaikh/apps/server/internal/config"
@@ -21,44 +20,32 @@ type AppConfig struct {
 
 type App struct {
 	Store *store.Store
-	Vc    *rag.VoyageClient
-	Gc    *agent.GeminiClient
 	Pipe  *rag.Pipeline
+	Ags   map[agent.AgentName]agent.Agent
 }
 
-func New(app *AppConfig) (*App, error) {
+func New(app AppConfig) (*App, error) {
 	store := store.New(store.StoreConfig{
 		Queries: database.New(app.Pool),
 	})
 
-	vc := rag.NewVoyageClient(rag.VoyageClientConfig{
-		Config:     app.Config,
-		MaxRetries: rag.VoyageMaxRetries,
-		Timeout:    rag.VoyageTimeout,
+	pipe := rag.NewPipeline(rag.PipelineConfig{
+		Config: app.Config,
+		Store:  store,
 	})
 
-	gc, err := agent.NewGeminiClient(app.Context, &agent.GeminiClientConfig{
-		MaxRetries:     agent.GeminiMaxRetries,
-		Timeout:        agent.GeminiTimeout,
-		GCPProjectID:   agent.GCPProjectID,
-		GeminiBackend:  agent.GeminiBackend,
-		GeminiLocation: agent.GeminiLocationGlobal,
-	})
+	router, err := agent.BuildRouter(app.Context)
 	if err != nil {
-		slog.Error(
-			"failed to start app",
-			"error",
-			err,
-		)
 		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
-	pipe := rag.NewPipeline(store, vc)
+	agents := map[agent.AgentName]agent.Agent{
+		agent.Router: router,
+	}
 
 	return &App{
 		Store: store,
-		Vc:    vc,
-		Gc:    gc,
 		Pipe:  pipe,
+		Ags:   agents,
 	}, nil
 }
