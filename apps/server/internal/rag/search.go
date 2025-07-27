@@ -38,7 +38,7 @@ type SearchResult struct {
 }
 
 func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchResult, error) {
-	queries, initialChunks, err := validateSearchParams(arg)
+	queries, err := validateSearchParams(arg)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 
 	log.InfoContext(ctx, "starting search...")
 	start := time.Now()
-	results, err := p.hybridSearch(ctx, queries, initialChunks)
+	results, err := p.hybridSearch(ctx, queries, int(initial200))
 	if err != nil {
 		return nil, fmt.Errorf("failed search: %w", err)
 	}
@@ -66,7 +66,7 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 		docs = append(docs, chunk.embeddedChunk)
 	}
 
-	ranks, err := p.vc.RerankDocuments(ctx, arg.RawPrompt, docs, arg.ChunkLimit)
+	ranks, err := p.vc.rerankDocuments(ctx, arg.RawPrompt, docs, arg.ChunkLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed search: %w", err)
 	}
@@ -93,12 +93,12 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 }
 
 const (
-	surahs        surahAyahFilterMode = 1
-	surahAndAyahs surahAyahFilterMode = 2
-	rrf60         rrfConstant         = 60
-	max3          maxSubPrompts       = 3
+	initial200 initialChunks = 200
+	rrf60      rrfConstant   = 60
+	max3       maxSubPrompts = 3
 )
 
+type initialChunks int
 type maxSubPrompts int
 type surahAyahFilterMode int
 
@@ -134,15 +134,14 @@ type idScorePair struct {
 	score float64
 }
 
-func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
+func validateSearchParams(arg SearchParameters) ([]queryContext, error) {
 	if arg.PromptsWithFilters == nil || len(arg.PromptsWithFilters) == 0 {
-		return nil, 0, errors.New("must pass in at least one prompt")
+		return nil, errors.New("must pass in at least one prompt")
 	}
 	if len(arg.PromptsWithFilters) > int(max3) {
-		return nil, 0, errors.New("cannot pass in more than 3 sub-prompts")
+		return nil, errors.New("cannot pass in more than 3 sub-prompts")
 	}
 
-	initialChunks := int(10 * arg.ChunkLimit)
 	queries := make([]queryContext, 0, len(arg.PromptsWithFilters))
 
 	for _, item := range arg.PromptsWithFilters {
@@ -164,7 +163,7 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 		}
 
 		if len(item.NullableAyahs) > 0 && len(item.NullableSurahs) != 1 {
-			return nil, 0, errors.New("must specify exactly one surah to specify ayah filters")
+			return nil, errors.New("must specify exactly one surah to specify ayah filters")
 		} else if len(item.NullableAyahs) > 0 && len(item.NullableSurahs) == 1 {
 			for _, s := range item.NullableSurahs {
 				surahs = append(surahs, int32(s))
@@ -195,7 +194,7 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, int, error) {
 		})
 	}
 
-	return queries, initialChunks, nil
+	return queries, nil
 }
 
 func filtersToLabels(f queryFilters) []int16 {
@@ -381,7 +380,7 @@ func (p *Pipeline) hybridSearch(
 		for i, q := range queries {
 			queriesSlice[i] = q.query
 		}
-		vecs, err := p.vc.EmbedQueries(ctx, queriesSlice)
+		vecs, err := p.vc.embedQueries(ctx, queriesSlice)
 		if err != nil {
 			return fmt.Errorf("hybrid search error: %w", err)
 		}

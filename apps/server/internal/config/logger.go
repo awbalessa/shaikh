@@ -13,7 +13,7 @@ import (
 )
 
 type LoggerOptions struct {
-	Prod bool
+	JSON bool
 }
 
 type prettyWriter struct {
@@ -129,25 +129,23 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 }
 
 func NewLogger(opts LoggerOptions) *slog.Logger {
-	if !opts.Prod {
-		// Development: tint with colors to stderr
+	if !opts.JSON {
 		handler := tint.NewHandler(os.Stderr, &tint.Options{
 			AddSource:  true,
-			Level:      slog.LevelDebug,
+			Level:      slog.LevelInfo,
 			TimeFormat: time.Kitchen,
 			NoColor:    false,
 		})
 		return slog.New(handler)
 	}
 
-	// Production: JSON handler to stdout (can still pretty-print via your custom writer)
 	writer := &prettyWriter{
 		target: os.Stdout,
 		format: "json",
 	}
 
 	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: slog.LevelDebug,
 	})
 	return slog.New(handler)
 }

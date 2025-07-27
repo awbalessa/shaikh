@@ -12,15 +12,32 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	search functionName = "Search"
+)
+
+var (
+	surahNumMin float64 = 1
+	surahNumMax float64 = 114
+	ayahNumMin  float64 = 1
+	ayahNumMax  float64 = 286
+)
+
+type functionName string
+type enumContentType string
+type enumSource string
+
+func ptr[T any](t T) *T {
+	return &t
+}
+
 type toolRAG struct {
-	name      toolName
-	functions map[functionName]function
-	pipeline  *rag.Pipeline
-	logger    *slog.Logger
+	search   *functionSearch
+	pipeline *rag.Pipeline
+	logger   *slog.Logger
 }
 
 type functionSearch struct {
-	name        functionName
 	declaration *genai.FunctionDeclaration
 	pipeline    *rag.Pipeline
 	logger      *slog.Logger
@@ -43,40 +60,20 @@ type functionSearchSchema struct {
 	PromptsWithFilters []promptWithFilter `json:"prompts_with_filters"`
 }
 
-func (t *toolRAG) getName() toolName {
-	return t.name
-}
-
-func (t *toolRAG) getFunction(fn functionName) (function, error) {
-	function, ok := t.functions[fn]
-	if !ok {
-		return nil, fmt.Errorf("function %s does not exist", string(fn))
-	}
-
-	return function, nil
-}
-
 func buildToolRAG(p *rag.Pipeline, log *slog.Logger) *toolRAG {
 	search := buildFunctionSearch(log)
 	return &toolRAG{
-		name: RAG,
-		functions: map[functionName]function{
-			Search: search,
-		},
+		search:   search,
 		pipeline: p,
 		logger:   log,
 	}
-}
-
-func (t *functionSearch) getName() functionName {
-	return t.name
 }
 
 func (t *functionSearch) call(ctx context.Context, bytes []byte) (any, error) {
 	var inp functionSearchSchema
 	if err := json.Unmarshal(bytes, &inp); err != nil {
 		t.logger.With(
-			slog.String("function", string(t.name)),
+			slog.String("function", string(search)),
 		).ErrorContext(ctx, "failed to unmarshal agent output")
 		return nil, fmt.Errorf("failed to unmarshal agent output: %w", err)
 	}
@@ -110,7 +107,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 			Type:        genai.TypeString,
 			Format:      "enum",
 			Description: "The content type to filter by.",
-			Enum:        []string{string(contentTypeTafsir)},
+			Enum:        []string{string(database.ContentTypeTafsir)},
 		},
 	}
 
@@ -123,7 +120,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 			Type:        genai.TypeString,
 			Format:      "enum",
 			Description: "The source to filter by.",
-			Enum:        []string{string(sourceTafsirIbnKathir)},
+			Enum:        []string{string(database.SourceTafsirIbnKathir)},
 		},
 	}
 
@@ -223,9 +220,8 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 	}
 
 	return &functionSearch{
-		name: Search,
 		declaration: &genai.FunctionDeclaration{
-			Name:        string(Search),
+			Name:        string(search),
 			Description: "Performs a hybrid search over Quranic content using a fully normalized prompt. Combines semantic understanding with keyword-based matching. The prompt may be optionally split into sub-prompts with filters to target specific content types, sources, surahs, or ayahs.",
 			Parameters:  fullSchema,
 		},
@@ -263,23 +259,4 @@ func toAyahNumbers(in []int) []models.AyahNumber {
 		out[i] = models.AyahNumber(n)
 	}
 	return out
-}
-
-const (
-	contentTypeTafsir     enumContentType = "TAFSIR"
-	sourceTafsirIbnKathir enumSource      = "TAFSIR IBN KATHIR"
-)
-
-var (
-	surahNumMin float64 = 1
-	surahNumMax float64 = 114
-	ayahNumMin  float64 = 1
-	ayahNumMax  float64 = 286
-)
-
-type enumContentType string
-type enumSource string
-
-func ptr[T any](t T) *T {
-	return &t
 }

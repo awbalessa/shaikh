@@ -3,7 +3,7 @@
 -- Documents table types
 CREATE TYPE granularity AS enum ('phrase', 'ayah', 'surah', 'quran');
 
-CREATE TYPE content_type AS enum ('tafsir');
+CREATE TYPE content_type AS enum ('tafsir'); -- Potential: asbab nozool, ulum, balagha (& na7o) ghareeb, tajweed w qiraat,
 
 CREATE TYPE source AS enum (
     'Tafsir Ibn Kathir',

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/awbalessa/shaikh/apps/server/internal/agent"
 	"github.com/awbalessa/shaikh/apps/server/internal/config"
@@ -12,40 +13,72 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type AppConfig struct {
-	Config  *config.Config
-	Context context.Context
-	Pool    *pgxpool.Pool
-}
-
 type App struct {
-	Store *store.Store
-	Pipe  *rag.Pipeline
-	Ags   map[agent.AgentName]agent.Agent
+	Context context.Context
+	Cancel  context.CancelFunc
+	Conn    *pgxpool.Pool
+	Store   *store.Store
+	Pipe    *rag.Pipeline
+	Agent   *agent.Agent
 }
 
-func New(app AppConfig) (*App, error) {
-	store := store.New(store.StoreConfig{
-		Queries: database.New(app.Pool),
-	})
+func Start(cfg *config.Config) (*App, error) {
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
 
-	pipe := rag.NewPipeline(rag.PipelineConfig{
-		Config: app.Config,
-		Store:  store,
-	})
-
-	router, err := agent.BuildRouter(app.Context)
+	pgxCfg, err := pgxpool.ParseConfig(cfg.PostgresConnString)
 	if err != nil {
+		slog.With(
+			slog.Any("err", err),
+			slog.String("postgres_url", cfg.PostgresConnString),
+		).ErrorContext(
+			ctx,
+			"failed to parse postgres url",
+		)
+		cancel()
 		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
-	agents := map[agent.AgentName]agent.Agent{
-		agent.Router: router,
+	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
+	if err != nil {
+		slog.With(
+			slog.Any("err", err),
+			slog.String("postgres_url", cfg.PostgresConnString),
+		).ErrorContext(
+			ctx,
+			"failed to create postgres conn",
+		)
+		cancel()
+		return nil, fmt.Errorf("failed to start app: %w", err)
+	}
+
+	store := store.New(store.StoreConfig{
+		Queries: database.New(conn),
+	})
+
+	pipe := rag.NewPipeline(rag.PipelineConfig{
+		Config: cfg,
+		Store:  store,
+	})
+
+	agent, err := agent.NewAgent()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	return &App{
-		Store: store,
-		Pipe:  pipe,
-		Ags:   agents,
+		Context: ctx,
+		Cancel:  cancel,
+		Conn:    conn,
+		Store:   store,
+		Pipe:    pipe,
+		Agent:   agent,
 	}, nil
+}
+
+func (a *App) Close() {
+	a.Cancel()
+	a.Conn.Close()
 }

@@ -15,10 +15,7 @@ import (
 const (
 	geminiFlashLiteV2p5         geminiModel      = "gemini-2.5-flash-lite-preview-06-17"
 	geminiFlashV2p5             geminiModel      = "gemini-2.5-flash"
-	geminiLocationUSCentral1    string           = "us-central1"
-	geminiLocationGlobal        string           = "global"
 	geminiBackend               genai.Backend    = genai.BackendVertexAI
-	gcpProjectID                string           = "shaikh-460416"
 	geminiTimeoutFifteenSeconds time.Duration    = 15 * time.Second
 	geminiMaxRetriesThree       int              = 3
 	geminiMaxIdleConns          int              = 100
@@ -27,12 +24,11 @@ const (
 	geminiDialContextTimeout    time.Duration    = 5 * time.Second
 	geminiDialContextKeepAlive  time.Duration    = 30 * time.Second
 	geminiTLSHandshakeTimeout   time.Duration    = 10 * time.Second
-	geminiTemperatureZero       temperature      = 0
+	geminiTemperatureZero       float32          = 0
 	geminiResponseMimeJSON      responseMimeType = "application/json"
 )
 
 type geminiModel string
-type temperature float32
 type responseMimeType string
 
 type geminiClient struct {
@@ -41,14 +37,12 @@ type geminiClient struct {
 }
 
 type geminiClientConfig struct {
-	maxRetries     int
-	timeout        time.Duration
-	gcpProjectID   string
-	geminiBackend  genai.Backend
-	geminiLocation string
+	context    context.Context
+	maxRetries int
+	timeout    time.Duration
 }
 
-func newGeminiClient(ctx context.Context, gcc geminiClientConfig) (*geminiClient, error) {
+func newGeminiClient(gcc geminiClientConfig) (*geminiClient, error) {
 	baseClient := &http.Client{
 		Timeout: gcc.timeout,
 		Transport: &http.Transport{
@@ -75,17 +69,14 @@ func newGeminiClient(ctx context.Context, gcc geminiClientConfig) (*geminiClient
 	standard := retryClient.StandardClient()
 
 	cc := &genai.ClientConfig{
-		Backend:    gcc.geminiBackend,
-		Project:    gcc.gcpProjectID,
-		Location:   gcc.geminiLocation,
 		HTTPClient: standard,
 	}
 
-	gc, err := genai.NewClient(ctx, cc)
+	gc, err := genai.NewClient(gcc.context, cc)
 	if err != nil {
 		logger.With(
 			"err", err,
-		).ErrorContext(ctx, "failed to create new gemini client")
+		).ErrorContext(gcc.context, "failed to create new gemini client")
 		return nil, fmt.Errorf("failed to create new gemini client: %w", err)
 	}
 

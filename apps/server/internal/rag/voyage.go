@@ -132,11 +132,11 @@ func newVoyageClient(cfg voyageClientConfig) *voyageClient {
 	}
 }
 
-func (vc *voyageClient) EmbedQueries(
+func (vc *voyageClient) embedQueries(
 	ctx context.Context,
 	queries []string,
 ) ([]pgvector.Vector, error) {
-	const method = "EmbedQuery"
+	const method = "embedQuery"
 	reqBody := voyageEmbeddingRequest{
 		Input:               queries,
 		Model:               voyageEmbedV3p5,
@@ -149,7 +149,6 @@ func (vc *voyageClient) EmbedQueries(
 	log := vc.logger.With(
 		slog.String("method", method),
 		slog.String("model", string(reqBody.Model)),
-		slog.String("input_type", string(reqBody.InputType)),
 		slog.Int("input_len", len(queries)),
 	)
 
@@ -238,13 +237,13 @@ func (vc *voyageClient) EmbedQueries(
 	return vectors, nil
 }
 
-func (vc *voyageClient) RerankDocuments(
+func (vc *voyageClient) rerankDocuments(
 	ctx context.Context,
 	query string,
 	docs []string,
 	topk TopK,
 ) ([]voyageReranking, error) {
-	const method = "RerankDocuments"
+	const method = "rerankDocuments"
 	reqBody := voyageRerankingRequest{
 		Query:           query,
 		Documents:       docs,
