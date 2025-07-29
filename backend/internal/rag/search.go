@@ -265,7 +265,7 @@ func (p *Pipeline) parallelSemanticSearch(
 			if query.vector == nil {
 				return fmt.Errorf("missing vector for query: %q", query.query)
 			}
-			rows, err := p.store.RunSemanticSearch(ctx, database.SemanticSearchParams{
+			rows, err := p.store.Pg.RunSemanticSearch(ctx, database.SemanticSearchParams{
 				NumberOfChunks: int32(chunksPerThread),
 				Vector:         *query.vector,
 				LabelFilters:   query.labelFilters,
@@ -327,7 +327,7 @@ func (p *Pipeline) parallelLexicalSearch(
 	for i, query := range queries {
 		i, query := i, query
 		g.Go(func() error {
-			rows, err := p.store.RunLexicalSearch(ctx, database.LexicalSearchParams{
+			rows, err := p.store.Pg.RunLexicalSearch(ctx, database.LexicalSearchParams{
 				NumberOfChunks: int32(chunksPerThread),
 				Query:          query.query,
 				ContentTypes:   query.filters.contentTypes,

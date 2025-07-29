@@ -23,6 +23,7 @@ const (
 type Config struct {
 	PostgresConnString string
 	VoyageAPIKey       string
+	DragonFlyAddress   string
 }
 
 func Load() (*Config, error) {
@@ -55,6 +56,7 @@ func Load() (*Config, error) {
 	return &Config{
 		PostgresConnString: connStr,
 		VoyageAPIKey:       os.Getenv("VOYAGE_API_KEY"),
+		DragonFlyAddress:   os.Getenv("DRAGONFLY_ADDR"),
 	}, nil
 }
 

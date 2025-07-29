@@ -10,12 +10,12 @@ import (
 	"github.com/awbalessa/shaikh/backend/internal/database"
 )
 
-func (s *Store) RunSemanticSearch(
+func (pg *postgresClient) RunSemanticSearch(
 	ctx context.Context,
 	arg database.SemanticSearchParams,
 ) ([]database.SemanticSearchRow, error) {
 	const method = "RunSemanticSearch"
-	log := s.pg.logger.With(
+	log := pg.logger.With(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.Int("vector_len", len(arg.Vector.Slice())),
@@ -25,7 +25,7 @@ func (s *Store) RunSemanticSearch(
 	log.DebugContext(ctx, "running semantic search...")
 
 	start := time.Now()
-	rows, err := s.pg.queries.SemanticSearch(
+	rows, err := pg.queries.SemanticSearch(
 		ctx,
 		arg,
 	)
@@ -45,12 +45,12 @@ func (s *Store) RunSemanticSearch(
 	return rows, nil
 }
 
-func (s *Store) RunLexicalSearch(
+func (pg *postgresClient) RunLexicalSearch(
 	ctx context.Context,
 	arg database.LexicalSearchParams,
 ) ([]database.LexicalSearchRow, error) {
 	const method = "RunLexicalSearch"
-	log := s.pg.logger.With(
+	log := pg.logger.With(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.String("query", arg.Query),
@@ -75,7 +75,7 @@ func (s *Store) RunLexicalSearch(
 	).DebugContext(ctx, "tokenized query: running lexical search...")
 
 	start := time.Now()
-	rows, err := s.pg.queries.LexicalSearch(
+	rows, err := pg.queries.LexicalSearch(
 		ctx,
 		arg,
 	)

@@ -10,7 +10,6 @@ import (
 )
 
 type Agent struct {
-	// state     *stateStore
 	searcher  *searcher
 	generator *generator
 }
@@ -39,10 +38,6 @@ func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
 		generator: g,
 	}, nil
 }
-
-// type stateStore interface {
-// 	Load(ctx context.Context)
-// }
 
 type function[T any] interface {
 	name() functionName
