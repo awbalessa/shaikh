@@ -3,7 +3,7 @@ package store
 import (
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/database"
 )
 
 type postgresClient struct {

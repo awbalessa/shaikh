@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/rag"
+	"github.com/awbalessa/shaikh/backend/internal/rag"
 	"google.golang.org/genai"
 )
 

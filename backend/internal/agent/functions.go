@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/database"
-	"github.com/awbalessa/shaikh/server/internal/models"
-	"github.com/awbalessa/shaikh/server/internal/rag"
+	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/models"
+	"github.com/awbalessa/shaikh/backend/internal/rag"
 	"google.golang.org/genai"
 )
 

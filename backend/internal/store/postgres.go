@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/server/internal/arabic"
-	"github.com/awbalessa/shaikh/server/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/arabic"
+	"github.com/awbalessa/shaikh/backend/internal/database"
 )
 
 func (s *Store) RunSemanticSearch(

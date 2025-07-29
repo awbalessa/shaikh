@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/agent"
-	"github.com/awbalessa/shaikh/server/internal/config"
-	"github.com/awbalessa/shaikh/server/internal/database"
-	"github.com/awbalessa/shaikh/server/internal/rag"
-	"github.com/awbalessa/shaikh/server/internal/store"
+	"github.com/awbalessa/shaikh/backend/internal/agent"
+	"github.com/awbalessa/shaikh/backend/internal/config"
+	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/rag"
+	"github.com/awbalessa/shaikh/backend/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

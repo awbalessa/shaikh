@@ -8,8 +8,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/awbalessa/shaikh/server/internal/database"
-	"github.com/awbalessa/shaikh/server/internal/models"
+	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/models"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 )

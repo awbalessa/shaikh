@@ -3,8 +3,8 @@ package rag
 import (
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/config"
-	"github.com/awbalessa/shaikh/server/internal/store"
+	"github.com/awbalessa/shaikh/backend/internal/config"
+	"github.com/awbalessa/shaikh/backend/internal/store"
 )
 
 const (

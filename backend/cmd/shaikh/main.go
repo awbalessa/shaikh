@@ -4,8 +4,8 @@ import (
 	"log"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/server/internal/config"
-	"github.com/awbalessa/shaikh/server/internal/server"
+	"github.com/awbalessa/shaikh/backend/internal/config"
+	"github.com/awbalessa/shaikh/backend/internal/server"
 )
 
 func main() {
