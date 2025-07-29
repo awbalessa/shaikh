@@ -1,6 +1,6 @@
 package models
 
-import "github.com/awbalessa/shaikh/apps/server/internal/database"
+import "github.com/awbalessa/shaikh/server/internal/database"
 
 const (
 	LabelContentTypeTafsir                LabelContentType = 1

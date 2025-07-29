@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/awbalessa/shaikh/apps/server/internal/config"
+	"github.com/awbalessa/shaikh/server/internal/config"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pgvector/pgvector-go"
 )

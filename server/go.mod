@@ -1,4 +1,4 @@
-module github.com/awbalessa/shaikh/apps/server
+module github.com/awbalessa/shaikh/server
 
 go 1.24.3
 

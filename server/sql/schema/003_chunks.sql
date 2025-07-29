@@ -81,3 +81,6 @@ DROP EXTENSION IF EXISTS pg_search;
 DROP EXTENSION IF EXISTS vectorscale;
 
 DROP EXTENSION IF EXISTS vector;
+
+
+-- next: users table: has user tier, credits so far monthly, memories, etc. sessions table. messages table.

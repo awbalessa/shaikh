@@ -1,28 +1,27 @@
-package app
+package server
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/apps/server/internal/agent"
-	"github.com/awbalessa/shaikh/apps/server/internal/config"
-	"github.com/awbalessa/shaikh/apps/server/internal/database"
-	"github.com/awbalessa/shaikh/apps/server/internal/rag"
-	"github.com/awbalessa/shaikh/apps/server/internal/store"
+	"github.com/awbalessa/shaikh/server/internal/agent"
+	"github.com/awbalessa/shaikh/server/internal/config"
+	"github.com/awbalessa/shaikh/server/internal/database"
+	"github.com/awbalessa/shaikh/server/internal/rag"
+	"github.com/awbalessa/shaikh/server/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type App struct {
-	Context context.Context
-	Cancel  context.CancelFunc
-	Conn    *pgxpool.Pool
-	Store   *store.Store
-	Pipe    *rag.Pipeline
-	Agent   *agent.Agent
+type Server struct {
+	Cancel context.CancelFunc
+	Conn   *pgxpool.Pool
+	Store  *store.Store
+	Pipe   *rag.Pipeline
+	Agent  *agent.Agent
 }
 
-func Start(cfg *config.Config) (*App, error) {
+func Serve(cfg *config.Config) (*Server, error) {
 	ctx, cancel := context.WithCancel(
 		context.Background(),
 	)
@@ -62,23 +61,22 @@ func Start(cfg *config.Config) (*App, error) {
 		Store:  store,
 	})
 
-	agent, err := agent.NewAgent()
+	agent, err := agent.NewAgent(ctx, pipe)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
-	return &App{
-		Context: ctx,
-		Cancel:  cancel,
-		Conn:    conn,
-		Store:   store,
-		Pipe:    pipe,
-		Agent:   agent,
+	return &Server{
+		Cancel: cancel,
+		Conn:   conn,
+		Store:  store,
+		Pipe:   pipe,
+		Agent:  agent,
 	}, nil
 }
 
-func (a *App) Close() {
-	a.Cancel()
-	a.Conn.Close()
+func (s *Server) Close() {
+	s.Cancel()
+	s.Conn.Close()
 }

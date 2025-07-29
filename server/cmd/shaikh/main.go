@@ -4,8 +4,8 @@ import (
 	"log"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/apps/server/internal/app"
-	"github.com/awbalessa/shaikh/apps/server/internal/config"
+	"github.com/awbalessa/shaikh/server/internal/config"
+	"github.com/awbalessa/shaikh/server/internal/server"
 )
 
 func main() {
@@ -22,9 +22,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app, err := app.Start(cfg)
+	server, err := server.Serve(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	app.Close()
+	server.Close()
 }

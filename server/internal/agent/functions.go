@@ -2,13 +2,12 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/apps/server/internal/database"
-	"github.com/awbalessa/shaikh/apps/server/internal/models"
-	"github.com/awbalessa/shaikh/apps/server/internal/rag"
+	"github.com/awbalessa/shaikh/server/internal/database"
+	"github.com/awbalessa/shaikh/server/internal/models"
+	"github.com/awbalessa/shaikh/server/internal/rag"
 	"google.golang.org/genai"
 )
 
@@ -31,13 +30,8 @@ func ptr[T any](t T) *T {
 	return &t
 }
 
-type toolRAG struct {
-	search   *functionSearch
-	pipeline *rag.Pipeline
-	logger   *slog.Logger
-}
-
 type functionSearch struct {
+	fname       functionName
 	declaration *genai.FunctionDeclaration
 	pipeline    *rag.Pipeline
 	logger      *slog.Logger
@@ -60,41 +54,70 @@ type functionSearchSchema struct {
 	PromptsWithFilters []promptWithFilter `json:"prompts_with_filters"`
 }
 
-func buildToolRAG(p *rag.Pipeline, log *slog.Logger) *toolRAG {
-	search := buildFunctionSearch(log)
-	return &toolRAG{
-		search:   search,
-		pipeline: p,
-		logger:   log,
-	}
+func (f *functionSearch) name() functionName {
+	return f.fname
 }
 
-func (t *functionSearch) call(ctx context.Context, bytes []byte) (any, error) {
-	var inp functionSearchSchema
-	if err := json.Unmarshal(bytes, &inp); err != nil {
-		t.logger.With(
-			slog.String("function", string(search)),
-		).ErrorContext(ctx, "failed to unmarshal agent output")
-		return nil, fmt.Errorf("failed to unmarshal agent output: %w", err)
+func (f *functionSearch) call(
+	ctx context.Context,
+	args map[string]any,
+) ([]rag.SearchResult, error) {
+	// Parse 'full_prompt'
+	fullPrompt, ok := args["full_prompt"].(string)
+	if !ok {
+		return nil, errors.New("missing or invalid 'full_prompt'")
 	}
 
-	pwf := make([]rag.PromptWithFilters, len(inp.PromptsWithFilters))
-	for i, p := range inp.PromptsWithFilters {
-		pwf[i] = rag.PromptWithFilters{
-			Prompt:               p.Prompt,
-			NullableContentTypes: toContentTypes(p.ContentTypeFilters),
-			NullableSources:      toSources(p.SourceFilters),
-			NullableSurahs:       toSurahNumbers(p.SurahAyahFilters.Surahs),
-			NullableAyahs:        toAyahNumbers(p.SurahAyahFilters.Ayahs),
+	// Parse 'prompt_with_filter'
+	argPrompts, ok := args["prompts_with_filter"].([]any)
+	if !ok {
+		return nil, errors.New("missing or invalid 'prompt_with_filter'")
+	}
+
+	prompts := make([]rag.PromptWithFilters, 0, len(argPrompts))
+	for _, raw := range argPrompts {
+		pmap, ok := raw.(map[string]any)
+		if !ok {
+			return nil, errors.New("invalid prompts_with_filter entry")
 		}
+
+		prompt, _ := pmap["prompt"].(string)
+
+		// Optional filters
+		contentTypes := toContentTypes(pmap["content_type_filters"].([]string))
+		sources := toSources(pmap["source_filters"].([]string))
+
+		var surahs []models.SurahNumber
+		var ayahs []models.AyahNumber
+		if surahAyah, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
+			surahs = toSurahNumbers(surahAyah["surahs"].([]int))
+			ayahs = toAyahNumbers(surahAyah["ayahs"].([]int))
+		}
+
+		prompts = append(prompts, rag.PromptWithFilters{
+			Prompt:               prompt,
+			NullableContentTypes: contentTypes,
+			NullableSources:      sources,
+			NullableSurahs:       surahs,
+			NullableAyahs:        ayahs,
+		})
 	}
 
-	arg := rag.SearchParameters{
-		RawPrompt:          inp.FullPrompt,
-		ChunkLimit:         rag.Top20Documents,
-		PromptsWithFilters: pwf,
+	f.logger.With(
+		slog.String("full_prompt", fullPrompt),
+		slog.Group("prompts_with_filters",
+			slog.Int("count", len(prompts)),
+			slog.Any("items", prompts),
+		),
+	).DebugContext(ctx, "searcher agent called Search function")
+
+	params := rag.SearchParameters{
+		RawPrompt:          fullPrompt,
+		ChunkLimit:         rag.Top10Documents,
+		PromptsWithFilters: prompts,
 	}
-	return t.pipeline.Search(ctx, arg)
+
+	return f.pipeline.Search(ctx, params)
 }
 
 func buildFunctionSearch(log *slog.Logger) *functionSearch {
@@ -125,7 +148,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 	}
 
 	filterSurahAyah := &genai.Schema{
-		Title:       "Surah and Ayah Filters",
+		Title:       "Optional Surah and Ayah Filters",
 		Type:        genai.TypeObject,
 		Description: "You may filter results by a list of surah numbers. Optionally, if exactly one surah is specified, you may filter by a list of specific ayah numbers within that surah. Use this filter only when the user's prompt shows an interest in a specific part of the Quran. Otherwise, leave this filter empty to allow a broader result set.",
 		Required:    []string{"surahs"},
@@ -229,34 +252,58 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 	}
 }
 
-func toContentTypes(in []string) []database.ContentType {
-	out := make([]database.ContentType, len(in))
-	for i, s := range in {
-		out[i] = database.ContentType(s)
+func toContentTypes(v any) []database.ContentType {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []database.ContentType
+	for _, item := range raw {
+		if s, ok := item.(string); ok {
+			out = append(out, database.ContentType(s))
+		}
 	}
 	return out
 }
 
-func toSources(in []string) []database.Source {
-	out := make([]database.Source, len(in))
-	for i, s := range in {
-		out[i] = database.Source(s)
+func toSources(v any) []database.Source {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []database.Source
+	for _, item := range raw {
+		if s, ok := item.(string); ok {
+			out = append(out, database.Source(s))
+		}
 	}
 	return out
 }
 
-func toSurahNumbers(in []int) []models.SurahNumber {
-	out := make([]models.SurahNumber, len(in))
-	for i, n := range in {
-		out[i] = models.SurahNumber(n)
+func toSurahNumbers(v any) []models.SurahNumber {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []models.SurahNumber
+	for _, item := range raw {
+		if f, ok := item.(float64); ok { // JSON numbers -> float64
+			out = append(out, models.SurahNumber(int(f)))
+		}
 	}
 	return out
 }
 
-func toAyahNumbers(in []int) []models.AyahNumber {
-	out := make([]models.AyahNumber, len(in))
-	for i, n := range in {
-		out[i] = models.AyahNumber(n)
+func toAyahNumbers(v any) []models.AyahNumber {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []models.AyahNumber
+	for _, item := range raw {
+		if f, ok := item.(float64); ok {
+			out = append(out, models.AyahNumber(int(f)))
+		}
 	}
 	return out
 }
