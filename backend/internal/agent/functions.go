@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	search functionName = "Search"
+	search functionName = "Search()"
 )
 
 var (
@@ -227,7 +227,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 	}
 
 	fullSchema := &genai.Schema{
-		Title:       "Search Parameters",
+		Title:       "Search() Parameters",
 		Type:        genai.TypeObject,
 		Description: "The input parameters for performing a hybrid search—combining semantic similarity and keyword matching—based on the fully transformed prompt. The prompt may be optionally broken into logical sub-prompts, each with its own filters to narrow down the context.",
 		Required:    []string{"full_prompt", "prompts_with_filters"},
