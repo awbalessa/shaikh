@@ -6,15 +6,22 @@ import (
 	"log/slog"
 
 	"github.com/awbalessa/shaikh/backend/internal/rag"
+	"github.com/awbalessa/shaikh/backend/internal/store"
 	"google.golang.org/genai"
 )
 
 type Agent struct {
 	searcher  *searcher
 	generator *generator
+	logger    *slog.Logger
+	store     *store.Store
 }
 
 func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
+	log := slog.Default().With(
+		"component", "agent",
+	)
+
 	gc, err := newGeminiClient(geminiClientConfig{
 		context:    ctx,
 		maxRetries: geminiMaxRetriesThree,
@@ -36,6 +43,7 @@ func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
 	return &Agent{
 		searcher:  s,
 		generator: g,
+		logger:    log,
 	}, nil
 }
 

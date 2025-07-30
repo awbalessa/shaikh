@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	geminiFlashLiteV2p5         geminiModel      = "gemini-2.5-flash-lite-preview-06-17"
+	geminiFlashLiteV2p5         geminiModel      = "gemini-2.5-flash-lite"
 	geminiFlashV2p5             geminiModel      = "gemini-2.5-flash"
-	geminiBackend               genai.Backend    = genai.BackendVertexAI
 	geminiTimeoutFifteenSeconds time.Duration    = 15 * time.Second
 	geminiMaxRetriesThree       int              = 3
 	geminiMaxIdleConns          int              = 100

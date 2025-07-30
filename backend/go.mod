@@ -5,11 +5,15 @@ go 1.24.3
 replace github.com/awbalessa/shaikh/apps/server => .
 
 require (
+	github.com/dustin/go-humanize v1.0.1
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.1.2
+	github.com/oklog/ulid v1.3.1
 	github.com/pgvector/pgvector-go v0.3.0
+	github.com/redis/go-redis/v9 v9.11.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.14.0
 	google.golang.org/genai v1.16.0
@@ -33,7 +37,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.11.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
