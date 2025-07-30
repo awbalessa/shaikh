@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/awbalessa/shaikh/backend/internal/database"
@@ -61,7 +62,7 @@ func (f *functionSearch) name() functionName {
 func (f *functionSearch) call(
 	ctx context.Context,
 	args map[string]any,
-) ([]rag.SearchResult, error) {
+) (map[string]any, error) {
 	// Parse 'full_prompt'
 	fullPrompt, ok := args["full_prompt"].(string)
 	if !ok {
@@ -103,13 +104,15 @@ func (f *functionSearch) call(
 		})
 	}
 
-	f.logger.With(
+	log := f.logger.With(
 		slog.String("full_prompt", fullPrompt),
 		slog.Group("prompts_with_filters",
 			slog.Int("count", len(prompts)),
 			slog.Any("items", prompts),
 		),
-	).DebugContext(ctx, "searcher agent called Search function")
+	)
+
+	log.DebugContext(ctx, "searcher agent called Search() function")
 
 	params := rag.SearchParameters{
 		RawPrompt:          fullPrompt,
@@ -117,7 +120,28 @@ func (f *functionSearch) call(
 		PromptsWithFilters: prompts,
 	}
 
-	return f.pipeline.Search(ctx, params)
+	results, err := f.pipeline.Search(ctx, params)
+	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "searcher agent failed to call Search() function")
+		return nil, fmt.Errorf("searcher agent failed to call Search() function: %w", err)
+	}
+
+	serialized := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		serialized = append(serialized, map[string]any{
+			"relevance": r.Relevance,
+			"source":    r.Source,
+			"document":  r.EmbeddedChunk,
+			"surah":     r.Surah,
+			"ayah":      r.Ayah,
+		})
+	}
+
+	return map[string]any{
+		"results": serialized,
+	}, nil
 }
 
 func buildFunctionSearch(log *slog.Logger) *functionSearch {

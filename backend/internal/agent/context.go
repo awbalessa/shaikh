@@ -10,9 +10,11 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 	"github.com/oklog/ulid"
+	"google.golang.org/genai"
 )
 
 const (
+	gccTTL30Mins         time.Duration = 30 * time.Minute
 	contextCacheTTL6Hrs  time.Duration = 6 * time.Hour
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 )
@@ -24,28 +26,82 @@ type sessionSummary struct {
 }
 
 type inputPrompt struct {
-	systemInput string
-	userInput   string
+	functionResponse *genai.Part
+	userInput        *genai.Part
 }
 
 type interaction struct {
 	input       inputPrompt
-	modelOutput string
+	modelOutput *genai.Part
 }
 
 type contextWindow struct {
-	sessionSummaries []sessionSummary
+	previousSessions []sessionSummary
 	history          []interaction
-	input            inputPrompt
 	tokenCount       int
 }
 
+type gcc struct {
+	resourceName string
+	createdAt    time.Time
+}
+
 type sessionContext struct {
-	UserID    uuid.UUID     `json:"user_id"`
-	SessionID ulid.ULID     `json:"session_id"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
-	Window    contextWindow `json:"context_window"`
+	UserID             uuid.UUID     `json:"user_id"`
+	SessionID          ulid.ULID     `json:"session_id"`
+	GeminiContextCache gcc           `json:"gcc"`
+	CreatedAt          time.Time     `json:"created_at"`
+	UpdatedAt          time.Time     `json:"updated_at"`
+	Window             contextWindow `json:"context_window"`
+}
+
+func (a *Agent) buildContextWindow(cw *contextWindow) []*genai.Content {
+	var contents []*genai.Content
+
+	if len(cw.previousSessions) > 0 {
+		var parts []*genai.Part
+		for _, s := range cw.previousSessions {
+			partText := fmt.Sprintf("Session Title: %s\nLast Accessed: %s\nSummary: %s",
+				s.title,
+				formatRecency(s.lastAccessed),
+				s.summary,
+			)
+			parts = append(parts, genai.NewPartFromText(partText))
+		}
+
+		contents = append(contents, &genai.Content{
+			Role:  genai.RoleUser,
+			Parts: parts,
+		})
+	}
+
+	// --- 2. Interaction History ---
+	for _, inter := range cw.history {
+		// Combine userInput and functionResponse into a single user content
+		var userParts []*genai.Part
+		if inter.input.functionResponse != nil {
+			userParts = append(userParts, inter.input.functionResponse)
+		}
+		if inter.input.userInput != nil {
+			userParts = append(userParts, inter.input.userInput)
+		}
+
+		if len(userParts) > 0 {
+			contents = append(contents, &genai.Content{
+				Role:  genai.RoleUser,
+				Parts: userParts,
+			})
+		}
+
+		if inter.modelOutput != nil {
+			contents = append(contents, &genai.Content{
+				Role:  genai.RoleModel,
+				Parts: []*genai.Part{inter.modelOutput},
+			})
+		}
+	}
+
+	return contents
 }
 
 func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
@@ -67,7 +123,7 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 		return fmt.Errorf("failed to set context cache: %w", err)
 	}
 
-	key := createContextCacheKey(sc)
+	key := createContextCacheKey(sc.UserID, sc.SessionID)
 
 	if err = a.store.Fly.Set(ctx, key, bytes, contextCacheTTL6Hrs); err != nil {
 		log.With(
@@ -80,6 +136,10 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 
 	return nil
 }
+
+// func (a *Agent) setGeminiContextCache(ctx context.Context, sc *sessionContext) error {
+// 	config := &genai.CreateCachedContentConfig{}
+// }
 
 func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContext, error) {
 	const method = "getContextCache"
@@ -120,6 +180,25 @@ func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContex
 	return &sc, nil
 }
 
-func createContextCacheKey(sc *sessionContext) string {
-	return fmt.Sprintf("shaikh:user:%s:session:%s:context", sc.UserID.String(), sc.SessionID.String())
+func createContextCacheKey(userID uuid.UUID, sessionID ulid.ULID) string {
+	return fmt.Sprintf("shaikh:user:%s:session:%s:context", userID.String(), sessionID.String())
+}
+
+func formatRecency(t time.Time) string {
+	duration := time.Since(t)
+
+	switch {
+	case duration < time.Minute:
+		return "just now"
+	case duration < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(duration.Minutes()))
+	case duration < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(duration.Hours()))
+	case duration < 7*24*time.Hour:
+		return fmt.Sprintf("%d days ago", int(duration.Hours()/24))
+	case duration < 30*24*time.Hour:
+		return fmt.Sprintf("%d weeks ago", int(duration.Hours()/(24*7)))
+	default:
+		return t.Format("2006-01-02")
+	}
 }

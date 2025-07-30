@@ -13,11 +13,12 @@ import (
 type Agent struct {
 	searcher  *searcher
 	generator *generator
+	functions map[functionName]function
 	logger    *slog.Logger
 	store     *store.Store
 }
 
-func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
+func NewAgent(ctx context.Context, p *rag.Pipeline, s *store.Store) (*Agent, error) {
 	log := slog.Default().With(
 		"component", "agent",
 	)
@@ -31,7 +32,7 @@ func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
 		return nil, fmt.Errorf("failed to build new agent: %w", err)
 	}
 
-	s := buildSearcher(searcherConfig{
+	se := buildSearcher(searcherConfig{
 		pipe: p,
 		gc:   gc,
 	})
@@ -40,16 +41,22 @@ func NewAgent(ctx context.Context, p *rag.Pipeline) (*Agent, error) {
 		gc: gc,
 	})
 
+	fmap := map[functionName]function{
+		search: buildFunctionSearch(log),
+	}
+
 	return &Agent{
-		searcher:  s,
+		searcher:  se,
 		generator: g,
+		functions: fmap,
 		logger:    log,
+		store:     s,
 	}, nil
 }
 
-type function[T any] interface {
+type function interface {
 	name() functionName
-	call(ctx context.Context, args map[string]any) (T, error)
+	call(ctx context.Context, args map[string]any) (map[string]any, error)
 }
 
 type searcherConfig struct {
@@ -58,11 +65,10 @@ type searcherConfig struct {
 }
 
 type searcher struct {
-	functions map[functionName]any
-	gc        *geminiClient
-	model     geminiModel
-	logger    *slog.Logger
-	baseCfg   *genai.GenerateContentConfig
+	gc      *geminiClient
+	model   geminiModel
+	logger  *slog.Logger
+	baseCfg *genai.GenerateContentConfig
 }
 
 type generatorConfig struct {
@@ -76,29 +82,12 @@ type generator struct {
 	baseCfg *genai.GenerateContentConfig
 }
 
-func typeFn[T any](fns map[functionName]any, fname functionName) (function[T], error) {
-	raw, ok := fns[fname]
-	if !ok {
-		return nil, fmt.Errorf("function %s not registered", fname)
-	}
-	typed, ok := raw.(function[T])
-	if !ok {
-		return nil, fmt.Errorf("function %s has wrong return type", fname)
-	}
-
-	return typed, nil
-}
-
 func buildSearcher(cfg searcherConfig) *searcher {
 	log := slog.Default().With(
 		"component", "searcher",
 	)
 
 	fsearch := buildFunctionSearch(log)
-
-	fmap := map[functionName]any{
-		search: fsearch,
-	}
 
 	tools := []*genai.Tool{
 		{
@@ -164,11 +153,10 @@ You must:
 	}
 
 	return &searcher{
-		functions: fmap,
-		gc:        cfg.gc,
-		model:     geminiFlashLiteV2p5,
-		logger:    log,
-		baseCfg:   generationConfig,
+		gc:      cfg.gc,
+		model:   geminiFlashLiteV2p5,
+		logger:  log,
+		baseCfg: generationConfig,
 	}
 }
 

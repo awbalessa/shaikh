@@ -2,36 +2,53 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"iter"
+	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/rag"
+	"github.com/google/uuid"
+	"github.com/oklog/ulid"
 	"google.golang.org/genai"
 )
 
-// app.Agent.Ask(ctx context.Context, prompt string) iter.Seq2
-// ...
-// call searcher. If tool call gotten with name, call searcher.callFn(fn fname), which will receive func
-
-// func (a *Agent) Ask(
-// 	ctx context.Context,
-// 	prompt string,
-// ) iter.Seq2[string, error] {
-// 	return iter.Seq2[string, error](func(yield func (string, errror) bool)) {
-// 		userID := "testuser"
-// 		sessionID := "testsession"
-// 	}
-// }
+func (a *Agent) Ask(
+	ctx context.Context,
+	prompt string,
+) iter.Seq2[string, error] {
+	return iter.Seq2[string, error](func(yield func(string, error) bool) {
+		t := time.Now().UTC()
+		entropy := ulid.Monotonic(rand.Reader, 0)
+		testUser := uuid.New()
+		testSesh, err := ulid.New(ulid.Timestamp(t), entropy)
+		if err != nil {
+			yield("", err)
+			return
+		}
+		key := createContextCacheKey(testUser, testSesh)
+		// getting: pull from gcc. if miss, pull from fly, if miss, pull from pg, if miss, create empty to pass to ask().
+		// setting: set to gcc and to fly. gcc first to store gcc name in fly, then pass msg to nats broker to sync with postgres a bit later. use defer() a bunch to do stuff at the end of the function.
+	})
+}
 
 func (a *Agent) ask(
 	ctx context.Context,
-	prompt []*genai.Content,
+	prompt string,
+	cw []*genai.Content,
+	fnResOut **genai.Part,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
+		full := append(cw, &genai.Content{
+			Role: genai.RoleUser,
+			Parts: []*genai.Part{
+				genai.NewPartFromText(prompt),
+			},
+		})
+
 		for resp, err := range a.searcher.gc.client.Models.GenerateContentStream(
 			ctx,
 			string(a.generator.model),
-			prompt,
+			full,
 			a.generator.baseCfg,
 		) {
 			if err != nil {
@@ -41,10 +58,11 @@ func (a *Agent) ask(
 
 			for _, part := range resp.Candidates[0].Content.Parts {
 				if part.FunctionCall != nil {
-					err := a.handleFunctionCall(ctx, prompt, part.FunctionCall, yield)
+					fnRes, err := a.handleFunctionCall(ctx, prompt, cw, part.FunctionCall, yield)
 					if err != nil {
 						yield("", err)
 					}
+					*fnResOut = fnRes
 					return
 				}
 
@@ -60,64 +78,54 @@ func (a *Agent) ask(
 
 func (a *Agent) handleFunctionCall(
 	ctx context.Context,
-	prompt []*genai.Content,
+	prompt string,
+	cw []*genai.Content,
 	functionCall *genai.FunctionCall,
 	yield func(string, error) bool,
-) error {
-	switch functionCall.Name {
-	case string(search):
-		return a.handleSearch(ctx, prompt, functionCall.Args, yield)
-
-	default:
-		return fmt.Errorf("unknown function: %s", functionCall.Name)
+) (*genai.Part, error) {
+	fn, ok := a.functions[functionName(functionCall.Name)]
+	if !ok {
+		return nil, fmt.Errorf("unknown function: %s", functionCall.Name)
 	}
-}
 
-func (a *Agent) handleSearch(
-	ctx context.Context,
-	prompt []*genai.Content,
-	args map[string]any,
-	yield func(string, error) bool,
-) error {
-	fn, err := typeFn[[]rag.SearchResult](a.searcher.functions, search)
+	results, err := fn.call(ctx, functionCall.Args)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to handle function %s: %w", fn.name(), err)
 	}
 
-	results, err := fn.call(ctx, args)
-	if err != nil {
-		return err
+	fnRes := genai.NewPartFromFunctionResponse(
+		string(fn.name()),
+		results,
+	)
+	promptPart := genai.NewPartFromText(prompt)
+
+	newContent := &genai.Content{
+		Role: genai.RoleUser,
+		Parts: []*genai.Part{
+			fnRes,
+			promptPart,
+		},
 	}
 
-	var parts []*genai.Part
-	for _, r := range results {
-		parts = append(parts, genai.NewPartFromText(r.EmbeddedChunk))
-	}
-
-	contextWithResults := &genai.Content{
-		Role:  genai.RoleUser,
-		Parts: parts,
-	}
-
-	newPrompt := append(prompt, contextWithResults)
+	full := append(cw, newContent)
 
 	for resp, err := range a.generator.gc.client.Models.GenerateContentStream(
 		ctx,
 		string(a.generator.model),
-		newPrompt,
+		full,
 		a.generator.baseCfg,
 	) {
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, part := range resp.Candidates[0].Content.Parts {
 			if part.Text != "" {
 				if !yield(part.Text, nil) {
-					return nil
+					return fnRes, nil
 				}
 			}
 		}
 	}
 
-	return nil
+	return fnRes, nil
 }

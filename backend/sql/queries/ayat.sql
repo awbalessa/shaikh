@@ -1,3 +1,4 @@
 -- name: GetAyatByKeys :many
 SELECT * FROM ayat
-WHERE surah = $1 AND ayah = ANY($2::int[]);
+WHERE surah = sqlc.arg('surah')
+    AND ayah = ANY(sqlc.arg('ayat')::int[]);

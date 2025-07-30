@@ -11,16 +11,17 @@ import (
 
 const getAyatByKeys = `-- name: GetAyatByKeys :many
 SELECT surah, ayah, ar, ar_uthmani, en FROM ayat
-WHERE surah = $1 AND ayah = ANY($2::int[])
+WHERE surah = $1
+    AND ayah = ANY($2::int[])
 `
 
 type GetAyatByKeysParams struct {
-	Surah   int32
-	Column2 []int32
+	Surah int32
+	Ayat  []int32
 }
 
 func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]Ayat, error) {
-	rows, err := q.db.Query(ctx, getAyatByKeys, arg.Surah, arg.Column2)
+	rows, err := q.db.Query(ctx, getAyatByKeys, arg.Surah, arg.Ayat)
 	if err != nil {
 		return nil, err
 	}

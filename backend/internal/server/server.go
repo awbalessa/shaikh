@@ -61,7 +61,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 		Store:  store,
 	})
 
-	agent, err := agent.NewAgent(ctx, pipe)
+	agent, err := agent.NewAgent(ctx, pipe, store)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to start app: %w", err)
