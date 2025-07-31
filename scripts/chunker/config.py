@@ -17,6 +17,7 @@ load_dotenv()
 
 GCP_PROJECT = os.getenv("GCP_PROJECT")
 GCP_REGION = os.getenv("GCP_REGION")
+POSTGRES_DSN=os.getenv("POSTGRES_DSN")
 
 gemini_client = genai.Client(
     vertexai=True,
@@ -35,7 +36,6 @@ BASE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = BASE_DIR / "assets"
 OUTPUT_DIR = BASE_DIR / "output"
 SQLITE_PATH = ASSETS_DIR / "ar-tafsir-ibn-kathir.db"
-POSTGRES_DSN = "host=localhost dbname=shaikh user=azizalessa port=5432"
 CHUNK_TOKEN_LIMIT = 2500
 
 SQLITE_CURSOR = sqlite3.connect(

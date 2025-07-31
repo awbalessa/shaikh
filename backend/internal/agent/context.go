@@ -15,6 +15,7 @@ import (
 
 const (
 	gccTTL30Mins         time.Duration = 30 * time.Minute
+	gccTTL1Hr            time.Duration = 1 * time.Hour
 	contextCacheTTL6Hrs  time.Duration = 6 * time.Hour
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 )
@@ -55,7 +56,7 @@ type sessionContext struct {
 	Window             contextWindow `json:"context_window"`
 }
 
-func (a *Agent) buildContextWindow(cw *contextWindow) []*genai.Content {
+func buildContextWindow(cw *contextWindow) []*genai.Content {
 	var contents []*genai.Content
 
 	if len(cw.previousSessions) > 0 {
@@ -75,7 +76,6 @@ func (a *Agent) buildContextWindow(cw *contextWindow) []*genai.Content {
 		})
 	}
 
-	// --- 2. Interaction History ---
 	for _, inter := range cw.history {
 		// Combine userInput and functionResponse into a single user content
 		var userParts []*genai.Part

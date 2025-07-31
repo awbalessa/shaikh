@@ -418,7 +418,7 @@ func (p *Pipeline) hybridSearch(
 
 	fused := make([][]resultChunks, len(queries))
 	for i := range queries {
-		fused[i] = p.runRRFusion(semRes[i], lexRes[i])
+		fused[i] = runRRFusion(semRes[i], lexRes[i])
 	}
 
 	// Flatten all fused results into one slice
@@ -448,7 +448,7 @@ func (p *Pipeline) hybridSearch(
 	return deduped, nil
 }
 
-func (p *Pipeline) runRRFusion(
+func runRRFusion(
 	sem []resultChunks,
 	lex []resultChunks,
 ) []resultChunks {
