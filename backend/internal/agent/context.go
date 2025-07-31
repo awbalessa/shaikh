@@ -20,7 +20,7 @@ const (
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 )
 
-type sessionSummary struct {
+type previousSession struct {
 	title        string
 	lastAccessed time.Time
 	summary      string
@@ -37,14 +37,14 @@ type interaction struct {
 }
 
 type contextWindow struct {
-	previousSessions []sessionSummary
+	previousSessions []previousSession
 	history          []interaction
 	tokenCount       int
 }
 
 type gcc struct {
 	resourceName string
-	createdAt    time.Time
+	expiresAt    time.Time
 }
 
 type sessionContext struct {
@@ -56,7 +56,16 @@ type sessionContext struct {
 	Window             contextWindow `json:"context_window"`
 }
 
-func buildContextWindow(cw *contextWindow) []*genai.Content {
+func (a *Agent) buildContextWindow(
+	ctx context.Context,
+	cw *contextWindow,
+	agent agentName,
+) ([]*genai.Content, error) {
+	prof, err := a.getProfile(agent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build context window: %w", err)
+	}
+
 	var contents []*genai.Content
 
 	if len(cw.previousSessions) > 0 {
@@ -69,15 +78,14 @@ func buildContextWindow(cw *contextWindow) []*genai.Content {
 			)
 			parts = append(parts, genai.NewPartFromText(partText))
 		}
-
 		contents = append(contents, &genai.Content{
 			Role:  genai.RoleUser,
 			Parts: parts,
 		})
 	}
 
+	historyContents := make([]*genai.Content, 0, len(cw.history)*2)
 	for _, inter := range cw.history {
-		// Combine userInput and functionResponse into a single user content
 		var userParts []*genai.Part
 		if inter.input.functionResponse != nil {
 			userParts = append(userParts, inter.input.functionResponse)
@@ -85,23 +93,79 @@ func buildContextWindow(cw *contextWindow) []*genai.Content {
 		if inter.input.userInput != nil {
 			userParts = append(userParts, inter.input.userInput)
 		}
-
 		if len(userParts) > 0 {
-			contents = append(contents, &genai.Content{
+			historyContents = append(historyContents, &genai.Content{
 				Role:  genai.RoleUser,
 				Parts: userParts,
 			})
 		}
-
 		if inter.modelOutput != nil {
-			contents = append(contents, &genai.Content{
+			historyContents = append(historyContents, &genai.Content{
 				Role:  genai.RoleModel,
 				Parts: []*genai.Part{inter.modelOutput},
 			})
 		}
 	}
 
-	return contents
+	ctc := &genai.CountTokensConfig{
+		SystemInstruction: prof.config.SystemInstruction,
+		Tools:             prof.config.Tools,
+	}
+
+	for {
+		fullContext := append(contents, historyContents...)
+
+		tokResp, err := a.gc.client.Models.CountTokens(ctx, string(prof.model), fullContext, ctc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build context window: %w", err)
+		}
+
+		if tokResp.TotalTokens < 200_000 {
+			contents = fullContext
+			break
+		}
+
+		if len(historyContents) > 1 {
+			historyContents = historyContents[2:]
+		} else {
+			historyContents = nil
+			break
+		}
+	}
+
+	return contents, nil
+}
+
+func (a *Agent) setgcc(
+	ctx context.Context,
+	cw []*genai.Content,
+	agent agentName,
+	key string,
+) (*gcc, error) {
+	prof, err := a.getProfile(agent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set gemini context cache: %w", err)
+	}
+
+	conf := &genai.CreateCachedContentConfig{
+		ExpireTime:        time.Now().Add(gccTTL30Mins),
+		DisplayName:       key,
+		Contents:          cw,
+		SystemInstruction: prof.config.SystemInstruction,
+		Tools:             prof.config.Tools,
+	}
+
+	res, err := a.gc.client.Caches.Create(ctx, string(prof.model), conf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set gemini context cache: %w", err)
+	}
+
+	out := &gcc{
+		resourceName: res.Name,
+		expiresAt:    res.ExpireTime,
+	}
+
+	return out, nil
 }
 
 func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
@@ -113,6 +177,8 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
 		slog.String("token_count", humanize.Comma(int64(sc.Window.tokenCount))),
+		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
+		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	)
 
 	bytes, err := json.Marshal(sc)
@@ -136,10 +202,6 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 
 	return nil
 }
-
-// func (a *Agent) setGeminiContextCache(ctx context.Context, sc *sessionContext) error {
-// 	config := &genai.CreateCachedContentConfig{}
-// }
 
 func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContext, error) {
 	const method = "getContextCache"
@@ -175,6 +237,8 @@ func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContex
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
 		slog.String("token_count", humanize.Comma(int64(sc.Window.tokenCount))),
+		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
+		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	).DebugContext(ctx, "context cache retrieved successfully")
 
 	return &sc, nil

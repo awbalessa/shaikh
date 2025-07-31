@@ -14,11 +14,12 @@ import (
 )
 
 type Server struct {
-	Cancel context.CancelFunc
-	Conn   *pgxpool.Pool
-	Store  *store.Store
-	Pipe   *rag.Pipeline
-	Agent  *agent.Agent
+	Context context.Context
+	Cancel  context.CancelFunc
+	Conn    *pgxpool.Pool
+	Store   *store.Store
+	Pipe    *rag.Pipeline
+	Agent   *agent.Agent
 }
 
 func Serve(cfg *config.Config) (*Server, error) {
@@ -53,6 +54,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 	}
 
 	store := store.New(store.StoreConfig{
+		Config:  cfg,
 		Queries: database.New(conn),
 	})
 
@@ -61,18 +63,23 @@ func Serve(cfg *config.Config) (*Server, error) {
 		Store:  store,
 	})
 
-	agent, err := agent.NewAgent(ctx, pipe, store)
+	agent, err := agent.NewAgent(agent.AgentConfig{
+		Context:  ctx,
+		Pipeline: pipe,
+		Store:    store,
+	})
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	return &Server{
-		Cancel: cancel,
-		Conn:   conn,
-		Store:  store,
-		Pipe:   pipe,
-		Agent:  agent,
+		Context: ctx,
+		Cancel:  cancel,
+		Conn:    conn,
+		Store:   store,
+		Pipe:    pipe,
+		Agent:   agent,
 	}, nil
 }
 

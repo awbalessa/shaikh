@@ -10,21 +10,27 @@ import (
 	"google.golang.org/genai"
 )
 
+type AgentConfig struct {
+	Context  context.Context
+	Pipeline *rag.Pipeline
+	Store    *store.Store
+}
+
 type Agent struct {
-	searcher  *searcher
-	generator *generator
+	agents    map[agentName]*agentProfile
 	functions map[functionName]function
 	logger    *slog.Logger
 	store     *store.Store
+	gc        *geminiClient
 }
 
-func NewAgent(ctx context.Context, p *rag.Pipeline, s *store.Store) (*Agent, error) {
+func NewAgent(cfg AgentConfig) (*Agent, error) {
 	log := slog.Default().With(
 		"component", "agent",
 	)
 
 	gc, err := newGeminiClient(geminiClientConfig{
-		context:    ctx,
+		context:    cfg.Context,
 		maxRetries: geminiMaxRetriesThree,
 		timeout:    geminiTimeoutFifteenSeconds,
 	})
@@ -33,61 +39,74 @@ func NewAgent(ctx context.Context, p *rag.Pipeline, s *store.Store) (*Agent, err
 	}
 
 	se := buildSearcher(searcherConfig{
-		pipe: p,
-		gc:   gc,
+		pipe:   cfg.Pipeline,
+		logger: log,
 	})
 
 	g := buildGenerator(generatorConfig{
-		gc: gc,
+		logger: log,
 	})
 
 	fmap := map[functionName]function{
 		search: buildFunctionSearch(log),
 	}
 
+	amap := map[agentName]*agentProfile{
+		searcherAgent: {
+			name:   searcherAgent,
+			model:  se.model,
+			config: se.baseCfg,
+		},
+		generatorAgent: {
+			name:   generatorAgent,
+			model:  g.model,
+			config: g.baseCfg,
+		},
+	}
+
 	return &Agent{
-		searcher:  se,
-		generator: g,
+		agents:    amap,
+		gc:        gc,
 		functions: fmap,
 		logger:    log,
-		store:     s,
+		store:     cfg.Store,
 	}, nil
 }
 
-type function interface {
-	name() functionName
-	call(ctx context.Context, args map[string]any) (map[string]any, error)
+const (
+	searcherAgent  agentName = "searcher"
+	generatorAgent agentName = "generator"
+)
+
+type agentName string
+
+type agentProfile struct {
+	name   agentName
+	model  geminiModel
+	config *genai.GenerateContentConfig
 }
 
 type searcherConfig struct {
-	pipe *rag.Pipeline
-	gc   *geminiClient
+	pipe   *rag.Pipeline
+	logger *slog.Logger
 }
 
 type searcher struct {
-	gc      *geminiClient
 	model   geminiModel
-	logger  *slog.Logger
 	baseCfg *genai.GenerateContentConfig
 }
 
 type generatorConfig struct {
-	gc *geminiClient
+	logger *slog.Logger
 }
 
 type generator struct {
-	gc      *geminiClient
 	model   geminiModel
-	logger  *slog.Logger
 	baseCfg *genai.GenerateContentConfig
 }
 
 func buildSearcher(cfg searcherConfig) *searcher {
-	log := slog.Default().With(
-		"component", "searcher",
-	)
-
-	fsearch := buildFunctionSearch(log)
+	fsearch := buildFunctionSearch(cfg.logger)
 
 	tools := []*genai.Tool{
 		{
@@ -153,18 +172,12 @@ You must:
 	}
 
 	return &searcher{
-		gc:      cfg.gc,
 		model:   geminiFlashLiteV2p5,
-		logger:  log,
 		baseCfg: generationConfig,
 	}
 }
 
 func buildGenerator(cfg generatorConfig) *generator {
-	log := slog.Default().With(
-		"component", "generator",
-	)
-
 	resSchema := &genai.Schema{
 		Type:        genai.TypeString,
 		Description: "A Markdown-formatted answer in the user's original language. Use rich formatting like headers, lists, bold text, and tables to visually illustrate your answers.",
@@ -207,9 +220,25 @@ Your job is to generate a high-quality, evidence-based answer using only the pro
 	}
 
 	return &generator{
-		gc:      cfg.gc,
 		model:   geminiFlashLiteV2p5,
-		logger:  log,
 		baseCfg: generationConfig,
 	}
+}
+
+func (a *Agent) getProfile(ag agentName) (*agentProfile, error) {
+	profile, ok := a.agents[ag]
+	if !ok {
+		return nil, fmt.Errorf("unknown agent: %s", ag)
+	}
+
+	return profile, nil
+}
+
+func (a *Agent) getFunction(fn functionName) (function, error) {
+	function, ok := a.functions[fn]
+	if !ok {
+		return nil, fmt.Errorf("unknown function: %s", fn)
+	}
+
+	return function, nil
 }

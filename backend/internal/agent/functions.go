@@ -27,8 +27,9 @@ type functionName string
 type enumContentType string
 type enumSource string
 
-func ptr[T any](t T) *T {
-	return &t
+type function interface {
+	name() functionName
+	call(ctx context.Context, args map[string]any) (map[string]any, error)
 }
 
 type functionSearch struct {
@@ -330,4 +331,8 @@ func toAyahNumbers(v any) []models.AyahNumber {
 		}
 	}
 	return out
+}
+
+func ptr[T any](t T) *T {
+	return &t
 }
