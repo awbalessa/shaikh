@@ -13,14 +13,8 @@ import (
 // 	prompt string,
 // ) iter.Seq2[string, error] {
 // 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-// 		t := time.Now().UTC()
-// 		entropy := ulid.Monotonic(rand.Reader, 0)
 // 		testUser := uuid.New()
-// 		testSesh, err := ulid.New(ulid.Timestamp(t), entropy)
-// 		if err != nil {
-// 			yield("", err)
-// 			return
-// 		}
+// 		testSesh := uuid.New()
 
 // 		key := createContextCacheKey(testUser, testSesh)
 // 		// getting: pull from gcc. if miss, pull from fly, if miss, pull from pg, if miss, create empty to pass to ask().

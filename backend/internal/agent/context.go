@@ -9,7 +9,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
-	"github.com/oklog/ulid"
 	"google.golang.org/genai"
 )
 
@@ -20,8 +19,12 @@ const (
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 )
 
+type userMemory struct {
+	createdAt time.Time
+	memory    string
+}
+
 type previousSession struct {
-	title        string
 	lastAccessed time.Time
 	summary      string
 }
@@ -37,9 +40,9 @@ type interaction struct {
 }
 
 type contextWindow struct {
+	userMemories     []userMemory
 	previousSessions []previousSession
 	history          []interaction
-	tokenCount       int
 }
 
 type gcc struct {
@@ -49,11 +52,39 @@ type gcc struct {
 
 type sessionContext struct {
 	UserID             uuid.UUID     `json:"user_id"`
-	SessionID          ulid.ULID     `json:"session_id"`
+	SessionID          uuid.UUID     `json:"session_id"`
 	GeminiContextCache gcc           `json:"gcc"`
 	CreatedAt          time.Time     `json:"created_at"`
 	UpdatedAt          time.Time     `json:"updated_at"`
 	Window             contextWindow `json:"context_window"`
+}
+
+func (a *Agent) getContext(
+	ctx context.Context,
+	userID uuid.UUID,
+	sessionID uuid.UUID,
+) (*sessionContext, bool, error) {
+	var out *sessionContext
+	var gccIsAlive bool
+	key := createContextCacheKey(userID, sessionID)
+	flyCache, err := a.getContextCache(ctx, key)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	if flyCache != nil {
+		out = flyCache
+		if time.Now().After(flyCache.GeminiContextCache.expiresAt) {
+			gccIsAlive = false
+		} else {
+			gccIsAlive = true
+		}
+
+		return out, gccIsAlive, nil
+	}
+
+	// if nil, fetch from db.
+	return out, gccIsAlive, nil
 }
 
 func (a *Agent) buildContextWindow(
@@ -68,12 +99,26 @@ func (a *Agent) buildContextWindow(
 
 	var contents []*genai.Content
 
+	if len(cw.userMemories) > 0 {
+		var parts []*genai.Part
+		for _, m := range cw.userMemories {
+			partText := fmt.Sprintf("As of %s, %s",
+				humanize.Time(m.createdAt),
+				m.memory,
+			)
+			parts = append(parts, genai.NewPartFromText(partText))
+		}
+		contents = append(contents, &genai.Content{
+			Role:  genai.RoleUser,
+			Parts: parts,
+		})
+	}
+
 	if len(cw.previousSessions) > 0 {
 		var parts []*genai.Part
 		for _, s := range cw.previousSessions {
-			partText := fmt.Sprintf("Session Title: %s\nLast Accessed: %s\nSummary: %s",
-				s.title,
-				formatRecency(s.lastAccessed),
+			partText := fmt.Sprintf("Last Accessed: %s\nSummary: %s",
+				humanize.Time(s.lastAccessed),
 				s.summary,
 			)
 			parts = append(parts, genai.NewPartFromText(partText))
@@ -176,7 +221,6 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 		slog.String("session_id", sc.SessionID.String()),
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
-		slog.String("token_count", humanize.Comma(int64(sc.Window.tokenCount))),
 		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
 		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	)
@@ -236,7 +280,6 @@ func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContex
 		slog.String("session_id", sc.SessionID.String()),
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
-		slog.String("token_count", humanize.Comma(int64(sc.Window.tokenCount))),
 		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
 		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	).DebugContext(ctx, "context cache retrieved successfully")
@@ -244,25 +287,6 @@ func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContex
 	return &sc, nil
 }
 
-func createContextCacheKey(userID uuid.UUID, sessionID ulid.ULID) string {
+func createContextCacheKey(userID uuid.UUID, sessionID uuid.UUID) string {
 	return fmt.Sprintf("shaikh:user:%s:session:%s:context", userID.String(), sessionID.String())
-}
-
-func formatRecency(t time.Time) string {
-	duration := time.Since(t)
-
-	switch {
-	case duration < time.Minute:
-		return "just now"
-	case duration < time.Hour:
-		return fmt.Sprintf("%d minutes ago", int(duration.Minutes()))
-	case duration < 24*time.Hour:
-		return fmt.Sprintf("%d hours ago", int(duration.Hours()))
-	case duration < 7*24*time.Hour:
-		return fmt.Sprintf("%d days ago", int(duration.Hours()/24))
-	case duration < 30*24*time.Hour:
-		return fmt.Sprintf("%d weeks ago", int(duration.Hours()/(24*7)))
-	default:
-		return t.Format("2006-01-02")
-	}
 }

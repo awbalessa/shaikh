@@ -97,6 +97,90 @@ func (ns NullGranularity) Value() (driver.Value, error) {
 	return string(ns.Granularity), nil
 }
 
+type MessagesModel string
+
+const (
+	MessagesModelGemini25Flash     MessagesModel = "gemini-2.5-flash"
+	MessagesModelGemini25FlashLite MessagesModel = "gemini-2.5-flash-lite"
+)
+
+func (e *MessagesModel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MessagesModel(s)
+	case string:
+		*e = MessagesModel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MessagesModel: %T", src)
+	}
+	return nil
+}
+
+type NullMessagesModel struct {
+	MessagesModel MessagesModel
+	Valid         bool // Valid is true if MessagesModel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMessagesModel) Scan(value interface{}) error {
+	if value == nil {
+		ns.MessagesModel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MessagesModel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMessagesModel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MessagesModel), nil
+}
+
+type MessagesRole string
+
+const (
+	MessagesRoleUser  MessagesRole = "user"
+	MessagesRoleModel MessagesRole = "model"
+)
+
+func (e *MessagesRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = MessagesRole(s)
+	case string:
+		*e = MessagesRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for MessagesRole: %T", src)
+	}
+	return nil
+}
+
+type NullMessagesRole struct {
+	MessagesRole MessagesRole
+	Valid        bool // Valid is true if MessagesRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullMessagesRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.MessagesRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.MessagesRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullMessagesRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.MessagesRole), nil
+}
+
 type Source string
 
 const (
@@ -187,4 +271,39 @@ type Document struct {
 	Document      string
 	Surah         pgtype.Int4
 	Ayah          pgtype.Int4
+}
+
+type Memory struct {
+	ID        int32
+	UserID    pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	Memories  string
+}
+
+type Message struct {
+	ID            int32
+	SessionID     pgtype.UUID
+	UserID        pgtype.UUID
+	CreatedAt     pgtype.Timestamptz
+	Role          MessagesRole
+	UserContent   string
+	SystemContent pgtype.Text
+	Model         NullMessagesModel
+	TokenCount    pgtype.Int4
+}
+
+type Session struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+	EndedAt   pgtype.Timestamptz
+	Summary   pgtype.Text
+}
+
+type User struct {
+	ID        pgtype.UUID
+	Email     string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }

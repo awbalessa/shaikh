@@ -43,9 +43,7 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		logger: log,
 	})
 
-	g := buildGenerator(generatorConfig{
-		logger: log,
-	})
+	g := buildGenerator()
 
 	fmap := map[functionName]function{
 		search: buildFunctionSearch(log),
@@ -94,10 +92,6 @@ type searcherConfig struct {
 type searcher struct {
 	model   geminiModel
 	baseCfg *genai.GenerateContentConfig
-}
-
-type generatorConfig struct {
-	logger *slog.Logger
 }
 
 type generator struct {
@@ -177,7 +171,7 @@ You must:
 	}
 }
 
-func buildGenerator(cfg generatorConfig) *generator {
+func buildGenerator() *generator {
 	resSchema := &genai.Schema{
 		Type:        genai.TypeString,
 		Description: "A Markdown-formatted answer in the user's original language. Use rich formatting like headers, lists, bold text, and tables to visually illustrate your answers.",
