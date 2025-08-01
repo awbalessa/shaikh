@@ -1,6 +1,6 @@
 -- +goose Up
 
-CREATE TYPE messages_role AS enum ('user', 'model');
+CREATE TYPE messages_role AS enum ('user', 'model', 'system');
 CREATE TYPE messages_model AS enum ('gemini-2.5-flash', 'gemini-2.5-flash-lite');
 
 
@@ -10,9 +10,8 @@ CREATE TABLE IF NOT EXISTS messages (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     role messages_role NOT NULL,
-    user_content TEXT NOT NULL,
-    system_content TEXT,
-    model messages_model,
+    content TEXT NOT NULL,
+    model messages_model NOT NULL,
     token_count INTEGER
 );
 

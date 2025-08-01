@@ -59,6 +59,7 @@ type sessionContext struct {
 	Window             contextWindow `json:"context_window"`
 }
 
+// write setContext global function after. Write the function that fetches all the info from pg and puts it into session context.
 func (a *Agent) getContext(
 	ctx context.Context,
 	userID uuid.UUID,
