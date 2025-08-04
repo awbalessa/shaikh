@@ -50,7 +50,7 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 		slog.Int("chunk_limit", int(arg.ChunkLimit)),
 	)
 
-	log.InfoContext(ctx, "starting search...")
+	log.DebugContext(ctx, "starting search...")
 	start := time.Now()
 	results, err := p.hybridSearch(ctx, queries, int(initial200))
 	if err != nil {
@@ -59,7 +59,7 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),
-	).InfoContext(ctx, "search completed: sending to reranker...")
+	).DebugContext(ctx, "search completed: sending to reranker...")
 
 	docs := make([]string, 0, len(results))
 	for _, chunk := range results {
@@ -87,7 +87,7 @@ func (p *Pipeline) Search(ctx context.Context, arg SearchParameters) ([]SearchRe
 	log.With(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("chunks_returned", len(final)),
-	).InfoContext(ctx, "reranking completed: returning...")
+	).DebugContext(ctx, "reranking completed: returning...")
 
 	return final, nil
 }

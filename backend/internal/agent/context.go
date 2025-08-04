@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	gccTTL30Mins         time.Duration = 30 * time.Minute
-	gccTTL1Hr            time.Duration = 1 * time.Hour
 	contextCacheTTL6Hrs  time.Duration = 6 * time.Hour
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 	memories100          int           = 100
@@ -50,18 +48,272 @@ type contextWindow struct {
 	history          []interaction
 }
 
-type gcc struct {
-	resourceName string
-	expiresAt    time.Time
+type contextCache struct {
+	UserID    uuid.UUID      `json:"user_id"`
+	SessionID uuid.UUID      `json:"session_id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Window    *contextWindow `json:"context_window"`
 }
 
-type sessionContext struct {
-	UserID    uuid.UUID          `json:"user_id"`
-	SessionID uuid.UUID          `json:"session_id"`
-	CreatedAt time.Time          `json:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at"`
-	GCCMap    map[agentName]*gcc `json:"gcc_map"`
-	Window    *contextWindow     `json:"context_window"`
+func (a *Agent) getContext(ctx context.Context) (*contextCache, []*genai.Content, error) {
+	const method = "getContext"
+	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+	log := a.logger.With(
+		slog.String("method", method),
+		slog.String("userID", userID.String()),
+		slog.String("sessionID", sessionID.String()),
+	)
+
+	now := time.Now()
+	sc, err := a.getContextCache(ctx, userID, sessionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	if sc == nil {
+		window, err := a.getDbContext(ctx, userID, sessionID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get context: %w", err)
+		}
+
+		sc = &contextCache{
+			UserID:    userID,
+			SessionID: sessionID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Window:    window,
+		}
+	}
+
+	cw, err := a.buildContextWindow(ctx, sc.Window, searcherAgent)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	log.With(
+		slog.String("duration", time.Since(now).String()),
+	).DebugContext(ctx, "retrieved context successfully")
+
+	return sc, cw, nil
+}
+
+func (a *Agent) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*contextCache, error) {
+	const method = "getContextCache"
+	key := createContextCacheKey(userID, sessionID)
+	log := a.logger.With(
+		slog.String("method", method),
+		slog.String("key", key),
+	)
+
+	now := time.Now()
+	bytes, err := a.store.Fly.Get(ctx, key)
+	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to get context cache")
+		return nil, fmt.Errorf("failed to get context cache: %w", err)
+	}
+
+	if bytes == nil {
+		log.WarnContext(ctx, "missed context cache: returning nil...")
+		return nil, nil
+	}
+
+	var sc contextCache
+	if err = json.Unmarshal(bytes, &sc); err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to get context cache")
+		return nil, fmt.Errorf("failed to get context cache: %w", err)
+	}
+
+	log.With(
+		slog.String("user_id", sc.UserID.String()),
+		slog.String("session_id", sc.SessionID.String()),
+		slog.Time("created_at", sc.CreatedAt),
+		slog.Time("updated_at", sc.UpdatedAt),
+		slog.Int("num_of_memories", len(sc.Window.userMemories)),
+		slog.Int("num_of_prev_sessions", len(sc.Window.previousSessions)),
+		slog.Int("num_of_interactions", len(sc.Window.history)),
+		slog.String("duration", time.Since(now).String()),
+	).DebugContext(ctx, "retrieved context cache successfully")
+
+	return &sc, nil
+}
+
+func (a *Agent) getDbContext(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+) (*contextWindow, error) {
+	const method = "getDbContext"
+	userUUID := pgtype.UUID{
+		Bytes: userID,
+		Valid: true,
+	}
+
+	var (
+		memories     []userMemory
+		sessions     []previousSession
+		interactions []interaction
+	)
+
+	log := a.logger.With(
+		slog.String("method", method),
+		slog.String("userID", userID.String()),
+		slog.String("sessionID", sessionID.String()),
+	)
+
+	now := time.Now()
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		mem, err := a.store.Pg.GetMemoriesByUserID(ctx, database.GetMemoriesByUserIDParams{
+			NumberOfMemories: int32(memories100),
+			UserID:           userUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]userMemory, 0, len(mem))
+		for _, m := range mem {
+			local = append(local, userMemory{
+				updatedAt: m.UpdatedAt.Time,
+				memory:    m.Memory,
+			})
+		}
+		memories = local
+		return nil
+	})
+
+	g.Go(func() error {
+		prev, err := a.store.Pg.GetSessionsByUserID(ctx, database.GetSessionsByUserIDParams{
+			NumberOfSessions: int32(sessions5),
+			UserID:           userUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]previousSession, 0, len(prev))
+		for _, p := range prev {
+			local = append(local, previousSession{
+				lastAccessed: p.UpdatedAt.Time,
+				summary:      p.Summary.String,
+			})
+		}
+		sessions = local
+		return nil
+	})
+
+	g.Go(func() error {
+		messages, err := a.store.Pg.GetMessagesBySessionID(ctx, pgtype.UUID{
+			Bytes: sessionID,
+			Valid: true,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]interaction, 0)
+		var current inputPrompt
+
+		for _, m := range messages {
+			switch m.Role {
+			case "user":
+				current.userInput = genai.NewPartFromText(m.Content)
+
+			case "system":
+				var responseMap map[string]any
+				if err := json.Unmarshal(m.FunctionResponse, &responseMap); err != nil {
+					return fmt.Errorf("failed to get context from db: %w", err)
+				}
+				current.functionResponse = genai.NewPartFromFunctionResponse(
+					m.FunctionName.String,
+					responseMap,
+				)
+
+			case "model":
+				local = append(local, interaction{
+					input:       current,
+					modelOutput: genai.NewPartFromText(m.Content),
+				})
+				current = inputPrompt{}
+			}
+		}
+
+		interactions = local
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	log.With(
+		slog.Int("num_of_memories", len(memories)),
+		slog.Int("num_of_prev_sessions", len(sessions)),
+		slog.Int("num_of_interactions", len(interactions)),
+		slog.String("duration", time.Since(now).String()),
+	).DebugContext(ctx, "retrieved db context successfully")
+
+	return &contextWindow{
+		userMemories:     memories,
+		previousSessions: sessions,
+		history:          interactions,
+	}, nil
+}
+
+func (a *Agent) setContextCache(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+	win *contextWindow,
+) error {
+	const method = "setContextCache"
+	log := a.logger.With(
+		slog.String("method", method),
+		slog.String("user_id", userID.String()),
+		slog.String("session_id", sessionID.String()),
+	)
+
+	now := time.Now()
+
+	bytes, err := json.Marshal(&contextCache{
+		UserID:    userID,
+		SessionID: sessionID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Window:    win,
+	})
+	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to set context cache")
+		return fmt.Errorf("failed to set context cache: %w", err)
+	}
+
+	key := createContextCacheKey(userID, sessionID)
+
+	if err = a.store.Fly.Set(ctx, key, bytes, contextCacheTTL6Hrs); err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to set context cache")
+		return fmt.Errorf("failed to set context cache: %w", err)
+	}
+
+	log.With(
+		slog.String("duration", time.Since(now).String()),
+	).DebugContext(ctx, "set context cache successfully")
+
+	return nil
+}
+
+func (a *Agent) setDbContext(sc *contextCache) error {
+	// write publisher to jetstream
+	return nil
 }
 
 func (a *Agent) buildContextWindow(
@@ -158,311 +410,6 @@ func (a *Agent) buildContextWindow(
 	return contents, nil
 }
 
-func (a *Agent) setContext(
-	ctx context.Context,
-	sc *sessionContext,
-	cw []*genai.Content,
-) error {
-	for ag := range sc.GCCMap {
-		if err := a.setgcc(ctx, sc, cw, ag); err != nil {
-			return fmt.Errorf("failed to set context: %w", err)
-		}
-	}
-
-	if err := a.setFlyContext(ctx, sc); err != nil {
-		return fmt.Errorf("failed to set context: %w", err)
-	}
-
-	return nil
-}
-
-func (a *Agent) setgcc(
-	ctx context.Context,
-	sc *sessionContext,
-	cw []*genai.Content,
-	agent agentName,
-) error {
-	prof, err := a.getProfile(agent)
-	if err != nil {
-		return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
-	}
-
-	if existing := sc.GCCMap[agent]; existing != nil {
-		if _, err := a.gc.client.Caches.Delete(ctx, existing.resourceName, nil); err != nil {
-			return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
-		}
-	}
-
-	expireTime := time.Now().Add(gccTTL30Mins)
-	createReq := &genai.CreateCachedContentConfig{
-		ExpireTime:        expireTime,
-		Contents:          cw,
-		SystemInstruction: prof.config.SystemInstruction,
-		Tools:             prof.config.Tools,
-	}
-
-	res, err := a.gc.client.Caches.Create(ctx, string(prof.model), createReq)
-	if err != nil {
-		return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
-	}
-
-	newGCC := &gcc{
-		resourceName: res.Name,
-		expiresAt:    res.ExpireTime,
-	}
-	sc.GCCMap[agent] = newGCC
-
-	return nil
-}
-
-func (a *Agent) setFlyContext(ctx context.Context, sc *sessionContext) error {
-	const method = "setContextCache"
-	log := a.logger.With(
-		slog.String("method", method),
-		slog.String("user_id", sc.UserID.String()),
-		slog.String("session_id", sc.SessionID.String()),
-		slog.Time("created_at", sc.CreatedAt),
-		slog.Time("updated_at", sc.UpdatedAt),
-	)
-
-	bytes, err := json.Marshal(sc)
-	if err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to set context cache")
-		return fmt.Errorf("failed to set context cache: %w", err)
-	}
-
-	key := createContextCacheKey(sc.UserID, sc.SessionID)
-
-	if err = a.store.Fly.Set(ctx, key, bytes, contextCacheTTL6Hrs); err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to set context cache")
-		return fmt.Errorf("failed to set context cache: %w", err)
-	}
-
-	log.DebugContext(ctx, "set context cache successfully")
-
-	return nil
-}
-
-func (a *Agent) applygcc(
-	agent agentName,
-	sc *sessionContext,
-	cw []*genai.Content,
-	parts []*genai.Part,
-) (*agentProfile, []*genai.Content, error) {
-	prof, err := a.getProfile(agent)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to apply gcc for %s: %w", agent, err)
-	}
-
-	gcc := sc.GCCMap[agent]
-	var fullContext []*genai.Content
-	now := time.Now()
-
-	if gcc != nil && now.Before(gcc.expiresAt) {
-		prof.config.CachedContent = gcc.resourceName
-		prof.config.SystemInstruction = nil
-		prof.config.Tools = nil
-
-		fullContext = []*genai.Content{
-			{
-				Role:  genai.RoleUser,
-				Parts: parts,
-			},
-		}
-	} else {
-		fullContext = append(cw, &genai.Content{
-			Role:  genai.RoleUser,
-			Parts: parts,
-		})
-	}
-
-	return prof, fullContext, nil
-}
-
-func (a *Agent) getContext(ctx context.Context) (*sessionContext, []*genai.Content, error) {
-	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-
-	sc, err := a.getFlyContext(ctx, userID, sessionID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get context: %w", err)
-	}
-
-	if sc == nil {
-		window, err := a.getDbContext(ctx, userID, sessionID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get context: %w", err)
-		}
-
-		sc = &sessionContext{
-			UserID:    userID,
-			SessionID: sessionID,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			GCCMap:    make(map[agentName]*gcc),
-			Window:    window,
-		}
-	}
-
-	cw, err := a.buildContextWindow(ctx, sc.Window, searcherAgent)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get context: %w", err)
-	}
-
-	return sc, cw, nil
-}
-
-func (a *Agent) getFlyContext(ctx context.Context, userID, sessionID uuid.UUID) (*sessionContext, error) {
-	const method = "getFlyContext"
-	key := createContextCacheKey(userID, sessionID)
-	log := a.logger.With(
-		slog.String("method", method),
-		slog.String("key", key),
-	)
-
-	bytes, err := a.store.Fly.Get(ctx, key)
-	if err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to get context cache")
-		return nil, fmt.Errorf("failed to get context cache: %w", err)
-	}
-
-	if bytes == nil {
-		log.WarnContext(ctx, "missed context cache: returning nil...")
-		return nil, nil
-	}
-
-	var sc sessionContext
-	if err = json.Unmarshal(bytes, &sc); err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to get context cache")
-		return nil, fmt.Errorf("failed to get context cache: %w", err)
-	}
-
-	log.With(
-		slog.String("user_id", sc.UserID.String()),
-		slog.String("session_id", sc.SessionID.String()),
-		slog.Time("created_at", sc.CreatedAt),
-		slog.Time("updated_at", sc.UpdatedAt),
-	).DebugContext(ctx, "context cache retrieved successfully")
-
-	return &sc, nil
-}
-
-func (a *Agent) getDbContext(
-	ctx context.Context,
-	userID, sessionID uuid.UUID,
-) (*contextWindow, error) {
-	userUUID := pgtype.UUID{
-		Bytes: userID,
-		Valid: true,
-	}
-
-	var (
-		memories     []userMemory
-		sessions     []previousSession
-		interactions []interaction
-	)
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		mem, err := a.store.Pg.GetMemoriesByUserID(ctx, database.GetMemoriesByUserIDParams{
-			NumberOfMemories: int32(memories100),
-			UserID:           userUUID,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get context from db: %w", err)
-		}
-
-		local := make([]userMemory, 0, len(mem))
-		for _, m := range mem {
-			local = append(local, userMemory{
-				updatedAt: m.UpdatedAt.Time,
-				memory:    m.Memory,
-			})
-		}
-		memories = local
-		return nil
-	})
-
-	g.Go(func() error {
-		prev, err := a.store.Pg.GetSessionsByUserID(ctx, database.GetSessionsByUserIDParams{
-			NumberOfSessions: int32(sessions5),
-			UserID:           userUUID,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get context from db: %w", err)
-		}
-
-		local := make([]previousSession, 0, len(prev))
-		for _, p := range prev {
-			local = append(local, previousSession{
-				lastAccessed: p.UpdatedAt.Time,
-				summary:      p.Summary.String,
-			})
-		}
-		sessions = local
-		return nil
-	})
-
-	g.Go(func() error {
-		messages, err := a.store.Pg.GetMessagesBySessionID(ctx, pgtype.UUID{
-			Bytes: sessionID,
-			Valid: true,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get context from db: %w", err)
-		}
-
-		local := make([]interaction, 0)
-		var current inputPrompt
-
-		for _, m := range messages {
-			switch m.Role {
-			case "user":
-				current.userInput = genai.NewPartFromText(m.Content)
-
-			case "system":
-				var responseMap map[string]any
-				if err := json.Unmarshal(m.FunctionResponse, &responseMap); err != nil {
-					return fmt.Errorf("failed to get context from db: %w", err)
-				}
-				current.functionResponse = genai.NewPartFromFunctionResponse(
-					m.FunctionName.String,
-					responseMap,
-				)
-
-			case "model":
-				local = append(local, interaction{
-					input:       current,
-					modelOutput: genai.NewPartFromText(m.Content),
-				})
-				current = inputPrompt{}
-			}
-		}
-
-		interactions = local
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return &contextWindow{
-		userMemories:     memories,
-		previousSessions: sessions,
-		history:          interactions,
-	}, nil
-}
-
 func createContextCacheKey(userID uuid.UUID, sessionID uuid.UUID) string {
-	return fmt.Sprintf("shaikh:user:%s:session:%s:context", userID.String(), sessionID.String())
+	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }
