@@ -14,7 +14,7 @@ import (
 const createMessage = `-- name: CreateMessage :one
 INSERT INTO messages (session_id, user_id, role, content, model, token_count)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, session_id, user_id, created_at, role, content, model, token_count
+RETURNING id, session_id, user_id, created_at, role, content, model, token_count, function_name, function_response
 `
 
 type CreateMessageParams struct {
@@ -45,12 +45,14 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.Content,
 		&i.Model,
 		&i.TokenCount,
+		&i.FunctionName,
+		&i.FunctionResponse,
 	)
 	return i, err
 }
 
 const getMessageByID = `-- name: GetMessageByID :one
-SELECT id, session_id, user_id, created_at, role, content, model, token_count FROM messages
+SELECT id, session_id, user_id, created_at, role, content, model, token_count, function_name, function_response FROM messages
 WHERE id = $1
 `
 
@@ -66,12 +68,14 @@ func (q *Queries) GetMessageByID(ctx context.Context, id int32) (Message, error)
 		&i.Content,
 		&i.Model,
 		&i.TokenCount,
+		&i.FunctionName,
+		&i.FunctionResponse,
 	)
 	return i, err
 }
 
 const getMessagesBySessionID = `-- name: GetMessagesBySessionID :many
-SELECT id, session_id, user_id, created_at, role, content, model, token_count FROM messages
+SELECT id, session_id, user_id, created_at, role, content, model, token_count, function_name, function_response FROM messages
 WHERE session_id = $1
 ORDER BY created_at DESC
 `
@@ -94,6 +98,45 @@ func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.U
 			&i.Content,
 			&i.Model,
 			&i.TokenCount,
+			&i.FunctionName,
+			&i.FunctionResponse,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMessagesBySessionIDAsc = `-- name: GetMessagesBySessionIDAsc :many
+SELECT id, session_id, user_id, created_at, role, content, model, token_count, function_name, function_response FROM messages
+WHERE session_id = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtype.UUID) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getMessagesBySessionIDAsc, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.SessionID,
+			&i.UserID,
+			&i.CreatedAt,
+			&i.Role,
+			&i.Content,
+			&i.Model,
+			&i.TokenCount,
+			&i.FunctionName,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}
@@ -106,7 +149,7 @@ func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.U
 }
 
 const getUserMessagesByUserID = `-- name: GetUserMessagesByUserID :many
-SELECT m.id, m.session_id, m.user_id, m.created_at, m.role, m.content, m.model, m.token_count
+SELECT m.id, m.session_id, m.user_id, m.created_at, m.role, m.content, m.model, m.token_count, m.function_name, m.function_response
 FROM messages m
 JOIN sessions s ON m.session_id = s.id
 WHERE m.user_id = $1
@@ -138,6 +181,8 @@ func (q *Queries) GetUserMessagesByUserID(ctx context.Context, arg GetUserMessag
 			&i.Content,
 			&i.Model,
 			&i.TokenCount,
+			&i.FunctionName,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}

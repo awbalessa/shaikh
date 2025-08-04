@@ -12,40 +12,30 @@ import (
 // 	ctx context.Context,
 // 	prompt string,
 // ) iter.Seq2[string, error] {
-// 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-// 		testUser := uuid.New()
-// 		testSesh := uuid.New()
 
-// 		key := createContextCacheKey(testUser, testSesh)
-// 		// getting: pull from gcc. if miss, pull from fly, if miss, pull from pg, if miss, create empty to pass to ask().
-// 		// setting: set to gcc and to fly. gcc first to store gcc name in fly, then pass msg to nats broker to sync with postgres a bit later. use defer() a bunch to do stuff at the end of the function.
-// 	})
 // }
 
 func (a *Agent) ask(
 	ctx context.Context,
-	prompt string,
+	sc *sessionContext,
 	cw []*genai.Content,
+	prompt string,
 	fnResOut **genai.Part,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		prof, err := a.getProfile(searcherAgent)
+		promptPart := genai.NewPartFromText(prompt)
+		parts := []*genai.Part{promptPart}
+
+		prof, fullContext, err := a.applygcc(searcherAgent, sc, cw, parts)
 		if err != nil {
 			yield("", err)
 			return
 		}
 
-		full := append(cw, &genai.Content{
-			Role: genai.RoleUser,
-			Parts: []*genai.Part{
-				genai.NewPartFromText(prompt),
-			},
-		})
-
 		for resp, err := range a.gc.client.Models.GenerateContentStream(
 			ctx,
 			string(prof.model),
-			full,
+			fullContext,
 			prof.config,
 		) {
 			if err != nil {
@@ -53,17 +43,29 @@ func (a *Agent) ask(
 				return
 			}
 
+			if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+				continue
+			}
+
 			for _, part := range resp.Candidates[0].Content.Parts {
-				if part.FunctionCall != nil {
-					fnRes, err := a.handleFunctionCall(ctx, prompt, cw, part.FunctionCall, yield)
+				switch {
+				case part.FunctionCall != nil:
+					fnRes, err := a.handleFunctionCall(
+						ctx,
+						sc,
+						cw,
+						prompt,
+						part.FunctionCall,
+						yield,
+					)
 					if err != nil {
 						yield("", err)
+						return
 					}
 					*fnResOut = fnRes
 					return
-				}
 
-				if part.Text != "" {
+				case part.Text != "":
 					if !yield(part.Text, nil) {
 						return
 					}
@@ -75,50 +77,41 @@ func (a *Agent) ask(
 
 func (a *Agent) handleFunctionCall(
 	ctx context.Context,
-	prompt string,
+	sc *sessionContext,
 	cw []*genai.Content,
-	functionCall *genai.FunctionCall,
+	prompt string,
+	fnCall *genai.FunctionCall,
 	yield func(string, error) bool,
 ) (*genai.Part, error) {
-	fn, err := a.getFunction(functionName(functionCall.Name))
+	fn, err := a.getFunction(functionName(fnCall.Name))
 	if err != nil {
-		return nil, fmt.Errorf("failed to handle function %s: %w", fn.name(), err)
+		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
 	}
 
-	results, err := fn.call(ctx, functionCall.Args)
+	results, err := fn.call(ctx, fnCall.Args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to handle function %s: %w", fn.name(), err)
+		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
 	}
 
-	prof, err := a.getProfile(generatorAgent)
+	fnRes := genai.NewPartFromFunctionResponse(string(fn.name()), results)
+	parts := []*genai.Part{fnRes, genai.NewPartFromText(prompt)}
+
+	prof, fullContext, err := a.applygcc(generatorAgent, sc, cw, parts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to handle function %s: %w", fn.name(), err)
+		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
 	}
-
-	fnRes := genai.NewPartFromFunctionResponse(
-		string(fn.name()),
-		results,
-	)
-	promptPart := genai.NewPartFromText(prompt)
-
-	newContent := &genai.Content{
-		Role: genai.RoleUser,
-		Parts: []*genai.Part{
-			fnRes,
-			promptPart,
-		},
-	}
-
-	full := append(cw, newContent)
 
 	for resp, err := range a.gc.client.Models.GenerateContentStream(
 		ctx,
 		string(prof.model),
-		full,
+		fullContext,
 		prof.config,
 	) {
 		if err != nil {
 			return nil, err
+		}
+		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+			continue
 		}
 		for _, part := range resp.Candidates[0].Content.Parts {
 			if part.Text != "" {

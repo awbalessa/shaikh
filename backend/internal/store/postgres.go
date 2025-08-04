@@ -8,6 +8,7 @@ import (
 
 	"github.com/awbalessa/shaikh/backend/internal/arabic"
 	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func (pg *postgresClient) RunSemanticSearch(
@@ -112,6 +113,60 @@ func (pg *postgresClient) GetAyatByKeys(ctx context.Context, surah int32, ayat [
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ayat by keys: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (pg *postgresClient) GetMemoriesByUserID(
+	ctx context.Context,
+	arg database.GetMemoriesByUserIDParams,
+) ([]database.Memory, error) {
+	rows, err := pg.queries.GetMemoriesByUserID(ctx, database.GetMemoriesByUserIDParams{
+		NumberOfMemories: arg.NumberOfMemories,
+		UserID:           arg.UserID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get memories by user id: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (pg *postgresClient) GetSessionsByUserID(
+	ctx context.Context,
+	arg database.GetSessionsByUserIDParams,
+) ([]database.Session, error) {
+	rows, err := pg.queries.GetSessionsByUserID(ctx, database.GetSessionsByUserIDParams{
+		NumberOfSessions: arg.NumberOfSessions,
+		UserID:           arg.UserID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions by user id: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (pg *postgresClient) GetMessagesBySessionID(
+	ctx context.Context,
+	sessionID pgtype.UUID,
+) ([]database.Message, error) {
+	rows, err := pg.queries.GetMessagesBySessionID(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages by session id: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (pg *postgresClient) GetMessagesBySessionIDAsc(
+	ctx context.Context,
+	sessionID pgtype.UUID,
+) ([]database.Message, error) {
+	rows, err := pg.queries.GetMessagesBySessionIDAsc(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
 	}
 
 	return rows, nil

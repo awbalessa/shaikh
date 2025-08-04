@@ -1,6 +1,6 @@
 -- +goose Up
 
-CREATE TYPE messages_role AS enum ('user', 'model', 'system');
+CREATE TYPE messages_role AS enum ('user', 'model', 'function');
 CREATE TYPE messages_model AS enum ('gemini-2.5-flash', 'gemini-2.5-flash-lite');
 
 
@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS messages (
     role messages_role NOT NULL,
     content TEXT NOT NULL,
     model messages_model NOT NULL,
-    token_count INTEGER
+    token_count INTEGER,
+    function_name TEXT,
+    function_response JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);

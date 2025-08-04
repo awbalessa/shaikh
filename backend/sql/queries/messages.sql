@@ -12,6 +12,11 @@ SELECT * FROM messages
 WHERE session_id = @session_id
 ORDER BY created_at DESC;
 
+-- name: GetMessagesBySessionIDAsc :many
+SELECT * FROM messages
+WHERE session_id = @session_id
+ORDER BY created_at ASC;
+
 -- name: GetUserMessagesByUserID :many
 SELECT m.*
 FROM messages m

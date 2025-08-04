@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/database"
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
 
@@ -17,10 +20,12 @@ const (
 	gccTTL1Hr            time.Duration = 1 * time.Hour
 	contextCacheTTL6Hrs  time.Duration = 6 * time.Hour
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
+	memories100          int           = 100
+	sessions5            int           = 5
 )
 
 type userMemory struct {
-	createdAt time.Time
+	updatedAt time.Time
 	memory    string
 }
 
@@ -51,41 +56,12 @@ type gcc struct {
 }
 
 type sessionContext struct {
-	UserID             uuid.UUID     `json:"user_id"`
-	SessionID          uuid.UUID     `json:"session_id"`
-	GeminiContextCache gcc           `json:"gcc"`
-	CreatedAt          time.Time     `json:"created_at"`
-	UpdatedAt          time.Time     `json:"updated_at"`
-	Window             contextWindow `json:"context_window"`
-}
-
-// write setContext global function after. Write the function that fetches all the info from pg and puts it into session context.
-func (a *Agent) getContext(
-	ctx context.Context,
-	userID uuid.UUID,
-	sessionID uuid.UUID,
-) (*sessionContext, bool, error) {
-	var out *sessionContext
-	var gccIsAlive bool
-	key := createContextCacheKey(userID, sessionID)
-	flyCache, err := a.getContextCache(ctx, key)
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to get context: %w", err)
-	}
-
-	if flyCache != nil {
-		out = flyCache
-		if time.Now().After(flyCache.GeminiContextCache.expiresAt) {
-			gccIsAlive = false
-		} else {
-			gccIsAlive = true
-		}
-
-		return out, gccIsAlive, nil
-	}
-
-	// if nil, fetch from db.
-	return out, gccIsAlive, nil
+	UserID    uuid.UUID          `json:"user_id"`
+	SessionID uuid.UUID          `json:"session_id"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	GCCMap    map[agentName]*gcc `json:"gcc_map"`
+	Window    *contextWindow     `json:"context_window"`
 }
 
 func (a *Agent) buildContextWindow(
@@ -104,7 +80,7 @@ func (a *Agent) buildContextWindow(
 		var parts []*genai.Part
 		for _, m := range cw.userMemories {
 			partText := fmt.Sprintf("As of %s, %s",
-				humanize.Time(m.createdAt),
+				humanize.Time(m.updatedAt),
 				m.memory,
 			)
 			parts = append(parts, genai.NewPartFromText(partText))
@@ -182,39 +158,64 @@ func (a *Agent) buildContextWindow(
 	return contents, nil
 }
 
-func (a *Agent) setgcc(
+func (a *Agent) setContext(
 	ctx context.Context,
+	sc *sessionContext,
 	cw []*genai.Content,
-	agent agentName,
-	key string,
-) (*gcc, error) {
-	prof, err := a.getProfile(agent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set gemini context cache: %w", err)
+) error {
+	for ag := range sc.GCCMap {
+		if err := a.setgcc(ctx, sc, cw, ag); err != nil {
+			return fmt.Errorf("failed to set context: %w", err)
+		}
 	}
 
-	conf := &genai.CreateCachedContentConfig{
-		ExpireTime:        time.Now().Add(gccTTL30Mins),
-		DisplayName:       key,
+	if err := a.setFlyContext(ctx, sc); err != nil {
+		return fmt.Errorf("failed to set context: %w", err)
+	}
+
+	return nil
+}
+
+func (a *Agent) setgcc(
+	ctx context.Context,
+	sc *sessionContext,
+	cw []*genai.Content,
+	agent agentName,
+) error {
+	prof, err := a.getProfile(agent)
+	if err != nil {
+		return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
+	}
+
+	if existing := sc.GCCMap[agent]; existing != nil {
+		if _, err := a.gc.client.Caches.Delete(ctx, existing.resourceName, nil); err != nil {
+			return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
+		}
+	}
+
+	expireTime := time.Now().Add(gccTTL30Mins)
+	createReq := &genai.CreateCachedContentConfig{
+		ExpireTime:        expireTime,
 		Contents:          cw,
 		SystemInstruction: prof.config.SystemInstruction,
 		Tools:             prof.config.Tools,
 	}
 
-	res, err := a.gc.client.Caches.Create(ctx, string(prof.model), conf)
+	res, err := a.gc.client.Caches.Create(ctx, string(prof.model), createReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to set gemini context cache: %w", err)
+		return fmt.Errorf("failed to set gcc for %s: %w", agent, err)
 	}
 
-	out := &gcc{
+	newGCC := &gcc{
 		resourceName: res.Name,
 		expiresAt:    res.ExpireTime,
 	}
+	sc.GCCMap[agent] = newGCC
 
-	return out, nil
+	return nil
 }
 
-func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
+func (a *Agent) setFlyContext(ctx context.Context, sc *sessionContext) error {
 	const method = "setContextCache"
 	log := a.logger.With(
 		slog.String("method", method),
@@ -222,8 +223,6 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 		slog.String("session_id", sc.SessionID.String()),
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
-		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
-		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	)
 
 	bytes, err := json.Marshal(sc)
@@ -248,8 +247,78 @@ func (a *Agent) setContextCache(ctx context.Context, sc *sessionContext) error {
 	return nil
 }
 
-func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContext, error) {
-	const method = "getContextCache"
+func (a *Agent) applygcc(
+	agent agentName,
+	sc *sessionContext,
+	cw []*genai.Content,
+	parts []*genai.Part,
+) (*agentProfile, []*genai.Content, error) {
+	prof, err := a.getProfile(agent)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to apply gcc for %s: %w", agent, err)
+	}
+
+	gcc := sc.GCCMap[agent]
+	var fullContext []*genai.Content
+	now := time.Now()
+
+	if gcc != nil && now.Before(gcc.expiresAt) {
+		prof.config.CachedContent = gcc.resourceName
+		prof.config.SystemInstruction = nil
+		prof.config.Tools = nil
+
+		fullContext = []*genai.Content{
+			{
+				Role:  genai.RoleUser,
+				Parts: parts,
+			},
+		}
+	} else {
+		fullContext = append(cw, &genai.Content{
+			Role:  genai.RoleUser,
+			Parts: parts,
+		})
+	}
+
+	return prof, fullContext, nil
+}
+
+func (a *Agent) getContext(ctx context.Context) (*sessionContext, []*genai.Content, error) {
+	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+	sc, err := a.getFlyContext(ctx, userID, sessionID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	if sc == nil {
+		window, err := a.getDbContext(ctx, userID, sessionID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get context: %w", err)
+		}
+
+		sc = &sessionContext{
+			UserID:    userID,
+			SessionID: sessionID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			GCCMap:    make(map[agentName]*gcc),
+			Window:    window,
+		}
+	}
+
+	cw, err := a.buildContextWindow(ctx, sc.Window, searcherAgent)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get context: %w", err)
+	}
+
+	return sc, cw, nil
+}
+
+func (a *Agent) getFlyContext(ctx context.Context, userID, sessionID uuid.UUID) (*sessionContext, error) {
+	const method = "getFlyContext"
+	key := createContextCacheKey(userID, sessionID)
 	log := a.logger.With(
 		slog.String("method", method),
 		slog.String("key", key),
@@ -281,11 +350,117 @@ func (a *Agent) getContextCache(ctx context.Context, key string) (*sessionContex
 		slog.String("session_id", sc.SessionID.String()),
 		slog.Time("created_at", sc.CreatedAt),
 		slog.Time("updated_at", sc.UpdatedAt),
-		slog.String("gcc_resource_name", sc.GeminiContextCache.resourceName),
-		slog.Duration("gcc_ttl", time.Until(sc.GeminiContextCache.expiresAt)),
 	).DebugContext(ctx, "context cache retrieved successfully")
 
 	return &sc, nil
+}
+
+func (a *Agent) getDbContext(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+) (*contextWindow, error) {
+	userUUID := pgtype.UUID{
+		Bytes: userID,
+		Valid: true,
+	}
+
+	var (
+		memories     []userMemory
+		sessions     []previousSession
+		interactions []interaction
+	)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		mem, err := a.store.Pg.GetMemoriesByUserID(ctx, database.GetMemoriesByUserIDParams{
+			NumberOfMemories: int32(memories100),
+			UserID:           userUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]userMemory, 0, len(mem))
+		for _, m := range mem {
+			local = append(local, userMemory{
+				updatedAt: m.UpdatedAt.Time,
+				memory:    m.Memory,
+			})
+		}
+		memories = local
+		return nil
+	})
+
+	g.Go(func() error {
+		prev, err := a.store.Pg.GetSessionsByUserID(ctx, database.GetSessionsByUserIDParams{
+			NumberOfSessions: int32(sessions5),
+			UserID:           userUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]previousSession, 0, len(prev))
+		for _, p := range prev {
+			local = append(local, previousSession{
+				lastAccessed: p.UpdatedAt.Time,
+				summary:      p.Summary.String,
+			})
+		}
+		sessions = local
+		return nil
+	})
+
+	g.Go(func() error {
+		messages, err := a.store.Pg.GetMessagesBySessionID(ctx, pgtype.UUID{
+			Bytes: sessionID,
+			Valid: true,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get context from db: %w", err)
+		}
+
+		local := make([]interaction, 0)
+		var current inputPrompt
+
+		for _, m := range messages {
+			switch m.Role {
+			case "user":
+				current.userInput = genai.NewPartFromText(m.Content)
+
+			case "system":
+				var responseMap map[string]any
+				if err := json.Unmarshal(m.FunctionResponse, &responseMap); err != nil {
+					return fmt.Errorf("failed to get context from db: %w", err)
+				}
+				current.functionResponse = genai.NewPartFromFunctionResponse(
+					m.FunctionName.String,
+					responseMap,
+				)
+
+			case "model":
+				local = append(local, interaction{
+					input:       current,
+					modelOutput: genai.NewPartFromText(m.Content),
+				})
+				current = inputPrompt{}
+			}
+		}
+
+		interactions = local
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &contextWindow{
+		userMemories:     memories,
+		previousSessions: sessions,
+		history:          interactions,
+	}, nil
 }
 
 func createContextCacheKey(userID uuid.UUID, sessionID uuid.UUID) string {

@@ -142,9 +142,9 @@ func (ns NullMessagesModel) Value() (driver.Value, error) {
 type MessagesRole string
 
 const (
-	MessagesRoleUser   MessagesRole = "user"
-	MessagesRoleModel  MessagesRole = "model"
-	MessagesRoleSystem MessagesRole = "system"
+	MessagesRoleUser     MessagesRole = "user"
+	MessagesRoleModel    MessagesRole = "model"
+	MessagesRoleFunction MessagesRole = "function"
 )
 
 func (e *MessagesRole) Scan(src interface{}) error {
@@ -283,14 +283,16 @@ type Memory struct {
 }
 
 type Message struct {
-	ID         int32
-	SessionID  pgtype.UUID
-	UserID     pgtype.UUID
-	CreatedAt  pgtype.Timestamptz
-	Role       MessagesRole
-	Content    string
-	Model      MessagesModel
-	TokenCount pgtype.Int4
+	ID               int32
+	SessionID        pgtype.UUID
+	UserID           pgtype.UUID
+	CreatedAt        pgtype.Timestamptz
+	Role             MessagesRole
+	Content          string
+	Model            MessagesModel
+	TokenCount       pgtype.Int4
+	FunctionName     pgtype.Text
+	FunctionResponse []byte
 }
 
 type Session struct {
