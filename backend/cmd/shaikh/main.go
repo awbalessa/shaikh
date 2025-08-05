@@ -34,7 +34,7 @@ func main() {
 
 	res, err := server.Pipe.Search(server.Context, rag.SearchParameters{
 		RawPrompt:  "لماذا قال يخرج الحي وثم قال ومخرج الميت من الحي",
-		ChunkLimit: rag.Top10Documents,
+		ChunkLimit: rag.Top20Documents,
 		PromptsWithFilters: []rag.PromptWithFilters{
 			{
 				Prompt: "لماذا قال يخرج الحي وثم قال ومخرج الميت من الحي",

@@ -31,6 +31,7 @@ const (
 	outputDimension1024        embeddingOutputDimension     = 1024
 	outputDimensionTypeFloat   embeddingOutputDimensionType = "float"
 	voyageRerankV2             rerankingModel               = "rerank-2"
+	voyageRerankV2p5Lite       rerankingModel               = "rerank-2.5-lite"
 )
 
 type voyageClientConfig struct {
@@ -247,7 +248,7 @@ func (vc *voyageClient) rerankDocuments(
 	reqBody := voyageRerankingRequest{
 		Query:           query,
 		Documents:       docs,
-		Model:           voyageRerankV2,
+		Model:           voyageRerankV2p5Lite,
 		TopK:            topk,
 		ReturnDocuments: false,
 		Truncation:      false,
@@ -306,13 +307,12 @@ func (vc *voyageClient) rerankDocuments(
 
 	if resp.StatusCode != http.StatusOK {
 		log.With(
-			slog.Any("err", err),
 			slog.String("status", resp.Status),
 		).ErrorContext(
 			ctx,
 			"voyage returned non-200 status",
 		)
-		return nil, fmt.Errorf("voyage returned non-200 status: %w", err)
+		return nil, fmt.Errorf("voyage returned non-200 status")
 	}
 
 	log.With(

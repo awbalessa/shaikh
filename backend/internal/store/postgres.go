@@ -20,7 +20,10 @@ func (pg *postgresClient) RunSemanticSearch(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.Int("vector_len", len(arg.Vector.Slice())),
-		slog.String("label_filters", fmt.Sprint(arg.LabelFilters)),
+		slog.String("content_type_labels", fmt.Sprint(arg.ContentTypeLabels)),
+		slog.String("source_labels", fmt.Sprint(arg.SourceLabels)),
+		slog.String("surah_labels", fmt.Sprint(arg.SurahLabels)),
+		slog.String("ayah_labels", fmt.Sprint(arg.AyahLabels)),
 	)
 
 	log.DebugContext(ctx, "running semantic search...")

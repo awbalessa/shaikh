@@ -109,11 +109,18 @@ type queryFilters struct {
 	ayahs        []int32
 }
 
+type queryLabelFilters struct {
+	contentTypes []int16
+	sources      []int16
+	surahs       []int16
+	ayahs        []int16
+}
+
 type queryContext struct {
 	query        string
 	filters      *queryFilters
 	vector       *pgvector.Vector
-	labelFilters []int16
+	labelFilters *queryLabelFilters
 }
 
 type resultChunks struct {
@@ -197,34 +204,44 @@ func validateSearchParams(arg SearchParameters) ([]queryContext, error) {
 	return queries, nil
 }
 
-func filtersToLabels(f queryFilters) []int16 {
-	var labels []int16 = []int16{}
+func filtersToLabels(f queryFilters) *queryLabelFilters {
+	var (
+		contentTypes []int16 = []int16{}
+		sources      []int16 = []int16{}
+		surahs       []int16 = []int16{}
+		ayahs        []int16 = []int16{}
+	)
 
 	if len(f.contentTypes) > 0 {
 		for _, ct := range f.contentTypes {
-			labels = append(labels, int16(models.ContentTypeToLabel[ct]))
+			contentTypes = append(contentTypes, int16(models.ContentTypeToLabel[ct]))
 		}
 	}
 
 	if len(f.sources) > 0 {
 		for _, src := range f.sources {
-			labels = append(labels, int16(models.SourceToLabel[src]))
+			sources = append(sources, int16(models.SourceToLabel[src]))
 		}
 	}
 
 	if len(f.surahs) > 0 {
 		for _, sur := range f.surahs {
-			labels = append(labels, int16(models.SurahNumberToLabel[sur]))
+			surahs = append(surahs, int16(models.SurahNumberToLabel[sur]))
 		}
 	}
 
 	if len(f.ayahs) > 0 {
 		for _, aya := range f.ayahs {
-			labels = append(labels, int16(models.AyahNumberToLabel[aya]))
+			ayahs = append(ayahs, int16(models.AyahNumberToLabel[aya]))
 		}
 	}
 
-	return labels
+	return &queryLabelFilters{
+		contentTypes: contentTypes,
+		sources:      sources,
+		surahs:       surahs,
+		ayahs:        ayahs,
+	}
 }
 
 func semChunksToResultChunks(rows []database.SemanticSearchRow) []resultChunks {
@@ -266,9 +283,12 @@ func (p *Pipeline) parallelSemanticSearch(
 				return fmt.Errorf("missing vector for query: %q", query.query)
 			}
 			rows, err := p.store.Pg.RunSemanticSearch(ctx, database.SemanticSearchParams{
-				NumberOfChunks: int32(chunksPerThread),
-				Vector:         *query.vector,
-				LabelFilters:   query.labelFilters,
+				NumberOfChunks:    int32(chunksPerThread),
+				Vector:            *query.vector,
+				ContentTypeLabels: query.labelFilters.contentTypes,
+				SourceLabels:      query.labelFilters.sources,
+				SurahLabels:       query.labelFilters.surahs,
+				AyahLabels:        query.labelFilters.ayahs,
 			},
 			)
 			if err != nil {
@@ -421,13 +441,11 @@ func (p *Pipeline) hybridSearch(
 		fused[i] = runRRFusion(semRes[i], lexRes[i])
 	}
 
-	// Flatten all fused results into one slice
 	var allChunks []resultChunks
 	for _, group := range fused {
 		allChunks = append(allChunks, group...)
 	}
 
-	// Deduplicate based on rawChunk content
 	seen := make(map[string]bool)
 	deduped := make([]resultChunks, 0, len(allChunks))
 	for _, chunk := range allChunks {
@@ -479,10 +497,14 @@ func runRRFusion(
 		return pairs[i].score > pairs[j].score
 	})
 
-	half := len(pairs) / 2
-	top := pairs[:half]
+	total := len(pairs)
+	cutoff := total
+	if total > 100 {
+		cutoff = total / 2
+	}
+	top := pairs[:cutoff]
 
-	fused := make([]resultChunks, 0, half)
+	fused := make([]resultChunks, 0, cutoff)
 	for _, pair := range top {
 		row := rowMap[pair.id]
 		row.score = pair.score
