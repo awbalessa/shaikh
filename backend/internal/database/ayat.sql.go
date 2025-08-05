@@ -10,7 +10,7 @@ import (
 )
 
 const getAyatByKeys = `-- name: GetAyatByKeys :many
-SELECT surah, ayah, ar, ar_uthmani, en FROM ayat
+SELECT surah, ayah, ar, ar_uthmani, en FROM rag.ayat
 WHERE surah = $1
     AND ayah = ANY($2::int[])
 `
@@ -20,15 +20,15 @@ type GetAyatByKeysParams struct {
 	Ayat  []int32
 }
 
-func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]Ayat, error) {
+func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error) {
 	rows, err := q.db.Query(ctx, getAyatByKeys, arg.Surah, arg.Ayat)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Ayat
+	var items []RagAyat
 	for rows.Next() {
-		var i Ayat
+		var i RagAyat
 		if err := rows.Scan(
 			&i.Surah,
 			&i.Ayah,

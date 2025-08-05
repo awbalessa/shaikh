@@ -106,7 +106,7 @@ func tokenizeQuery(query string) (string, error) {
 	return tokenized, nil
 }
 
-func (pg *postgresClient) GetAyatByKeys(ctx context.Context, surah int32, ayat []int32) ([]database.Ayat, error) {
+func (pg *postgresClient) GetAyatByKeys(ctx context.Context, surah int32, ayat []int32) ([]database.RagAyat, error) {
 	rows, err := pg.queries.GetAyatByKeys(ctx, database.GetAyatByKeysParams{
 		Surah: surah,
 		Ayat:  ayat,

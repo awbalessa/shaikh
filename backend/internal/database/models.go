@@ -231,47 +231,11 @@ func (ns NullSource) Value() (driver.Value, error) {
 	return string(ns.Source), nil
 }
 
-type Ayat struct {
-	Surah     int32
-	Ayah      int32
-	Ar        string
-	ArUthmani string
-	En        string
-}
-
-type Chunk struct {
-	ID                  int64
-	SequenceID          int32
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
-	Granularity         Granularity
-	ContentType         ContentType
-	Source              Source
-	RawChunk            string
-	TokenizedChunk      string
-	ChunkTitle          string
-	TokenizedChunkTitle string
-	ContextHeader       string
-	EmbeddedChunk       string
-	Labels              []int16
-	Embedding           pgvector_go.Vector
-	HasParent           bool
-	ParentID            pgtype.Int4
-	Surah               pgtype.Int4
-	Ayah                pgtype.Int4
-}
-
-type Document struct {
-	ID            int32
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
-	Granularity   Granularity
-	ContentType   ContentType
-	Source        Source
-	ContextHeader string
-	Document      string
-	Surah         pgtype.Int4
-	Ayah          pgtype.Int4
+type GooseDbVersion struct {
+	ID        int32
+	VersionID int64
+	IsApplied bool
+	Tstamp    pgtype.Timestamp
 }
 
 type Memory struct {
@@ -293,6 +257,49 @@ type Message struct {
 	TokenCount       pgtype.Int4
 	FunctionName     pgtype.Text
 	FunctionResponse []byte
+}
+
+type RagAyat struct {
+	Surah     int32
+	Ayah      int32
+	Ar        string
+	ArUthmani string
+	En        string
+}
+
+type RagChunk struct {
+	ID                  int64
+	SequenceID          int32
+	CreatedAt           pgtype.Timestamp
+	UpdatedAt           pgtype.Timestamp
+	Granularity         Granularity
+	ContentType         ContentType
+	Source              Source
+	RawChunk            string
+	TokenizedChunk      string
+	ChunkTitle          string
+	TokenizedChunkTitle string
+	ContextHeader       string
+	EmbeddedChunk       string
+	Labels              []int16
+	Embedding           pgvector_go.Vector
+	HasParent           bool
+	ParentID            pgtype.Int4
+	Surah               pgtype.Int4
+	Ayah                pgtype.Int4
+}
+
+type RagDocument struct {
+	ID            int32
+	CreatedAt     pgtype.Timestamp
+	UpdatedAt     pgtype.Timestamp
+	Granularity   Granularity
+	ContentType   ContentType
+	Source        Source
+	ContextHeader string
+	Document      string
+	Surah         pgtype.Int4
+	Ayah          pgtype.Int4
 }
 
 type Session struct {

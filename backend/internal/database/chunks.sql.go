@@ -9,7 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	pgvector_go "github.com/pgvector/pgvector-go"
+	"github.com/pgvector/pgvector-go"
 )
 
 const lexicalSearch = `-- name: LexicalSearch :many
@@ -22,7 +22,7 @@ WITH ranked_chunks AS (
     source,
     surah,
     ayah
-    FROM chunks
+    FROM rag.chunks
     WHERE id @@@ paradedb.boolean(
     must => ARRAY[
         paradedb.boolean(
@@ -162,7 +162,7 @@ WITH ranked_chunks AS (
         source,
         surah,
         ayah
-    FROM chunks
+    FROM rag.chunks
     WHERE (
     cardinality($3::smallint[]) = 0
     OR labels && $3::smallint[]
@@ -185,7 +185,7 @@ LIMIT $1
 
 type SemanticSearchParams struct {
 	NumberOfChunks int32
-	Vector         pgvector_go.Vector
+	Vector         pgvector.Vector
 	LabelFilters   []int16
 }
 

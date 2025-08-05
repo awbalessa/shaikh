@@ -1,6 +1,6 @@
 version: "2"
 sql:
-  - schema: "sql/schema"
+  - schema: "sql/schema/schema.sql"
     queries: "sql/queries"
     engine: "postgresql"
     gen:
@@ -8,7 +8,7 @@ sql:
         out: "internal/database"
         sql_package: "pgx/v5"
         overrides:
-          - db_type: "vector"
+          - db_type: "public.vector"
             go_type:
               import: "github.com/pgvector/pgvector-go"
               type: "Vector"
