@@ -14,7 +14,7 @@ func (a *Agent) Ask(
 	prompt string,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		sc, win, err := a.getContext(ctx)
+		cc, win, err := a.getContext(ctx)
 		if err != nil {
 			yield("", err)
 			return
@@ -36,7 +36,7 @@ func (a *Agent) Ask(
 		}
 
 		modelOutPart := genai.NewPartFromText(modelOut.String())
-		sc.Window.history = append(sc.Window.history, interaction{
+		cc.Window.history = append(cc.Window.history, interaction{
 			input: inputPrompt{
 				functionResponse: fnOut,
 				userInput:        userIn,

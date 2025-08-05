@@ -13,7 +13,8 @@ import (
 )
 
 type LoggerOptions struct {
-	JSON bool
+	JSON  bool
+	Level slog.Level
 }
 
 type prettyWriter struct {
@@ -132,7 +133,7 @@ func NewLogger(opts LoggerOptions) *slog.Logger {
 	if !opts.JSON {
 		handler := tint.NewHandler(os.Stderr, &tint.Options{
 			AddSource:  true,
-			Level:      slog.LevelInfo,
+			Level:      opts.Level,
 			TimeFormat: time.Kitchen,
 			NoColor:    false,
 		})
@@ -145,7 +146,7 @@ func NewLogger(opts LoggerOptions) *slog.Logger {
 	}
 
 	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: opts.Level,
 	})
 	return slog.New(handler)
 }

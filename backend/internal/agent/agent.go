@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/rag"
 	"github.com/awbalessa/shaikh/backend/internal/store"
+	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/genai"
 )
 
@@ -14,6 +16,7 @@ type AgentConfig struct {
 	Context  context.Context
 	Pipeline *rag.Pipeline
 	Store    *store.Store
+	Stream   jetstream.JetStream
 }
 
 type Agent struct {
@@ -22,6 +25,7 @@ type Agent struct {
 	logger    *slog.Logger
 	store     *store.Store
 	gc        *geminiClient
+	ctxStream jetstream.Stream
 }
 
 func NewAgent(cfg AgentConfig) (*Agent, error) {
@@ -62,18 +66,34 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		},
 	}
 
+	stream, err := cfg.Stream.CreateStream(cfg.Context, jetstream.StreamConfig{
+		Name:        jsContextStream,
+		Subjects:    []string{"context.*"},
+		Description: "Context management stream",
+		Retention:   jetstream.WorkQueuePolicy,
+		Storage:     jetstream.FileStorage,
+		MaxAge:      jsMsgsMaxAge,
+		MaxMsgSize:  1 * 1024 * 1024,
+		DenyDelete:  true,
+		DenyPurge:   false,
+		AllowRollup: false,
+	})
+
 	return &Agent{
 		agents:    amap,
 		gc:        gc,
 		functions: fmap,
 		logger:    log,
 		store:     cfg.Store,
+		ctxStream: stream,
 	}, nil
 }
 
 const (
-	searcherAgent  agentName = "searcher"
-	generatorAgent agentName = "generator"
+	searcherAgent   agentName     = "searcher"
+	generatorAgent  agentName     = "generator"
+	jsContextStream string        = "CONTEXT"
+	jsMsgsMaxAge    time.Duration = 24 * time.Hour
 )
 
 type agentName string

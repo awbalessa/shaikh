@@ -11,11 +11,15 @@ import (
 	"github.com/awbalessa/shaikh/backend/internal/rag"
 	"github.com/awbalessa/shaikh/backend/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 type Server struct {
 	Context context.Context
 	Cancel  context.CancelFunc
+	Nc      *nats.Conn
+	Js      jetstream.JetStream
 	Conn    *pgxpool.Pool
 	Store   *store.Store
 	Pipe    *rag.Pipeline
@@ -37,7 +41,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 			"failed to parse postgres url",
 		)
 		cancel()
-		return nil, fmt.Errorf("failed to start app: %w", err)
+		return nil, fmt.Errorf("failed to start server: %w", err)
 	}
 
 	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
@@ -50,7 +54,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 			"failed to create postgres conn",
 		)
 		cancel()
-		return nil, fmt.Errorf("failed to start app: %w", err)
+		return nil, fmt.Errorf("failed to start server: %w", err)
 	}
 
 	store := store.New(store.StoreConfig{
@@ -63,19 +67,40 @@ func Serve(cfg *config.Config) (*Server, error) {
 		Store:  store,
 	})
 
+	nc, err := NewNats(&nats.Options{
+		Url:          nats.DefaultURL,
+		Name:         natsConnNameMain,
+		Timeout:      natsConnTimeoutTenSeconds,
+		PingInterval: natsPingIntervalTwentySeconds,
+		MaxPingsOut:  natsMaxPingsOutstandingFive,
+	})
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start server: %w", err)
+	}
+
+	js, err := NewJetStream(nc)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("failed to start server: %w", err)
+	}
+
 	agent, err := agent.NewAgent(agent.AgentConfig{
 		Context:  ctx,
 		Pipeline: pipe,
 		Store:    store,
+		Stream:   js,
 	})
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to start app: %w", err)
+		return nil, fmt.Errorf("failed to start server: %w", err)
 	}
 
 	return &Server{
 		Context: ctx,
 		Cancel:  cancel,
+		Nc:      nc,
+		Js:      js,
 		Conn:    conn,
 		Store:   store,
 		Pipe:    pipe,
@@ -86,4 +111,5 @@ func Serve(cfg *config.Config) (*Server, error) {
 func (s *Server) Close() {
 	s.Cancel()
 	s.Conn.Close()
+	s.Nc.Drain()
 }

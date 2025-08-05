@@ -267,6 +267,17 @@ func (a *Agent) getDbContext(
 	}, nil
 }
 
+func (a *Agent) setContext(
+	ctx context.Context,
+	cc *contextCache,
+) error {
+	if err := a.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
+		return fmt.Errorf("failed to set context: %w", err)
+	}
+
+	return nil
+}
+
 func (a *Agent) setContextCache(
 	ctx context.Context,
 	userID, sessionID uuid.UUID,
@@ -311,7 +322,7 @@ func (a *Agent) setContextCache(
 	return nil
 }
 
-func (a *Agent) setDbContext(sc *contextCache) error {
+func (a *Agent) setDbContext(cc *contextCache) error {
 	// write publisher to jetstream
 	return nil
 }

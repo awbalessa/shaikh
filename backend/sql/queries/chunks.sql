@@ -8,7 +8,7 @@ WITH ranked_chunks AS (
     source,
     surah,
     ayah
-    FROM chunks
+    FROM rag.chunks
     WHERE id @@@ paradedb.boolean(
     must => ARRAY[
         paradedb.boolean(
@@ -96,7 +96,7 @@ WITH ranked_chunks AS (
         source,
         surah,
         ayah
-    FROM chunks
+    FROM rag.chunks
     WHERE (
     cardinality(sqlc.arg('label_filters')::smallint[]) = 0
     OR labels && sqlc.arg('label_filters')::smallint[]
