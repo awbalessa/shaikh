@@ -12,9 +12,10 @@ CREATE TABLE IF NOT EXISTS messages (
     role messages_role NOT NULL,
     content TEXT NOT NULL,
     model messages_model NOT NULL,
+    turn INTEGER NOT NULL,
     token_count INTEGER,
     function_name TEXT,
-    function_response JSONB
+    CONSTRAINT unique_session_id_turn_role_key UNIQUE(session_id, role, turn)
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);

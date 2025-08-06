@@ -11,6 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/nats-io/nats.go"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
@@ -33,19 +34,21 @@ type previousSession struct {
 }
 
 type inputPrompt struct {
-	functionResponse *genai.Part
-	userInput        *genai.Part
+	FunctionResponse *genai.Part `json:"function_response"`
+	UserInput        *genai.Part `json:"user_input"`
 }
 
-type interaction struct {
-	input       inputPrompt
-	modelOutput *genai.Part
+type Interaction struct {
+	Input       inputPrompt `json:"input"`
+	ModelOutput *genai.Part `json:"model_output"`
+	turnNumber  int
 }
 
 type contextWindow struct {
 	userMemories     []userMemory
 	previousSessions []previousSession
-	history          []interaction
+	history          []Interaction
+	turns            int
 }
 
 type contextCache struct {
@@ -157,7 +160,7 @@ func (a *Agent) getDbContext(
 	var (
 		memories     []userMemory
 		sessions     []previousSession
-		interactions []interaction
+		interactions []Interaction
 	)
 
 	log := a.logger.With(
@@ -218,28 +221,28 @@ func (a *Agent) getDbContext(
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
-		local := make([]interaction, 0)
+		local := make([]Interaction, 0)
 		var current inputPrompt
 
 		for _, m := range messages {
 			switch m.Role {
 			case "user":
-				current.userInput = genai.NewPartFromText(m.Content)
+				current.UserInput = genai.NewPartFromText(m.Content)
 
 			case "system":
 				var responseMap map[string]any
 				if err := json.Unmarshal(m.FunctionResponse, &responseMap); err != nil {
 					return fmt.Errorf("failed to get context from db: %w", err)
 				}
-				current.functionResponse = genai.NewPartFromFunctionResponse(
+				current.FunctionResponse = genai.NewPartFromFunctionResponse(
 					m.FunctionName.String,
 					responseMap,
 				)
 
 			case "model":
-				local = append(local, interaction{
-					input:       current,
-					modelOutput: genai.NewPartFromText(m.Content),
+				local = append(local, Interaction{
+					Input:       current,
+					ModelOutput: genai.NewPartFromText(m.Content),
 				})
 				current = inputPrompt{}
 			}
@@ -264,6 +267,7 @@ func (a *Agent) getDbContext(
 		userMemories:     memories,
 		previousSessions: sessions,
 		history:          interactions,
+		turns:            0,
 	}, nil
 }
 
@@ -291,7 +295,7 @@ func (a *Agent) setContextCache(
 	)
 
 	now := time.Now()
-
+	win.turns += 1
 	bytes, err := json.Marshal(&contextCache{
 		UserID:    userID,
 		SessionID: sessionID,
@@ -322,9 +326,24 @@ func (a *Agent) setContextCache(
 	return nil
 }
 
-func (a *Agent) setDbContext(cc *contextCache) error {
-	// write publisher to jetstream
-	return nil
+func (a *Agent) sendContextUpdate(ctx context.Context, interaction Interaction) error {
+	data, err := json.Marshal(interaction)
+	if err != nil {
+		return fmt.Errorf("failed to send context update: %w", err)
+	}
+
+	msg := &nats.Msg{
+		Subject: SyncerSubject,
+		Data:    data,
+	}
+	ack, err := a.js.PublishMsg(ctx, msg)
+	if err != nil {
+		return fmt.Errorf("failed to send context update: %w", err)
+	}
+
+	if ack == nil || ack.Stream != AgentStream {
+		return fmt.Errorf("unexpected publish ack: %+v", ack)
+	}
 }
 
 func (a *Agent) buildContextWindow(
@@ -372,11 +391,11 @@ func (a *Agent) buildContextWindow(
 	historyContents := make([]*genai.Content, 0, len(cw.history)*2)
 	for _, inter := range cw.history {
 		var userParts []*genai.Part
-		if inter.input.functionResponse != nil {
-			userParts = append(userParts, inter.input.functionResponse)
+		if inter.Input.FunctionResponse != nil {
+			userParts = append(userParts, inter.Input.FunctionResponse)
 		}
-		if inter.input.userInput != nil {
-			userParts = append(userParts, inter.input.userInput)
+		if inter.Input.UserInput != nil {
+			userParts = append(userParts, inter.Input.UserInput)
 		}
 		if len(userParts) > 0 {
 			historyContents = append(historyContents, &genai.Content{
@@ -384,10 +403,10 @@ func (a *Agent) buildContextWindow(
 				Parts: userParts,
 			})
 		}
-		if inter.modelOutput != nil {
+		if inter.ModelOutput != nil {
 			historyContents = append(historyContents, &genai.Content{
 				Role:  genai.RoleModel,
-				Parts: []*genai.Part{inter.modelOutput},
+				Parts: []*genai.Part{inter.ModelOutput},
 			})
 		}
 	}

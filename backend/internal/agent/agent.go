@@ -12,6 +12,13 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	AgentStream      string        = "AGENT"
+	SyncerSubject    string        = "agent.context.sync"
+	SyncIdleTime     time.Duration = 2 * time.Minute
+	SyncMaxBatchSize int           = 5
+)
+
 type AgentConfig struct {
 	Context  context.Context
 	Pipeline *rag.Pipeline
@@ -25,7 +32,7 @@ type Agent struct {
 	logger    *slog.Logger
 	store     *store.Store
 	gc        *geminiClient
-	ctxStream jetstream.Stream
+	js        jetstream.JetStream
 }
 
 func NewAgent(cfg AgentConfig) (*Agent, error) {
@@ -66,10 +73,9 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		},
 	}
 
-	stream, err := cfg.Stream.CreateStream(cfg.Context, jetstream.StreamConfig{
-		Name:        jsContextStream,
-		Subjects:    []string{"context.*"},
-		Description: "Context management stream",
+	_, err = cfg.Stream.CreateStream(cfg.Context, jetstream.StreamConfig{
+		Name:        AgentStream,
+		Subjects:    []string{"agent.context.*"},
 		Retention:   jetstream.WorkQueuePolicy,
 		Storage:     jetstream.FileStorage,
 		MaxAge:      jsMsgsMaxAge,
@@ -78,6 +84,9 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		DenyPurge:   false,
 		AllowRollup: false,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build new agent: %w", err)
+	}
 
 	return &Agent{
 		agents:    amap,
@@ -85,15 +94,14 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		functions: fmap,
 		logger:    log,
 		store:     cfg.Store,
-		ctxStream: stream,
+		js:        cfg.Stream,
 	}, nil
 }
 
 const (
-	searcherAgent   agentName     = "searcher"
-	generatorAgent  agentName     = "generator"
-	jsContextStream string        = "CONTEXT"
-	jsMsgsMaxAge    time.Duration = 24 * time.Hour
+	searcherAgent  agentName     = "searcher"
+	generatorAgent agentName     = "generator"
+	jsMsgsMaxAge   time.Duration = 24 * time.Hour
 )
 
 type agentName string

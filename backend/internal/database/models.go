@@ -247,16 +247,16 @@ type Memory struct {
 }
 
 type Message struct {
-	ID               int32
-	SessionID        pgtype.UUID
-	UserID           pgtype.UUID
-	CreatedAt        pgtype.Timestamptz
-	Role             MessagesRole
-	Content          string
-	Model            MessagesModel
-	TokenCount       pgtype.Int4
-	FunctionName     pgtype.Text
-	FunctionResponse []byte
+	ID           int32
+	SessionID    pgtype.UUID
+	UserID       pgtype.UUID
+	CreatedAt    pgtype.Timestamptz
+	Role         MessagesRole
+	Content      string
+	Model        MessagesModel
+	Turn         int32
+	TokenCount   pgtype.Int4
+	FunctionName pgtype.Text
 }
 
 type RagAyat struct {

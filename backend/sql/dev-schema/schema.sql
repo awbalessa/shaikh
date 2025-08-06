@@ -180,9 +180,9 @@ CREATE TABLE public.messages (
     role public.messages_role NOT NULL,
     content text NOT NULL,
     model public.messages_model NOT NULL,
+    turn integer NOT NULL,
     token_count integer,
-    function_name text,
-    function_response jsonb
+    function_name text
 );
 
 
@@ -342,6 +342,14 @@ ALTER TABLE ONLY public.messages
 
 ALTER TABLE ONLY public.sessions
     ADD CONSTRAINT sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: messages unique_session_id_turn_role_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT unique_session_id_turn_role_key UNIQUE (session_id, role, turn);
 
 
 --

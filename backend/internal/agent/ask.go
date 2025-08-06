@@ -36,12 +36,13 @@ func (a *Agent) Ask(
 		}
 
 		modelOutPart := genai.NewPartFromText(modelOut.String())
-		cc.Window.history = append(cc.Window.history, interaction{
-			input: inputPrompt{
-				functionResponse: fnOut,
-				userInput:        userIn,
+		cc.Window.history = append(cc.Window.history, Interaction{
+			Input: inputPrompt{
+				FunctionResponse: fnOut,
+				UserInput:        userIn,
 			},
-			modelOutput: modelOutPart,
+			ModelOutput: modelOutPart,
+			turnNumber:  cc.Window.turns + 1,
 		})
 	})
 }
