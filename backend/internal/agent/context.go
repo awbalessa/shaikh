@@ -34,14 +34,15 @@ type previousSession struct {
 }
 
 type inputPrompt struct {
-	FunctionResponse *genai.Part `json:"function_response"`
-	UserInput        *genai.Part `json:"user_input"`
+	UserInput        *genai.Part  `json:"user_input"`
+	FunctionName     functionName `json:"function_name"`
+	FunctionResponse *genai.Part  `json:"function_response"`
 }
 
 type Interaction struct {
 	Input       inputPrompt `json:"input"`
 	ModelOutput *genai.Part `json:"model_output"`
-	turnNumber  int
+	TurnNumber  int         `json:"turn_number"`
 }
 
 type contextWindow struct {
@@ -213,7 +214,7 @@ func (a *Agent) getDbContext(
 	})
 
 	g.Go(func() error {
-		messages, err := a.store.Pg.GetMessagesBySessionID(ctx, pgtype.UUID{
+		messages, err := a.store.Pg.GetMessagesBySessionIDOrdered(ctx, pgtype.UUID{
 			Bytes: sessionID,
 			Valid: true,
 		})
@@ -229,9 +230,9 @@ func (a *Agent) getDbContext(
 			case "user":
 				current.UserInput = genai.NewPartFromText(m.Content)
 
-			case "system":
+			case "function":
 				var responseMap map[string]any
-				if err := json.Unmarshal(m.FunctionResponse, &responseMap); err != nil {
+				if err := json.Unmarshal([]byte(m.Content), &responseMap); err != nil {
 					return fmt.Errorf("failed to get context from db: %w", err)
 				}
 				current.FunctionResponse = genai.NewPartFromFunctionResponse(
@@ -243,6 +244,7 @@ func (a *Agent) getDbContext(
 				local = append(local, Interaction{
 					Input:       current,
 					ModelOutput: genai.NewPartFromText(m.Content),
+					TurnNumber:  int(m.Turn),
 				})
 				current = inputPrompt{}
 			}
@@ -256,10 +258,17 @@ func (a *Agent) getDbContext(
 		return nil, err
 	}
 
+	turns := 0
+	if len(interactions) > 0 {
+		last := interactions[len(interactions)-1]
+		turns = last.TurnNumber
+	}
+
 	log.With(
 		slog.Int("num_of_memories", len(memories)),
 		slog.Int("num_of_prev_sessions", len(sessions)),
 		slog.Int("num_of_interactions", len(interactions)),
+		slog.Int("turns", turns),
 		slog.String("duration", time.Since(now).String()),
 	).DebugContext(ctx, "retrieved db context successfully")
 
@@ -267,7 +276,7 @@ func (a *Agent) getDbContext(
 		userMemories:     memories,
 		previousSessions: sessions,
 		history:          interactions,
-		turns:            0,
+		turns:            turns,
 	}, nil
 }
 
@@ -326,7 +335,11 @@ func (a *Agent) setContextCache(
 	return nil
 }
 
-func (a *Agent) sendContextUpdate(ctx context.Context, interaction Interaction) error {
+func (a *Agent) sendContextUpdate(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	interaction *Interaction,
+) error {
 	data, err := json.Marshal(interaction)
 	if err != nil {
 		return fmt.Errorf("failed to send context update: %w", err)
@@ -336,6 +349,10 @@ func (a *Agent) sendContextUpdate(ctx context.Context, interaction Interaction) 
 		Subject: SyncerSubject,
 		Data:    data,
 	}
+
+	msg.Header = nats.Header{}
+	msg.Header.Set("Nats-Msg-Id", fmt.Sprintf("%s-%d", sessionID.String(), interaction.TurnNumber))
+
 	ack, err := a.js.PublishMsg(ctx, msg)
 	if err != nil {
 		return fmt.Errorf("failed to send context update: %w", err)
@@ -344,6 +361,8 @@ func (a *Agent) sendContextUpdate(ctx context.Context, interaction Interaction) 
 	if ack == nil || ack.Stream != AgentStream {
 		return fmt.Errorf("unexpected publish ack: %+v", ack)
 	}
+
+	return nil
 }
 
 func (a *Agent) buildContextWindow(

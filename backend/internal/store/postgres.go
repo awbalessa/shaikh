@@ -174,3 +174,15 @@ func (pg *postgresClient) GetMessagesBySessionIDAsc(
 
 	return rows, nil
 }
+
+func (pg *postgresClient) GetMessagesBySessionIDOrdered(
+	ctx context.Context,
+	sessionID pgtype.UUID,
+) ([]database.Message, error) {
+	rows, err := pg.queries.GetMessagesBySessionIdOrdered(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
+	}
+
+	return rows, nil
+}

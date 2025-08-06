@@ -34,7 +34,6 @@ func (a *Agent) Ask(
 				return
 			}
 		}
-
 		modelOutPart := genai.NewPartFromText(modelOut.String())
 		cc.Window.history = append(cc.Window.history, Interaction{
 			Input: inputPrompt{
@@ -42,7 +41,7 @@ func (a *Agent) Ask(
 				UserInput:        userIn,
 			},
 			ModelOutput: modelOutPart,
-			turnNumber:  cc.Window.turns + 1,
+			TurnNumber:  cc.Window.turns + 1,
 		})
 	})
 }
@@ -51,7 +50,7 @@ func (a *Agent) ask(
 	ctx context.Context,
 	win []*genai.Content,
 	prompt *genai.Part,
-	fnResOut **genai.Part,
+	fnRes **genai.Part,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
 		prof, err := a.getProfile(searcherAgent)
@@ -71,27 +70,19 @@ func (a *Agent) ask(
 			full,
 			prof.config,
 		) {
-			if ctx.Err() != nil {
-				yield("", ctx.Err())
-				return
-			}
 			if err != nil {
-				yield("", err)
+				yieldOk(ctx, yield, "")
 				return
 			}
+
 			if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 				continue
 			}
 
 			for _, part := range resp.Candidates[0].Content.Parts {
-				if ctx.Err() != nil {
-					yield("", ctx.Err())
-					return
-				}
-
 				switch {
 				case part.FunctionCall != nil:
-					fnRes, err := a.handleFunctionCall(
+					fnResponse, err := a.handleFunctionCall(
 						ctx,
 						win,
 						prompt,
@@ -99,10 +90,11 @@ func (a *Agent) ask(
 						yield,
 					)
 					if err != nil {
-						yield("", err)
+						yieldOk(ctx, yield, "")
 						return
 					}
-					*fnResOut = fnRes
+
+					*fnRes = fnResponse
 					return
 
 				case part.Text != "":
@@ -138,6 +130,7 @@ func (a *Agent) handleFunctionCall(
 	}
 
 	fnPart := genai.NewPartFromFunctionResponse(string(fn.name()), results)
+
 	full := append(win, &genai.Content{
 		Role:  genai.RoleUser,
 		Parts: []*genai.Part{fnPart, prompt},
@@ -149,23 +142,17 @@ func (a *Agent) handleFunctionCall(
 		full,
 		prof.config,
 	) {
-		if ctx.Err() != nil {
-			return fnPart, ctx.Err()
-		}
 		if err != nil {
 			return fnPart, err
 		}
+
 		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 			continue
 		}
+
 		for _, part := range resp.Candidates[0].Content.Parts {
-			if ctx.Err() != nil {
-				return fnPart, ctx.Err()
-			}
-			if part.Text != "" {
-				if !yieldOk(ctx, yield, part.Text) {
-					return fnPart, nil
-				}
+			if !yieldOk(ctx, yield, part.Text) {
+				return fnPart, nil
 			}
 		}
 	}

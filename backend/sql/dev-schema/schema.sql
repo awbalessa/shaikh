@@ -74,16 +74,6 @@ CREATE TYPE public.granularity AS ENUM (
 
 
 --
--- Name: messages_model; Type: TYPE; Schema: public; Owner: -
---
-
-CREATE TYPE public.messages_model AS ENUM (
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite'
-);
-
-
---
 -- Name: messages_role; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -179,9 +169,7 @@ CREATE TABLE public.messages (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     role public.messages_role NOT NULL,
     content text NOT NULL,
-    model public.messages_model NOT NULL,
     turn integer NOT NULL,
-    token_count integer,
     function_name text
 );
 

@@ -97,48 +97,6 @@ func (ns NullGranularity) Value() (driver.Value, error) {
 	return string(ns.Granularity), nil
 }
 
-type MessagesModel string
-
-const (
-	MessagesModelGemini25Flash     MessagesModel = "gemini-2.5-flash"
-	MessagesModelGemini25FlashLite MessagesModel = "gemini-2.5-flash-lite"
-)
-
-func (e *MessagesModel) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = MessagesModel(s)
-	case string:
-		*e = MessagesModel(s)
-	default:
-		return fmt.Errorf("unsupported scan type for MessagesModel: %T", src)
-	}
-	return nil
-}
-
-type NullMessagesModel struct {
-	MessagesModel MessagesModel
-	Valid         bool // Valid is true if MessagesModel is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullMessagesModel) Scan(value interface{}) error {
-	if value == nil {
-		ns.MessagesModel, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.MessagesModel.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullMessagesModel) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.MessagesModel), nil
-}
-
 type MessagesRole string
 
 const (
@@ -253,9 +211,7 @@ type Message struct {
 	CreatedAt    pgtype.Timestamptz
 	Role         MessagesRole
 	Content      string
-	Model        MessagesModel
 	Turn         int32
-	TokenCount   pgtype.Int4
 	FunctionName pgtype.Text
 }
 

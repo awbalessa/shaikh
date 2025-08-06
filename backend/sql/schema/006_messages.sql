@@ -1,8 +1,6 @@
 -- +goose Up
 
 CREATE TYPE messages_role AS enum ('user', 'model', 'function');
-CREATE TYPE messages_model AS enum ('gemini-2.5-flash', 'gemini-2.5-flash-lite');
-
 
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -11,9 +9,7 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     role messages_role NOT NULL,
     content TEXT NOT NULL,
-    model messages_model NOT NULL,
     turn INTEGER NOT NULL,
-    token_count INTEGER,
     function_name TEXT,
     CONSTRAINT unique_session_id_turn_role_key UNIQUE(session_id, role, turn)
 );

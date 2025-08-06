@@ -1,6 +1,6 @@
 -- name: CreateMessage :one
-INSERT INTO messages (session_id, user_id, role, content, model, turn, token_count, function_name)
-VALUES (@session_id, @user_id, @role, @content, @model, @turn, @token_count, @function_name)
+INSERT INTO messages (session_id, user_id, role, content, turn, function_name)
+VALUES (@session_id, @user_id, @role, @content, @turn, @function_name)
 RETURNING *;
 
 -- name: GetMessageByID :one
