@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"log/slog"
 	"strings"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -14,6 +16,8 @@ func (a *Agent) Ask(
 	prompt string,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
+		const method = "Ask"
+		start := time.Now()
 		cc, win, err := a.getContext(ctx)
 		if err != nil {
 			yield("", err)
@@ -24,16 +28,41 @@ func (a *Agent) Ask(
 		var fnOut *genai.Part
 		var modelOut strings.Builder
 
+		log := a.logger.With(
+			slog.String("method", method),
+			slog.String("userID", cc.UserID.String()),
+			slog.String("sessionID", cc.SessionID.String()),
+			slog.String("created_at", cc.CreatedAt.Format(time.RFC822)),
+			slog.String("updated_at", cc.UpdatedAt.Format(time.RFC822)),
+			slog.Int("turn", cc.Window.turns+1),
+		)
+
+		log.DebugContext(ctx, "asking agent...")
+		gotFirst := false
+		var ttft time.Duration
+
 		for resp, err := range a.ask(ctx, win, userIn, &fnOut) {
 			if err != nil {
 				yield("", err)
 				return
+			}
+
+			if !gotFirst {
+				ttft = time.Since(start)
+				gotFirst = true
 			}
 			modelOut.WriteString(resp)
 			if !yieldOk(ctx, yield, resp) {
 				return
 			}
 		}
+
+		totalTime := time.Since(start)
+
+		log.With(
+			slog.String("ttft", ttft.String()),
+			slog.String("total_time", totalTime.String()),
+		).DebugContext(ctx, "response recieved: updating context...")
 
 		modelOutPart := genai.NewPartFromText(modelOut.String())
 		lastInteraction := &Interaction{
@@ -50,6 +79,8 @@ func (a *Agent) Ask(
 			yield("", err)
 			return
 		}
+
+		log.DebugContext(ctx, "context updated: returning...")
 	})
 }
 
@@ -60,6 +91,10 @@ func (a *Agent) ask(
 	fnRes **genai.Part,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
+		const method = "ask"
+		log := a.logger.With(
+			"method", method,
+		)
 		prof, err := a.getProfile(searcherAgent)
 		if err != nil {
 			yield("", err)
@@ -78,7 +113,7 @@ func (a *Agent) ask(
 			prof.config,
 		) {
 			if err != nil {
-				yieldOk(ctx, yield, "")
+				yield("", err)
 				return
 			}
 
@@ -89,6 +124,9 @@ func (a *Agent) ask(
 			for _, part := range resp.Candidates[0].Content.Parts {
 				switch {
 				case part.FunctionCall != nil:
+					log.With(
+						"name", part.FunctionCall.Name,
+					).DebugContext(ctx, "agent called function")
 					fnResponse, err := a.handleFunctionCall(
 						ctx,
 						win,
@@ -97,7 +135,7 @@ func (a *Agent) ask(
 						yield,
 					)
 					if err != nil {
-						yieldOk(ctx, yield, "")
+						yield("", err)
 						return
 					}
 
@@ -121,6 +159,11 @@ func (a *Agent) handleFunctionCall(
 	fnCall *genai.FunctionCall,
 	yield func(string, error) bool,
 ) (*genai.Part, error) {
+	const method = "handleFunctionCall"
+	log := a.logger.With(
+		"method", method,
+	)
+
 	prof, err := a.getProfile(generatorAgent)
 	if err != nil {
 		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
@@ -133,6 +176,10 @@ func (a *Agent) handleFunctionCall(
 
 	results, err := fn.call(ctx, fnCall.Args)
 	if err != nil {
+		log.With(
+			"name", fnCall.Name,
+			"args", fnCall.Args,
+		).ErrorContext(ctx, "failed to handle function")
 		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
 	}
 

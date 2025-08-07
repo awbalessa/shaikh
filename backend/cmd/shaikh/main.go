@@ -10,7 +10,7 @@ import (
 
 func main() {
 	opts := config.LoggerOptions{
-		Level: slog.LevelDebug,
+		Level: slog.LevelInfo,
 		JSON:  true,
 	}
 

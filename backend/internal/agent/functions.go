@@ -64,13 +64,11 @@ func (f *functionSearch) call(
 	ctx context.Context,
 	args map[string]any,
 ) (map[string]any, error) {
-	// Parse 'full_prompt'
 	fullPrompt, ok := args["full_prompt"].(string)
 	if !ok {
 		return nil, errors.New("missing or invalid 'full_prompt'")
 	}
 
-	// Parse 'prompt_with_filter'
 	argPrompts, ok := args["prompts_with_filter"].([]any)
 	if !ok {
 		return nil, errors.New("missing or invalid 'prompt_with_filter'")
@@ -85,7 +83,6 @@ func (f *functionSearch) call(
 
 		prompt, _ := pmap["prompt"].(string)
 
-		// Optional filters
 		contentTypes := toContentTypes(pmap["content_type_filters"].([]string))
 		sources := toSources(pmap["source_filters"].([]string))
 

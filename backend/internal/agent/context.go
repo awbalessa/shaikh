@@ -73,8 +73,6 @@ func (a *Agent) getContext(ctx context.Context) (*contextCache, []*genai.Content
 
 	log := a.logger.With(
 		slog.String("method", method),
-		slog.String("userID", userID.String()),
-		slog.String("sessionID", sessionID.String()),
 	)
 
 	now := time.Now()
@@ -115,7 +113,6 @@ func (a *Agent) getContextCache(ctx context.Context, userID, sessionID uuid.UUID
 	key := createContextCacheKey(userID, sessionID)
 	log := a.logger.With(
 		slog.String("method", method),
-		slog.String("key", key),
 	)
 
 	now := time.Now()
@@ -141,13 +138,6 @@ func (a *Agent) getContextCache(ctx context.Context, userID, sessionID uuid.UUID
 	}
 
 	log.With(
-		slog.String("user_id", sc.UserID.String()),
-		slog.String("session_id", sc.SessionID.String()),
-		slog.Time("created_at", sc.CreatedAt),
-		slog.Time("updated_at", sc.UpdatedAt),
-		slog.Int("num_of_memories", len(sc.Window.userMemories)),
-		slog.Int("num_of_prev_sessions", len(sc.Window.previousSessions)),
-		slog.Int("num_of_interactions", len(sc.Window.history)),
 		slog.String("duration", time.Since(now).String()),
 	).DebugContext(ctx, "retrieved context cache successfully")
 
@@ -172,8 +162,6 @@ func (a *Agent) getDbContext(
 
 	log := a.logger.With(
 		slog.String("method", method),
-		slog.String("userID", userID.String()),
-		slog.String("sessionID", sessionID.String()),
 	)
 
 	now := time.Now()
@@ -185,6 +173,9 @@ func (a *Agent) getDbContext(
 			UserID:           userUUID,
 		})
 		if err != nil {
+			log.With(
+				"err", err,
+			).ErrorContext(ctx, "failed to get context from db")
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
@@ -205,6 +196,9 @@ func (a *Agent) getDbContext(
 			UserID:           userUUID,
 		})
 		if err != nil {
+			log.With(
+				"err", err,
+			).ErrorContext(ctx, "failed to get context from db")
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
@@ -225,6 +219,9 @@ func (a *Agent) getDbContext(
 			Valid: true,
 		})
 		if err != nil {
+			log.With(
+				"err", err,
+			).ErrorContext(ctx, "failed to get context from db")
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
@@ -239,6 +236,9 @@ func (a *Agent) getDbContext(
 			case "function":
 				var responseMap map[string]any
 				if err := json.Unmarshal([]byte(m.Content), &responseMap); err != nil {
+					log.With(
+						"err", err,
+					).ErrorContext(ctx, "failed to get context from db")
 					return fmt.Errorf("failed to get context from db: %w", err)
 				}
 				current.FunctionResponse = genai.NewPartFromFunctionResponse(
@@ -271,10 +271,6 @@ func (a *Agent) getDbContext(
 	}
 
 	log.With(
-		slog.Int("num_of_memories", len(memories)),
-		slog.Int("num_of_prev_sessions", len(sessions)),
-		slog.Int("num_of_interactions", len(interactions)),
-		slog.Int("turns", turns),
 		slog.String("duration", time.Since(now).String()),
 	).DebugContext(ctx, "retrieved db context successfully")
 
@@ -309,8 +305,6 @@ func (a *Agent) setContextCache(
 	const method = "setContextCache"
 	log := a.logger.With(
 		slog.String("method", method),
-		slog.String("user_id", userID.String()),
-		slog.String("session_id", sessionID.String()),
 	)
 
 	now := time.Now()
@@ -350,14 +344,23 @@ func (a *Agent) sendContextUpdate(
 	userID, sessionID uuid.UUID,
 	interaction *Interaction,
 ) error {
+	const method = "sendContextUpdate"
+	log := a.logger.With(
+		slog.String("method", method),
+	)
+
 	load := &SyncPayload{
 		UserID:      userID,
 		SessionID:   sessionID,
 		Interaction: interaction,
 	}
 
+	start := time.Now()
 	data, err := json.Marshal(load)
 	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to send context update")
 		return fmt.Errorf("failed to send context update: %w", err)
 	}
 
@@ -371,12 +374,22 @@ func (a *Agent) sendContextUpdate(
 
 	ack, err := a.js.PublishMsg(ctx, msg)
 	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to send context update")
 		return fmt.Errorf("failed to send context update: %w", err)
 	}
 
 	if ack == nil || ack.Stream != AgentStream {
+		log.With(
+			"ack", ack,
+		).ErrorContext(ctx, "unexpected publish ack")
 		return fmt.Errorf("unexpected publish ack: %+v", ack)
 	}
+
+	log.With(
+		slog.String("duration", time.Since(start).String()),
+	).DebugContext(ctx, "sent context update successfully")
 
 	return nil
 }
@@ -386,8 +399,16 @@ func (a *Agent) buildContextWindow(
 	cw *contextWindow,
 	agent agentName,
 ) ([]*genai.Content, error) {
+	const method = "buildContextWindow"
+	log := a.logger.With(
+		"method", method,
+	)
+
 	prof, err := a.getProfile(agent)
 	if err != nil {
+		log.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to build context window")
 		return nil, fmt.Errorf("failed to build context window: %w", err)
 	}
 
@@ -456,6 +477,9 @@ func (a *Agent) buildContextWindow(
 
 		tokResp, err := a.gc.client.Models.CountTokens(ctx, string(prof.model), fullContext, ctc)
 		if err != nil {
+			log.With(
+				"err", err,
+			).ErrorContext(ctx, "failed to build context window")
 			return nil, fmt.Errorf("failed to build context window: %w", err)
 		}
 
@@ -472,6 +496,7 @@ func (a *Agent) buildContextWindow(
 		}
 	}
 
+	log.DebugContext(ctx, "built context window successfully")
 	return contents, nil
 }
 
