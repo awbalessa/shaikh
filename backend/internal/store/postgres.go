@@ -8,6 +8,7 @@ import (
 
 	"github.com/awbalessa/shaikh/backend/internal/arabic"
 	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -185,4 +186,31 @@ func (pg *postgresClient) GetMessagesBySessionIDOrdered(
 	}
 
 	return rows, nil
+}
+
+func (pg *postgresClient) CreateMessage(
+	ctx context.Context,
+	arg database.CreateMessageParams,
+) (database.Message, error) {
+	rows, err := pg.queries.CreateMessage(ctx, arg)
+	if err != nil {
+		return database.Message{}, fmt.Errorf("failed to create message: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (pg *postgresClient) CreateMessageTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	arg database.CreateMessageParams,
+) (database.Message, error) {
+	q := database.New(tx)
+
+	msg, err := q.CreateMessage(ctx, arg)
+	if err != nil {
+		return database.Message{}, fmt.Errorf("failed to create message tx: %w", err)
+	}
+
+	return msg, nil
 }

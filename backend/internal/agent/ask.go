@@ -34,15 +34,22 @@ func (a *Agent) Ask(
 				return
 			}
 		}
+
 		modelOutPart := genai.NewPartFromText(modelOut.String())
-		cc.Window.history = append(cc.Window.history, Interaction{
+		lastInteraction := &Interaction{
 			Input: inputPrompt{
 				FunctionResponse: fnOut,
 				UserInput:        userIn,
 			},
 			ModelOutput: modelOutPart,
 			TurnNumber:  cc.Window.turns + 1,
-		})
+		}
+		cc.Window.history = append(cc.Window.history, lastInteraction)
+
+		if err = a.setContext(ctx, cc, lastInteraction); err != nil {
+			yield("", err)
+			return
+		}
 	})
 }
 

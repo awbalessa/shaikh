@@ -6,6 +6,7 @@ import (
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -21,6 +22,7 @@ const (
 )
 
 type postgresClient struct {
+	Pool    *pgxpool.Pool
 	queries *database.Queries
 	logger  *slog.Logger
 }
@@ -32,6 +34,7 @@ type dragonflyClient struct {
 
 type StoreConfig struct {
 	Config  *config.Config
+	Pool    *pgxpool.Pool
 	Queries *database.Queries
 }
 
@@ -65,6 +68,7 @@ func New(cfg StoreConfig) *Store {
 
 	return &Store{
 		Pg: &postgresClient{
+			Pool:    cfg.Pool,
 			queries: cfg.Queries,
 			logger:  pg_log,
 		},

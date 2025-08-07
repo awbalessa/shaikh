@@ -34,9 +34,9 @@ type previousSession struct {
 }
 
 type inputPrompt struct {
-	UserInput        *genai.Part  `json:"user_input"`
 	FunctionName     functionName `json:"function_name"`
 	FunctionResponse *genai.Part  `json:"function_response"`
+	UserInput        *genai.Part  `json:"user_input"`
 }
 
 type Interaction struct {
@@ -45,10 +45,16 @@ type Interaction struct {
 	TurnNumber  int         `json:"turn_number"`
 }
 
+type SyncPayload struct {
+	UserID      uuid.UUID `json:"user_id"`
+	SessionID   uuid.UUID `json:"session_id"`
+	Interaction *Interaction
+}
+
 type contextWindow struct {
-	userMemories     []userMemory
-	previousSessions []previousSession
-	history          []Interaction
+	userMemories     []*userMemory
+	previousSessions []*previousSession
+	history          []*Interaction
 	turns            int
 }
 
@@ -159,9 +165,9 @@ func (a *Agent) getDbContext(
 	}
 
 	var (
-		memories     []userMemory
-		sessions     []previousSession
-		interactions []Interaction
+		memories     []*userMemory
+		sessions     []*previousSession
+		interactions []*Interaction
 	)
 
 	log := a.logger.With(
@@ -182,9 +188,9 @@ func (a *Agent) getDbContext(
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
-		local := make([]userMemory, 0, len(mem))
+		local := make([]*userMemory, 0, len(mem))
 		for _, m := range mem {
-			local = append(local, userMemory{
+			local = append(local, &userMemory{
 				updatedAt: m.UpdatedAt.Time,
 				memory:    m.Memory,
 			})
@@ -202,9 +208,9 @@ func (a *Agent) getDbContext(
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
-		local := make([]previousSession, 0, len(prev))
+		local := make([]*previousSession, 0, len(prev))
 		for _, p := range prev {
-			local = append(local, previousSession{
+			local = append(local, &previousSession{
 				lastAccessed: p.UpdatedAt.Time,
 				summary:      p.Summary.String,
 			})
@@ -222,7 +228,7 @@ func (a *Agent) getDbContext(
 			return fmt.Errorf("failed to get context from db: %w", err)
 		}
 
-		local := make([]Interaction, 0)
+		local := make([]*Interaction, 0)
 		var current inputPrompt
 
 		for _, m := range messages {
@@ -241,7 +247,7 @@ func (a *Agent) getDbContext(
 				)
 
 			case "model":
-				local = append(local, Interaction{
+				local = append(local, &Interaction{
 					Input:       current,
 					ModelOutput: genai.NewPartFromText(m.Content),
 					TurnNumber:  int(m.Turn),
@@ -283,11 +289,15 @@ func (a *Agent) getDbContext(
 func (a *Agent) setContext(
 	ctx context.Context,
 	cc *contextCache,
+	lastInteraction *Interaction,
 ) error {
 	if err := a.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
 		return fmt.Errorf("failed to set context: %w", err)
 	}
 
+	if err := a.sendContextUpdate(ctx, cc.UserID, cc.SessionID, lastInteraction); err != nil {
+		return fmt.Errorf("failed to set context: %w", err)
+	}
 	return nil
 }
 
@@ -337,10 +347,16 @@ func (a *Agent) setContextCache(
 
 func (a *Agent) sendContextUpdate(
 	ctx context.Context,
-	sessionID uuid.UUID,
+	userID, sessionID uuid.UUID,
 	interaction *Interaction,
 ) error {
-	data, err := json.Marshal(interaction)
+	load := &SyncPayload{
+		UserID:      userID,
+		SessionID:   sessionID,
+		Interaction: interaction,
+	}
+
+	data, err := json.Marshal(load)
 	if err != nil {
 		return fmt.Errorf("failed to send context update: %w", err)
 	}

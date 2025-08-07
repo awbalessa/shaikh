@@ -59,6 +59,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 
 	store := store.New(store.StoreConfig{
 		Config:  cfg,
+		Pool:    conn,
 		Queries: database.New(conn),
 	})
 
