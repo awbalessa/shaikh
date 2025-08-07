@@ -57,7 +57,7 @@ type syncer struct {
 	buffer    []jetstream.Msg
 }
 
-func buildSyncer(
+func BuildSyncer(
 	ctx context.Context,
 	stream jetstream.JetStream,
 	store *store.Store,
@@ -97,6 +97,9 @@ func (s *syncer) logger() *slog.Logger {
 }
 
 func (s *syncer) start(ctx context.Context) error {
+	s.log.InfoContext(ctx, "syncer worker started")
+	defer s.log.InfoContext(ctx, "syncer worker stopped")
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -106,16 +109,25 @@ func (s *syncer) start(ctx context.Context) error {
 				agent.SyncMaxBatchSize,
 			)
 			if err != nil {
+				s.log.With(
+					"err", err,
+				).ErrorContext(ctx, "syncer failed")
 				return fmt.Errorf("syncer failed: %w", err)
 			}
 
 			for m := range batch.Messages() {
 				if err := s.process(ctx, m); err != nil {
+					s.log.With(
+						"err", err,
+					).ErrorContext(ctx, "syncer failed")
 					return fmt.Errorf("syncer failed: %w", err)
 				}
 			}
 
 			if err := batch.Error(); err != nil {
+				s.log.With(
+					"err", err,
+				).ErrorContext(ctx, "syncer failed")
 				return fmt.Errorf("syncer failed: %w", err)
 			}
 		}
@@ -127,13 +139,13 @@ func (s *syncer) process(ctx context.Context, msg jetstream.Msg) error {
 
 	if len(s.buffer) >= agent.SyncMaxBatchSize {
 		if err := s.flush(ctx); err != nil {
-			return err
+			return fmt.Errorf("failed to process message: %w", err)
 		}
 	}
 
 	if time.Since(s.lastFlush) >= agent.SyncIdleTime {
 		if err := s.flush(ctx); err != nil {
-			return err
+			return fmt.Errorf("failed to process message: %w", err)
 		}
 	}
 
@@ -195,19 +207,22 @@ func (s *syncer) createMessagesFromInteraction(
 	if err != nil {
 		return fmt.Errorf("failed to create messages from interaction: %w", err)
 	}
-	_, err = s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
-		SessionID: pgSessionId,
-		UserID:    pgUserId,
-		Role:      database.MessagesRoleFunction,
-		FunctionName: pgtype.Text{
-			Valid:  true,
-			String: string(load.Interaction.Input.FunctionName),
-		},
-		Content: load.Interaction.Input.FunctionResponse.Text,
-		Turn:    int32(load.Interaction.TurnNumber),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create messages from interaction: %w", err)
+
+	if load.Interaction.Input.FunctionResponse != nil && load.Interaction.Input.FunctionName != "" {
+		_, err = s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
+			SessionID: pgSessionId,
+			UserID:    pgUserId,
+			Role:      database.MessagesRoleFunction,
+			FunctionName: pgtype.Text{
+				Valid:  true,
+				String: string(load.Interaction.Input.FunctionName),
+			},
+			Content: load.Interaction.Input.FunctionResponse.Text,
+			Turn:    int32(load.Interaction.TurnNumber),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create messages from interaction: %w", err)
+		}
 	}
 	_, err = s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
 		SessionID: pgSessionId,

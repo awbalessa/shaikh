@@ -21,6 +21,7 @@ const (
 	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
 	memories100          int           = 100
 	sessions5            int           = 5
+	tokenLimit           int           = 200_000
 )
 
 type userMemory struct {
@@ -483,7 +484,7 @@ func (a *Agent) buildContextWindow(
 			return nil, fmt.Errorf("failed to build context window: %w", err)
 		}
 
-		if tokResp.TotalTokens < 200_000 {
+		if tokResp.TotalTokens < int32(tokenLimit) {
 			contents = fullContext
 			break
 		}

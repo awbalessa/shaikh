@@ -113,7 +113,10 @@ func (a *Agent) ask(
 			prof.config,
 		) {
 			if err != nil {
-				yield("", err)
+				log.With(
+					"err", err,
+				).ErrorContext(ctx, "failed to ask agent")
+				yield("", fmt.Errorf("failed to ask agent: %w", err))
 				return
 			}
 
@@ -197,7 +200,11 @@ func (a *Agent) handleFunctionCall(
 		prof.config,
 	) {
 		if err != nil {
-			return fnPart, err
+			log.With(
+				"name", fnCall.Name,
+				"args", fnCall.Args,
+			).ErrorContext(ctx, "failed to handle function")
+			return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
 		}
 
 		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {

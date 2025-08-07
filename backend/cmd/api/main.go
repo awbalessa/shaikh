@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 
+	"github.com/awbalessa/shaikh/backend/internal/app"
 	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/server"
 )
 
 func main() {
@@ -18,14 +19,20 @@ func main() {
 		config.NewLogger(opts),
 	)
 
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+
 	cfg, err := config.Load()
 	if err != nil {
+		cancel()
 		log.Fatal(err)
 	}
 
-	server, err := server.Serve(cfg)
+	app, err := app.Start(ctx, cfg)
 	if err != nil {
+		cancel()
 		log.Fatal(err)
 	}
-	defer server.Close()
+	defer app.Close()
 }

@@ -455,7 +455,6 @@ func (p *Pipeline) hybridSearch(
 		}
 	}
 
-	// Log final deduped result count
 	log.With(
 		slog.String("duration", time.Since(start).String()),
 		slog.Int("fused_count", len(allChunks)),

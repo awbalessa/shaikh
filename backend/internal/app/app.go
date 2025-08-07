@@ -1,4 +1,4 @@
-package server
+package app
 
 import (
 	"context"
@@ -15,22 +15,15 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-type Server struct {
-	Context context.Context
-	Cancel  context.CancelFunc
-	Nc      *nats.Conn
-	Js      jetstream.JetStream
-	Conn    *pgxpool.Pool
-	Store   *store.Store
-	Pipe    *rag.Pipeline
-	Agent   *agent.Agent
+type App struct {
+	Agent  *agent.Agent
+	Nats   *nats.Conn
+	Stream jetstream.JetStream
+	Pool   *pgxpool.Pool
+	Store  *store.Store
 }
 
-func Serve(cfg *config.Config) (*Server, error) {
-	ctx, cancel := context.WithCancel(
-		context.Background(),
-	)
-
+func Start(ctx context.Context, cfg *config.Config) (*App, error) {
 	pgxCfg, err := pgxpool.ParseConfig(cfg.PostgresConnString)
 	if err != nil {
 		slog.With(
@@ -40,8 +33,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 			ctx,
 			"failed to parse postgres url",
 		)
-		cancel()
-		return nil, fmt.Errorf("failed to start server: %w", err)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
@@ -53,8 +45,7 @@ func Serve(cfg *config.Config) (*Server, error) {
 			ctx,
 			"failed to create postgres conn",
 		)
-		cancel()
-		return nil, fmt.Errorf("failed to start server: %w", err)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	store := store.New(store.StoreConfig{
@@ -76,14 +67,12 @@ func Serve(cfg *config.Config) (*Server, error) {
 		MaxPingsOut:  natsMaxPingsOutstandingFive,
 	})
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to start server: %w", err)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	js, err := NewJetStream(nc)
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to start server: %w", err)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
 	agent, err := agent.NewAgent(agent.AgentConfig{
@@ -93,24 +82,19 @@ func Serve(cfg *config.Config) (*Server, error) {
 		Stream:   js,
 	})
 	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to start server: %w", err)
+		return nil, fmt.Errorf("failed to start app: %w", err)
 	}
 
-	return &Server{
-		Context: ctx,
-		Cancel:  cancel,
-		Nc:      nc,
-		Js:      js,
-		Conn:    conn,
-		Store:   store,
-		Pipe:    pipe,
-		Agent:   agent,
+	return &App{
+		Agent:  agent,
+		Nats:   nc,
+		Stream: js,
+		Pool:   conn,
+		Store:  store,
 	}, nil
 }
 
-func (s *Server) Close() {
-	s.Cancel()
-	s.Conn.Close()
-	s.Nc.Drain()
+func (s *App) Close() {
+	s.Pool.Close()
+	s.Nats.Drain()
 }
