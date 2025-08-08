@@ -1,11 +1,11 @@
-package store
+package repo
 
 import (
 	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )

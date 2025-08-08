@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/rag"
-	"github.com/awbalessa/shaikh/backend/internal/store"
+	"github.com/awbalessa/shaikh/backend/internal/service/rag"
+	"github.com/awbalessa/shaikh/backend/internal/repo/postgres"
 	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/genai"
 )
@@ -22,7 +22,7 @@ const (
 type AgentConfig struct {
 	Context  context.Context
 	Pipeline *rag.Pipeline
-	Store    *store.Store
+	Store    *repo.Store
 	Stream   jetstream.JetStream
 }
 
@@ -30,7 +30,7 @@ type Agent struct {
 	agents    map[agentName]*agentProfile
 	functions map[functionName]function
 	logger    *slog.Logger
-	store     *store.Store
+	store     *repo.Store
 	gc        *geminiClient
 	js        jetstream.JetStream
 }

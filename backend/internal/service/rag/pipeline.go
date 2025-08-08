@@ -4,7 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/store"
+	"github.com/awbalessa/shaikh/backend/internal/repo"
 )
 
 const (

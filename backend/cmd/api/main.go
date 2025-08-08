@@ -29,7 +29,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	app, err := app.Start(ctx, cfg)
+	app, err := app.StartAPI(ctx, cfg)
 	if err != nil {
 		cancel()
 		log.Fatal(err)

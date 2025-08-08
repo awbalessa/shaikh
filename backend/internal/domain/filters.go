@@ -1,6 +1,6 @@
 package models
 
-import "github.com/awbalessa/shaikh/backend/internal/database"
+import database "github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
 
 const (
 	LabelContentTypeTafsir                LabelContentType = 1
@@ -419,7 +419,7 @@ type LabelSource int
 type LabelSurahNumber int
 type LabelAyahNumber int
 
-var ContentTypeToLabel = map[database.ContentType]LabelContentType{
+var ContentTypeToLabel = map[gen.ContentType]LabelContentType{
 	database.ContentTypeTafsir: LabelContentTypeTafsir,
 }
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/awbalessa/shaikh/backend/internal/database"
-	"github.com/awbalessa/shaikh/backend/internal/models"
-	"github.com/awbalessa/shaikh/backend/internal/rag"
+	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	models "github.com/awbalessa/shaikh/backend/internal/domain"
+	"github.com/awbalessa/shaikh/backend/internal/service/rag"
 	"google.golang.org/genai"
 )
 
@@ -152,7 +152,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 			Type:        genai.TypeString,
 			Format:      "enum",
 			Description: "The content type to filter by.",
-			Enum:        []string{string(database.ContentTypeTafsir)},
+			Enum:        []string{string(gen.ContentTypeTafsir)},
 		},
 	}
 
@@ -165,7 +165,7 @@ func buildFunctionSearch(log *slog.Logger) *functionSearch {
 			Type:        genai.TypeString,
 			Format:      "enum",
 			Description: "The source to filter by.",
-			Enum:        []string{string(database.SourceTafsirIbnKathir)},
+			Enum:        []string{string(gen.SourceTafsirIbnKathir)},
 		},
 	}
 

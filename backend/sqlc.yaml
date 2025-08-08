@@ -1,11 +1,11 @@
 version: "2"
 sql:
-  - schema: "sql/dev-schema/schema.sql"
-    queries: "sql/queries"
+  - schema: "migrations"
+    queries: "internal/repo/postgres/sql"
     engine: "postgresql"
     gen:
       go:
-        out: "internal/database"
+        out: "internal/repo/postgres/gen"
         sql_package: "pgx/v5"
         overrides:
           - db_type: "public.vector"

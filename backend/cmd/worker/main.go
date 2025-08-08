@@ -7,7 +7,6 @@ import (
 
 	"github.com/awbalessa/shaikh/backend/internal/app"
 	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/worker"
 )
 
 func main() {
@@ -29,21 +28,8 @@ func main() {
 		cancel()
 		log.Fatal(err)
 	}
-	app, err := app.Start(ctx, cfg)
-	if err != nil {
-		cancel()
+
+	if err := app.StartWorker(ctx, cfg, cancel); err != nil {
 		log.Fatal(err)
 	}
-	defer app.Close()
-
-	var workers worker.WorkerGroup
-
-	syncer, err := worker.BuildSyncer(ctx, app.Stream, app.Store)
-	if err != nil {
-		cancel()
-		log.Fatal(err)
-	}
-
-	workers.Add(syncer)
-	workers.StartAll(ctx, cancel)
 }

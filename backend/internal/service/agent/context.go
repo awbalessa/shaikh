@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/database"
+	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
 	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"

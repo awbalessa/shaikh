@@ -8,16 +8,16 @@ import (
 	"sort"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/database"
-	"github.com/awbalessa/shaikh/backend/internal/models"
+	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	models "github.com/awbalessa/shaikh/backend/internal/domain"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 )
 
 type PromptWithFilters struct {
 	Prompt               string
-	NullableContentTypes []database.ContentType
-	NullableSources      []database.Source
+	NullableContentTypes []gen.ContentType
+	NullableSources      []gen.Source
 	NullableSurahs       []models.SurahNumber
 	NullableAyahs        []models.AyahNumber
 }

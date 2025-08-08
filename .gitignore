@@ -16,3 +16,6 @@ __pycache__/
 **/*.pyc
 **/Qwen3**
 todo.md
+**/crush
+crush.md
+current-schema.sql

@@ -1,4 +1,4 @@
-package worker
+package queue
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/agent"
-	"github.com/awbalessa/shaikh/backend/internal/database"
-	"github.com/awbalessa/shaikh/backend/internal/store"
+	store "github.com/awbalessa/shaikh/backend/internal/repo/postgres"
+	database "github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	"github.com/awbalessa/shaikh/backend/internal/service/agent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nats-io/nats.go/jetstream"
@@ -130,6 +130,10 @@ func (s *syncer) start(ctx context.Context) error {
 				).ErrorContext(ctx, "syncer failed")
 				return fmt.Errorf("syncer failed: %w", err)
 			}
+
+			s.log.With(
+				"batch_size", agent.SyncMaxBatchSize,
+			).DebugContext(ctx, "processed batch successfully")
 		}
 	}
 }
@@ -177,6 +181,11 @@ func (s *syncer) flush(ctx context.Context) error {
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to flush buffer: %w", err)
 	}
+
+	s.log.With(
+		slog.Int("buffer_size", len(s.buffer)),
+		slog.String("time_since_last_flush", s.lastFlush.Format(time.RFC822)),
+	).DebugContext(ctx, "flushed buffer to database")
 
 	s.buffer = nil
 	s.lastFlush = time.Now()
