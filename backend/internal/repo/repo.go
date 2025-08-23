@@ -23,7 +23,7 @@ const (
 
 type postgresClient struct {
 	Pool    *pgxpool.Pool
-	queries *database.Queries
+	queries *gen.Queries
 	logger  *slog.Logger
 }
 
@@ -35,7 +35,7 @@ type dragonflyClient struct {
 type StoreConfig struct {
 	Config  *config.Config
 	Pool    *pgxpool.Pool
-	Queries *database.Queries
+	Queries *gen.Queries
 }
 
 type Store struct {

@@ -3,10 +3,12 @@
 //   sqlc v1.29.0
 // source: ayat.sql
 
-package database
+package gen
 
 import (
 	"context"
+
+	"shaikh/internal/domain"
 )
 
 const getAyatByKeys = `-- name: GetAyatByKeys :many
@@ -16,8 +18,8 @@ WHERE surah = $1
 `
 
 type GetAyatByKeysParams struct {
-	Surah int32
-	Ayat  []int32
+	Surah domain.RagSurahNumber `db:"surah" json:"surah"`
+	Ayat  []int32               `db:"ayat" json:"ayat"`
 }
 
 func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error) {
@@ -26,7 +28,7 @@ func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var items []RagAyat
+	items := []RagAyat{}
 	for rows.Next() {
 		var i RagAyat
 		if err := rows.Scan(

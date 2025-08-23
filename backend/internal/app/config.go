@@ -1,4 +1,4 @@
-package config
+package app
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ type Config struct {
 	DragonFlyAddress   string
 }
 
-func Load() (*Config, error) {
+func LoadConfig() (*Config, error) {
 	root, err := findDotEnv()
 	if err != nil {
 		return nil, err

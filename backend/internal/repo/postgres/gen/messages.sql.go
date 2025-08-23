@@ -3,12 +3,13 @@
 //   sqlc v1.29.0
 // source: messages.sql
 
-package database
+package gen
 
 import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"shaikh/internal/domain"
 )
 
 const createMessage = `-- name: CreateMessage :one
@@ -18,12 +19,12 @@ RETURNING id, session_id, user_id, created_at, role, content, turn, function_nam
 `
 
 type CreateMessageParams struct {
-	SessionID    pgtype.UUID
-	UserID       pgtype.UUID
-	Role         MessagesRole
-	Content      string
-	Turn         int32
-	FunctionName pgtype.Text
+	SessionID    pgtype.UUID         `db:"session_id" json:"session_id"`
+	UserID       pgtype.UUID         `db:"user_id" json:"user_id"`
+	Role         domain.MessagesRole `db:"role" json:"role"`
+	Content      string              `db:"content" json:"content"`
+	Turn         int32               `db:"turn" json:"turn"`
+	FunctionName pgtype.Text         `db:"function_name" json:"function_name"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
@@ -82,7 +83,7 @@ func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.U
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Message
+	items := []Message{}
 	for rows.Next() {
 		var i Message
 		if err := rows.Scan(
@@ -117,7 +118,7 @@ func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtyp
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Message
+	items := []Message{}
 	for rows.Next() {
 		var i Message
 		if err := rows.Scan(
@@ -152,7 +153,7 @@ func (q *Queries) GetMessagesBySessionIdOrdered(ctx context.Context, sessionID p
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Message
+	items := []Message{}
 	for rows.Next() {
 		var i Message
 		if err := rows.Scan(
@@ -186,8 +187,8 @@ LIMIT $2
 `
 
 type GetUserMessagesByUserIDParams struct {
-	UserID           pgtype.UUID
-	NumberOfMessages int32
+	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
+	NumberOfMessages int32       `db:"number_of_messages" json:"number_of_messages"`
 }
 
 func (q *Queries) GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error) {
@@ -196,7 +197,7 @@ func (q *Queries) GetUserMessagesByUserID(ctx context.Context, arg GetUserMessag
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Message
+	items := []Message{}
 	for rows.Next() {
 		var i Message
 		if err := rows.Scan(

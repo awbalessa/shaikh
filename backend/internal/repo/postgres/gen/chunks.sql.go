@@ -3,13 +3,13 @@
 //   sqlc v1.29.0
 // source: chunks.sql
 
-package database
+package gen
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
+	"shaikh/internal/domain"
 )
 
 const lexicalSearch = `-- name: LexicalSearch :many
@@ -102,21 +102,21 @@ LIMIT $1
 `
 
 type LexicalSearchParams struct {
-	NumberOfChunks int32
-	Query          string
-	ContentTypes   []ContentType
-	Sources        []Source
-	Surahs         []int32
-	Ayahs          []int32
+	NumberOfChunks int32         `db:"number_of_chunks" json:"number_of_chunks"`
+	Query          string        `db:"query" json:"query"`
+	ContentTypes   []interface{} `db:"content_types" json:"content_types"`
+	Sources        []interface{} `db:"sources" json:"sources"`
+	Surahs         []int32       `db:"surahs" json:"surahs"`
+	Ayahs          []int32       `db:"ayahs" json:"ayahs"`
 }
 
 type LexicalSearchRow struct {
-	ID            int64
-	Score         float64
-	EmbeddedChunk string
-	Source        Source
-	Surah         pgtype.Int4
-	Ayah          pgtype.Int4
+	ID            int64            `db:"id" json:"id"`
+	Score         float64          `db:"score" json:"score"`
+	EmbeddedChunk string           `db:"embedded_chunk" json:"embedded_chunk"`
+	Source        domain.RagSource `db:"source" json:"source"`
+	Surah         NullRagSurah     `db:"surah" json:"surah"`
+	Ayah          NullRagAyah      `db:"ayah" json:"ayah"`
 }
 
 func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error) {
@@ -132,7 +132,7 @@ func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var items []LexicalSearchRow
+	items := []LexicalSearchRow{}
 	for rows.Next() {
 		var i LexicalSearchRow
 		if err := rows.Scan(
@@ -213,21 +213,21 @@ LIMIT $1
 `
 
 type SemanticSearchParams struct {
-	NumberOfChunks    int32
-	Vector            pgvector.Vector
-	ContentTypeLabels []int16
-	SourceLabels      []int16
-	SurahLabels       []int16
-	AyahLabels        []int16
+	NumberOfChunks    int32           `db:"number_of_chunks" json:"number_of_chunks"`
+	Vector            pgvector.Vector `db:"vector" json:"vector"`
+	ContentTypeLabels []int16         `db:"content_type_labels" json:"content_type_labels"`
+	SourceLabels      []int16         `db:"source_labels" json:"source_labels"`
+	SurahLabels       []int16         `db:"surah_labels" json:"surah_labels"`
+	AyahLabels        []int16         `db:"ayah_labels" json:"ayah_labels"`
 }
 
 type SemanticSearchRow struct {
-	ID            int64
-	Score         float64
-	EmbeddedChunk string
-	Source        Source
-	Surah         pgtype.Int4
-	Ayah          pgtype.Int4
+	ID            int64            `db:"id" json:"id"`
+	Score         float64          `db:"score" json:"score"`
+	EmbeddedChunk string           `db:"embedded_chunk" json:"embedded_chunk"`
+	Source        domain.RagSource `db:"source" json:"source"`
+	Surah         NullRagSurah     `db:"surah" json:"surah"`
+	Ayah          NullRagAyah      `db:"ayah" json:"ayah"`
 }
 
 func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error) {
@@ -243,7 +243,7 @@ func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) 
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SemanticSearchRow
+	items := []SemanticSearchRow{}
 	for rows.Next() {
 		var i SemanticSearchRow
 		if err := rows.Scan(

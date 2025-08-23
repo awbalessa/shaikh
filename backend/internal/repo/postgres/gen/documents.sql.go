@@ -3,12 +3,12 @@
 //   sqlc v1.29.0
 // source: documents.sql
 
-package database
+package gen
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"shaikh/internal/domain"
 )
 
 const getDocumentByID = `-- name: GetDocumentByID :one
@@ -17,10 +17,10 @@ WHERE id = $1
 `
 
 type GetDocumentByIDRow struct {
-	Source   Source
-	Document string
-	Surah    pgtype.Int4
-	Ayah     pgtype.Int4
+	Source   domain.RagSource `db:"source" json:"source"`
+	Document string           `db:"document" json:"document"`
+	Surah    NullRagSurah     `db:"surah" json:"surah"`
+	Ayah     NullRagAyah      `db:"ayah" json:"ayah"`
 }
 
 func (q *Queries) GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error) {
@@ -41,14 +41,14 @@ WHERE surah = $1 AND ayah = $2
 `
 
 type GetDocumentByKeyParams struct {
-	Surah pgtype.Int4
-	Ayah  pgtype.Int4
+	Surah NullRagSurah `db:"surah" json:"surah"`
+	Ayah  NullRagAyah  `db:"ayah" json:"ayah"`
 }
 
 type GetDocumentByKeyRow struct {
-	ID       int32
-	Source   Source
-	Document string
+	ID       int32            `db:"id" json:"id"`
+	Source   domain.RagSource `db:"source" json:"source"`
+	Document string           `db:"document" json:"document"`
 }
 
 func (q *Queries) GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error) {

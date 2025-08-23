@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: sessions.sql
 
-package database
+package gen
 
 import (
 	"context"
@@ -18,8 +18,8 @@ RETURNING id, user_id, created_at, updated_at, ended_at, summary
 `
 
 type CreateSessionParams struct {
-	ID     pgtype.UUID
-	UserID pgtype.UUID
+	ID     pgtype.UUID `db:"id" json:"id"`
+	UserID pgtype.UUID `db:"user_id" json:"user_id"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -63,8 +63,8 @@ LIMIT $2
 `
 
 type GetSessionsByUserIDParams struct {
-	UserID           pgtype.UUID
-	NumberOfSessions int32
+	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
+	NumberOfSessions int32       `db:"number_of_sessions" json:"number_of_sessions"`
 }
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error) {
@@ -73,7 +73,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Session
+	items := []Session{}
 	for rows.Next() {
 		var i Session
 		if err := rows.Scan(

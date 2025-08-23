@@ -1,17 +1,8 @@
-package models
-
-import database "github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+package domain
 
 const (
 	LabelContentTypeTafsir                LabelContentType = 1
 	LabelSourceTafsirIbnKathir            LabelSource      = 101
-	LabelSourceTafsirAlTabari             LabelSource      = 102
-	LabelSourceTafsirAlQurtubi            LabelSource      = 103
-	LabelSourceTafsirAlBaghawi            LabelSource      = 104
-	LabelSourceTafsirAlSaadi              LabelSource      = 105
-	LabelSourceTafsirAlMuyassar           LabelSource      = 106
-	LabelSourceTafsirAlWasit              LabelSource      = 107
-	LabelSourceTafsirAlJalalayn           LabelSource      = 108
 	LabelSurahNumberOne                   LabelSurahNumber = 1001
 	LabelSurahNumberTwo                   LabelSurahNumber = 1002
 	LabelSurahNumberThree                 LabelSurahNumber = 1003
@@ -419,19 +410,12 @@ type LabelSource int
 type LabelSurahNumber int
 type LabelAyahNumber int
 
-var ContentTypeToLabel = map[gen.ContentType]LabelContentType{
-	database.ContentTypeTafsir: LabelContentTypeTafsir,
+var ContentTypeToLabel = map[RagContentType]LabelContentType{
+	ContentTypeTafsir: LabelContentTypeTafsir,
 }
 
-var SourceToLabel = map[database.Source]LabelSource{
-	database.SourceTafsirIbnKathir:  LabelSourceTafsirIbnKathir,
-	database.SourceTafsirAlTabari:   LabelSourceTafsirAlTabari,
-	database.SourceTafsirAlQurtubi:  LabelSourceTafsirAlQurtubi,
-	database.SourceTafsirAlBaghawi:  LabelSourceTafsirAlBaghawi,
-	database.SourceTafsirAlSaadi:    LabelSourceTafsirAlSaadi,
-	database.SourceTafsirAlMuyassar: LabelSourceTafsirAlMuyassar,
-	database.SourceTafsirAlWasit:    LabelSourceTafsirAlWasit,
-	database.SourceTafsirAlJalalayn: LabelSourceTafsirAlJalalayn,
+var SourceToLabel = map[RagSource]LabelSource{
+	SourceTafsirIbnKathir: LabelSourceTafsirIbnKathir,
 }
 
 var SurahNumberToLabel = map[int32]LabelSurahNumber{

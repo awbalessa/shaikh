@@ -10,13 +10,13 @@ import (
 )
 
 func main() {
-	opts := config.LoggerOptions{
+	opts := observe.LoggerOptions{
 		Level: slog.LevelInfo,
 		JSON:  true,
 	}
 
 	slog.SetDefault(
-		config.NewLogger(opts),
+		observe.NewLogger(opts),
 	)
 
 	ctx, cancel := context.WithCancel(

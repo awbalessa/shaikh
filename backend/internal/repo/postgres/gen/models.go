@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.29.0
 
-package database
+package gen
 
 import (
 	"database/sql/driver"
@@ -10,92 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	pgvector_go "github.com/pgvector/pgvector-go"
+	"shaikh/internal/domain"
 )
-
-type ContentType string
-
-const (
-	ContentTypeTafsir ContentType = "tafsir"
-)
-
-func (e *ContentType) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = ContentType(s)
-	case string:
-		*e = ContentType(s)
-	default:
-		return fmt.Errorf("unsupported scan type for ContentType: %T", src)
-	}
-	return nil
-}
-
-type NullContentType struct {
-	ContentType ContentType
-	Valid       bool // Valid is true if ContentType is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullContentType) Scan(value interface{}) error {
-	if value == nil {
-		ns.ContentType, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.ContentType.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullContentType) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.ContentType), nil
-}
-
-type Granularity string
-
-const (
-	GranularityPhrase Granularity = "phrase"
-	GranularityAyah   Granularity = "ayah"
-	GranularitySurah  Granularity = "surah"
-	GranularityQuran  Granularity = "quran"
-)
-
-func (e *Granularity) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = Granularity(s)
-	case string:
-		*e = Granularity(s)
-	default:
-		return fmt.Errorf("unsupported scan type for Granularity: %T", src)
-	}
-	return nil
-}
-
-type NullGranularity struct {
-	Granularity Granularity
-	Valid       bool // Valid is true if Granularity is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullGranularity) Scan(value interface{}) error {
-	if value == nil {
-		ns.Granularity, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.Granularity.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullGranularity) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.Granularity), nil
-}
 
 type MessagesRole string
 
@@ -118,8 +34,8 @@ func (e *MessagesRole) Scan(src interface{}) error {
 }
 
 type NullMessagesRole struct {
-	MessagesRole MessagesRole
-	Valid        bool // Valid is true if MessagesRole is not NULL
+	MessagesRole MessagesRole `json:"messages_role"`
+	Valid        bool         `json:"valid"` // Valid is true if MessagesRole is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -140,136 +56,685 @@ func (ns NullMessagesRole) Value() (driver.Value, error) {
 	return string(ns.MessagesRole), nil
 }
 
-type Source string
+type RagAyah string
 
 const (
-	SourceTafsirIbnKathir      Source = "Tafsir Ibn Kathir"
-	SourceTafsirAlTabari       Source = "Tafsir Al Tabari"
-	SourceTafsirAlQurtubi      Source = "Tafsir Al Qurtubi"
-	SourceTafsirAlBaghawi      Source = "Tafsir Al Baghawi"
-	SourceTafsirAlSaadi        Source = "Tafsir Al Saadi"
-	SourceTafsirAlMuyassar     Source = "Tafsir Al Muyassar"
-	SourceTafsirAlWasit        Source = "Tafsir Al Wasit"
-	SourceTafsirAlJalalayn     Source = "Tafsir Al Jalalayn"
-	SourceTafsirTanwirAlMiqbas Source = "Tafsir Tanwir Al Miqbas"
+	RagAyah1   RagAyah = "1"
+	RagAyah2   RagAyah = "2"
+	RagAyah3   RagAyah = "3"
+	RagAyah4   RagAyah = "4"
+	RagAyah5   RagAyah = "5"
+	RagAyah6   RagAyah = "6"
+	RagAyah7   RagAyah = "7"
+	RagAyah8   RagAyah = "8"
+	RagAyah9   RagAyah = "9"
+	RagAyah10  RagAyah = "10"
+	RagAyah11  RagAyah = "11"
+	RagAyah12  RagAyah = "12"
+	RagAyah13  RagAyah = "13"
+	RagAyah14  RagAyah = "14"
+	RagAyah15  RagAyah = "15"
+	RagAyah16  RagAyah = "16"
+	RagAyah17  RagAyah = "17"
+	RagAyah18  RagAyah = "18"
+	RagAyah19  RagAyah = "19"
+	RagAyah20  RagAyah = "20"
+	RagAyah21  RagAyah = "21"
+	RagAyah22  RagAyah = "22"
+	RagAyah23  RagAyah = "23"
+	RagAyah24  RagAyah = "24"
+	RagAyah25  RagAyah = "25"
+	RagAyah26  RagAyah = "26"
+	RagAyah27  RagAyah = "27"
+	RagAyah28  RagAyah = "28"
+	RagAyah29  RagAyah = "29"
+	RagAyah30  RagAyah = "30"
+	RagAyah31  RagAyah = "31"
+	RagAyah32  RagAyah = "32"
+	RagAyah33  RagAyah = "33"
+	RagAyah34  RagAyah = "34"
+	RagAyah35  RagAyah = "35"
+	RagAyah36  RagAyah = "36"
+	RagAyah37  RagAyah = "37"
+	RagAyah38  RagAyah = "38"
+	RagAyah39  RagAyah = "39"
+	RagAyah40  RagAyah = "40"
+	RagAyah41  RagAyah = "41"
+	RagAyah42  RagAyah = "42"
+	RagAyah43  RagAyah = "43"
+	RagAyah44  RagAyah = "44"
+	RagAyah45  RagAyah = "45"
+	RagAyah46  RagAyah = "46"
+	RagAyah47  RagAyah = "47"
+	RagAyah48  RagAyah = "48"
+	RagAyah49  RagAyah = "49"
+	RagAyah50  RagAyah = "50"
+	RagAyah51  RagAyah = "51"
+	RagAyah52  RagAyah = "52"
+	RagAyah53  RagAyah = "53"
+	RagAyah54  RagAyah = "54"
+	RagAyah55  RagAyah = "55"
+	RagAyah56  RagAyah = "56"
+	RagAyah57  RagAyah = "57"
+	RagAyah58  RagAyah = "58"
+	RagAyah59  RagAyah = "59"
+	RagAyah60  RagAyah = "60"
+	RagAyah61  RagAyah = "61"
+	RagAyah62  RagAyah = "62"
+	RagAyah63  RagAyah = "63"
+	RagAyah64  RagAyah = "64"
+	RagAyah65  RagAyah = "65"
+	RagAyah66  RagAyah = "66"
+	RagAyah67  RagAyah = "67"
+	RagAyah68  RagAyah = "68"
+	RagAyah69  RagAyah = "69"
+	RagAyah70  RagAyah = "70"
+	RagAyah71  RagAyah = "71"
+	RagAyah72  RagAyah = "72"
+	RagAyah73  RagAyah = "73"
+	RagAyah74  RagAyah = "74"
+	RagAyah75  RagAyah = "75"
+	RagAyah76  RagAyah = "76"
+	RagAyah77  RagAyah = "77"
+	RagAyah78  RagAyah = "78"
+	RagAyah79  RagAyah = "79"
+	RagAyah80  RagAyah = "80"
+	RagAyah81  RagAyah = "81"
+	RagAyah82  RagAyah = "82"
+	RagAyah83  RagAyah = "83"
+	RagAyah84  RagAyah = "84"
+	RagAyah85  RagAyah = "85"
+	RagAyah86  RagAyah = "86"
+	RagAyah87  RagAyah = "87"
+	RagAyah88  RagAyah = "88"
+	RagAyah89  RagAyah = "89"
+	RagAyah90  RagAyah = "90"
+	RagAyah91  RagAyah = "91"
+	RagAyah92  RagAyah = "92"
+	RagAyah93  RagAyah = "93"
+	RagAyah94  RagAyah = "94"
+	RagAyah95  RagAyah = "95"
+	RagAyah96  RagAyah = "96"
+	RagAyah97  RagAyah = "97"
+	RagAyah98  RagAyah = "98"
+	RagAyah99  RagAyah = "99"
+	RagAyah100 RagAyah = "100"
+	RagAyah101 RagAyah = "101"
+	RagAyah102 RagAyah = "102"
+	RagAyah103 RagAyah = "103"
+	RagAyah104 RagAyah = "104"
+	RagAyah105 RagAyah = "105"
+	RagAyah106 RagAyah = "106"
+	RagAyah107 RagAyah = "107"
+	RagAyah108 RagAyah = "108"
+	RagAyah109 RagAyah = "109"
+	RagAyah110 RagAyah = "110"
+	RagAyah111 RagAyah = "111"
+	RagAyah112 RagAyah = "112"
+	RagAyah113 RagAyah = "113"
+	RagAyah114 RagAyah = "114"
+	RagAyah115 RagAyah = "115"
+	RagAyah116 RagAyah = "116"
+	RagAyah117 RagAyah = "117"
+	RagAyah118 RagAyah = "118"
+	RagAyah119 RagAyah = "119"
+	RagAyah120 RagAyah = "120"
+	RagAyah121 RagAyah = "121"
+	RagAyah122 RagAyah = "122"
+	RagAyah123 RagAyah = "123"
+	RagAyah124 RagAyah = "124"
+	RagAyah125 RagAyah = "125"
+	RagAyah126 RagAyah = "126"
+	RagAyah127 RagAyah = "127"
+	RagAyah128 RagAyah = "128"
+	RagAyah129 RagAyah = "129"
+	RagAyah130 RagAyah = "130"
+	RagAyah131 RagAyah = "131"
+	RagAyah132 RagAyah = "132"
+	RagAyah133 RagAyah = "133"
+	RagAyah134 RagAyah = "134"
+	RagAyah135 RagAyah = "135"
+	RagAyah136 RagAyah = "136"
+	RagAyah137 RagAyah = "137"
+	RagAyah138 RagAyah = "138"
+	RagAyah139 RagAyah = "139"
+	RagAyah140 RagAyah = "140"
+	RagAyah141 RagAyah = "141"
+	RagAyah142 RagAyah = "142"
+	RagAyah143 RagAyah = "143"
+	RagAyah144 RagAyah = "144"
+	RagAyah145 RagAyah = "145"
+	RagAyah146 RagAyah = "146"
+	RagAyah147 RagAyah = "147"
+	RagAyah148 RagAyah = "148"
+	RagAyah149 RagAyah = "149"
+	RagAyah150 RagAyah = "150"
+	RagAyah151 RagAyah = "151"
+	RagAyah152 RagAyah = "152"
+	RagAyah153 RagAyah = "153"
+	RagAyah154 RagAyah = "154"
+	RagAyah155 RagAyah = "155"
+	RagAyah156 RagAyah = "156"
+	RagAyah157 RagAyah = "157"
+	RagAyah158 RagAyah = "158"
+	RagAyah159 RagAyah = "159"
+	RagAyah160 RagAyah = "160"
+	RagAyah161 RagAyah = "161"
+	RagAyah162 RagAyah = "162"
+	RagAyah163 RagAyah = "163"
+	RagAyah164 RagAyah = "164"
+	RagAyah165 RagAyah = "165"
+	RagAyah166 RagAyah = "166"
+	RagAyah167 RagAyah = "167"
+	RagAyah168 RagAyah = "168"
+	RagAyah169 RagAyah = "169"
+	RagAyah170 RagAyah = "170"
+	RagAyah171 RagAyah = "171"
+	RagAyah172 RagAyah = "172"
+	RagAyah173 RagAyah = "173"
+	RagAyah174 RagAyah = "174"
+	RagAyah175 RagAyah = "175"
+	RagAyah176 RagAyah = "176"
+	RagAyah177 RagAyah = "177"
+	RagAyah178 RagAyah = "178"
+	RagAyah179 RagAyah = "179"
+	RagAyah180 RagAyah = "180"
+	RagAyah181 RagAyah = "181"
+	RagAyah182 RagAyah = "182"
+	RagAyah183 RagAyah = "183"
+	RagAyah184 RagAyah = "184"
+	RagAyah185 RagAyah = "185"
+	RagAyah186 RagAyah = "186"
+	RagAyah187 RagAyah = "187"
+	RagAyah188 RagAyah = "188"
+	RagAyah189 RagAyah = "189"
+	RagAyah190 RagAyah = "190"
+	RagAyah191 RagAyah = "191"
+	RagAyah192 RagAyah = "192"
+	RagAyah193 RagAyah = "193"
+	RagAyah194 RagAyah = "194"
+	RagAyah195 RagAyah = "195"
+	RagAyah196 RagAyah = "196"
+	RagAyah197 RagAyah = "197"
+	RagAyah198 RagAyah = "198"
+	RagAyah199 RagAyah = "199"
+	RagAyah200 RagAyah = "200"
+	RagAyah201 RagAyah = "201"
+	RagAyah202 RagAyah = "202"
+	RagAyah203 RagAyah = "203"
+	RagAyah204 RagAyah = "204"
+	RagAyah205 RagAyah = "205"
+	RagAyah206 RagAyah = "206"
+	RagAyah207 RagAyah = "207"
+	RagAyah208 RagAyah = "208"
+	RagAyah209 RagAyah = "209"
+	RagAyah210 RagAyah = "210"
+	RagAyah211 RagAyah = "211"
+	RagAyah212 RagAyah = "212"
+	RagAyah213 RagAyah = "213"
+	RagAyah214 RagAyah = "214"
+	RagAyah215 RagAyah = "215"
+	RagAyah216 RagAyah = "216"
+	RagAyah217 RagAyah = "217"
+	RagAyah218 RagAyah = "218"
+	RagAyah219 RagAyah = "219"
+	RagAyah220 RagAyah = "220"
+	RagAyah221 RagAyah = "221"
+	RagAyah222 RagAyah = "222"
+	RagAyah223 RagAyah = "223"
+	RagAyah224 RagAyah = "224"
+	RagAyah225 RagAyah = "225"
+	RagAyah226 RagAyah = "226"
+	RagAyah227 RagAyah = "227"
+	RagAyah228 RagAyah = "228"
+	RagAyah229 RagAyah = "229"
+	RagAyah230 RagAyah = "230"
+	RagAyah231 RagAyah = "231"
+	RagAyah232 RagAyah = "232"
+	RagAyah233 RagAyah = "233"
+	RagAyah234 RagAyah = "234"
+	RagAyah235 RagAyah = "235"
+	RagAyah236 RagAyah = "236"
+	RagAyah237 RagAyah = "237"
+	RagAyah238 RagAyah = "238"
+	RagAyah239 RagAyah = "239"
+	RagAyah240 RagAyah = "240"
+	RagAyah241 RagAyah = "241"
+	RagAyah242 RagAyah = "242"
+	RagAyah243 RagAyah = "243"
+	RagAyah244 RagAyah = "244"
+	RagAyah245 RagAyah = "245"
+	RagAyah246 RagAyah = "246"
+	RagAyah247 RagAyah = "247"
+	RagAyah248 RagAyah = "248"
+	RagAyah249 RagAyah = "249"
+	RagAyah250 RagAyah = "250"
+	RagAyah251 RagAyah = "251"
+	RagAyah252 RagAyah = "252"
+	RagAyah253 RagAyah = "253"
+	RagAyah254 RagAyah = "254"
+	RagAyah255 RagAyah = "255"
+	RagAyah256 RagAyah = "256"
+	RagAyah257 RagAyah = "257"
+	RagAyah258 RagAyah = "258"
+	RagAyah259 RagAyah = "259"
+	RagAyah260 RagAyah = "260"
+	RagAyah261 RagAyah = "261"
+	RagAyah262 RagAyah = "262"
+	RagAyah263 RagAyah = "263"
+	RagAyah264 RagAyah = "264"
+	RagAyah265 RagAyah = "265"
+	RagAyah266 RagAyah = "266"
+	RagAyah267 RagAyah = "267"
+	RagAyah268 RagAyah = "268"
+	RagAyah269 RagAyah = "269"
+	RagAyah270 RagAyah = "270"
+	RagAyah271 RagAyah = "271"
+	RagAyah272 RagAyah = "272"
+	RagAyah273 RagAyah = "273"
+	RagAyah274 RagAyah = "274"
+	RagAyah275 RagAyah = "275"
+	RagAyah276 RagAyah = "276"
+	RagAyah277 RagAyah = "277"
+	RagAyah278 RagAyah = "278"
+	RagAyah279 RagAyah = "279"
+	RagAyah280 RagAyah = "280"
+	RagAyah281 RagAyah = "281"
+	RagAyah282 RagAyah = "282"
+	RagAyah283 RagAyah = "283"
+	RagAyah284 RagAyah = "284"
+	RagAyah285 RagAyah = "285"
+	RagAyah286 RagAyah = "286"
 )
 
-func (e *Source) Scan(src interface{}) error {
+func (e *RagAyah) Scan(src interface{}) error {
 	switch s := src.(type) {
 	case []byte:
-		*e = Source(s)
+		*e = RagAyah(s)
 	case string:
-		*e = Source(s)
+		*e = RagAyah(s)
 	default:
-		return fmt.Errorf("unsupported scan type for Source: %T", src)
+		return fmt.Errorf("unsupported scan type for RagAyah: %T", src)
 	}
 	return nil
 }
 
-type NullSource struct {
-	Source Source
-	Valid  bool // Valid is true if Source is not NULL
+type NullRagAyah struct {
+	RagAyah RagAyah `json:"rag_ayah"`
+	Valid   bool    `json:"valid"` // Valid is true if RagAyah is not NULL
 }
 
 // Scan implements the Scanner interface.
-func (ns *NullSource) Scan(value interface{}) error {
+func (ns *NullRagAyah) Scan(value interface{}) error {
 	if value == nil {
-		ns.Source, ns.Valid = "", false
+		ns.RagAyah, ns.Valid = "", false
 		return nil
 	}
 	ns.Valid = true
-	return ns.Source.Scan(value)
+	return ns.RagAyah.Scan(value)
 }
 
 // Value implements the driver Valuer interface.
-func (ns NullSource) Value() (driver.Value, error) {
+func (ns NullRagAyah) Value() (driver.Value, error) {
 	if !ns.Valid {
 		return nil, nil
 	}
-	return string(ns.Source), nil
+	return string(ns.RagAyah), nil
 }
 
-type GooseDbVersion struct {
-	ID        int32
-	VersionID int64
-	IsApplied bool
-	Tstamp    pgtype.Timestamp
+type RagContentType string
+
+const (
+	RagContentTypeTafsir RagContentType = "tafsir"
+)
+
+func (e *RagContentType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RagContentType(s)
+	case string:
+		*e = RagContentType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RagContentType: %T", src)
+	}
+	return nil
+}
+
+type NullRagContentType struct {
+	RagContentType RagContentType `json:"rag_content_type"`
+	Valid          bool           `json:"valid"` // Valid is true if RagContentType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRagContentType) Scan(value interface{}) error {
+	if value == nil {
+		ns.RagContentType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RagContentType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRagContentType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RagContentType), nil
+}
+
+type RagGranularity string
+
+const (
+	RagGranularityPhrase RagGranularity = "phrase"
+	RagGranularityAyah   RagGranularity = "ayah"
+	RagGranularitySurah  RagGranularity = "surah"
+	RagGranularityQuran  RagGranularity = "quran"
+)
+
+func (e *RagGranularity) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RagGranularity(s)
+	case string:
+		*e = RagGranularity(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RagGranularity: %T", src)
+	}
+	return nil
+}
+
+type NullRagGranularity struct {
+	RagGranularity RagGranularity `json:"rag_granularity"`
+	Valid          bool           `json:"valid"` // Valid is true if RagGranularity is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRagGranularity) Scan(value interface{}) error {
+	if value == nil {
+		ns.RagGranularity, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RagGranularity.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRagGranularity) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RagGranularity), nil
+}
+
+type RagSource string
+
+const (
+	RagSourceTafsirIbnKathir RagSource = "Tafsir Ibn Kathir"
+)
+
+func (e *RagSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RagSource(s)
+	case string:
+		*e = RagSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RagSource: %T", src)
+	}
+	return nil
+}
+
+type NullRagSource struct {
+	RagSource RagSource `json:"rag_source"`
+	Valid     bool      `json:"valid"` // Valid is true if RagSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRagSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.RagSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RagSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRagSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RagSource), nil
+}
+
+type RagSurah string
+
+const (
+	RagSurah1   RagSurah = "1"
+	RagSurah2   RagSurah = "2"
+	RagSurah3   RagSurah = "3"
+	RagSurah4   RagSurah = "4"
+	RagSurah5   RagSurah = "5"
+	RagSurah6   RagSurah = "6"
+	RagSurah7   RagSurah = "7"
+	RagSurah8   RagSurah = "8"
+	RagSurah9   RagSurah = "9"
+	RagSurah10  RagSurah = "10"
+	RagSurah11  RagSurah = "11"
+	RagSurah12  RagSurah = "12"
+	RagSurah13  RagSurah = "13"
+	RagSurah14  RagSurah = "14"
+	RagSurah15  RagSurah = "15"
+	RagSurah16  RagSurah = "16"
+	RagSurah17  RagSurah = "17"
+	RagSurah18  RagSurah = "18"
+	RagSurah19  RagSurah = "19"
+	RagSurah20  RagSurah = "20"
+	RagSurah21  RagSurah = "21"
+	RagSurah22  RagSurah = "22"
+	RagSurah23  RagSurah = "23"
+	RagSurah24  RagSurah = "24"
+	RagSurah25  RagSurah = "25"
+	RagSurah26  RagSurah = "26"
+	RagSurah27  RagSurah = "27"
+	RagSurah28  RagSurah = "28"
+	RagSurah29  RagSurah = "29"
+	RagSurah30  RagSurah = "30"
+	RagSurah31  RagSurah = "31"
+	RagSurah32  RagSurah = "32"
+	RagSurah33  RagSurah = "33"
+	RagSurah34  RagSurah = "34"
+	RagSurah35  RagSurah = "35"
+	RagSurah36  RagSurah = "36"
+	RagSurah37  RagSurah = "37"
+	RagSurah38  RagSurah = "38"
+	RagSurah39  RagSurah = "39"
+	RagSurah40  RagSurah = "40"
+	RagSurah41  RagSurah = "41"
+	RagSurah42  RagSurah = "42"
+	RagSurah43  RagSurah = "43"
+	RagSurah44  RagSurah = "44"
+	RagSurah45  RagSurah = "45"
+	RagSurah46  RagSurah = "46"
+	RagSurah47  RagSurah = "47"
+	RagSurah48  RagSurah = "48"
+	RagSurah49  RagSurah = "49"
+	RagSurah50  RagSurah = "50"
+	RagSurah51  RagSurah = "51"
+	RagSurah52  RagSurah = "52"
+	RagSurah53  RagSurah = "53"
+	RagSurah54  RagSurah = "54"
+	RagSurah55  RagSurah = "55"
+	RagSurah56  RagSurah = "56"
+	RagSurah57  RagSurah = "57"
+	RagSurah58  RagSurah = "58"
+	RagSurah59  RagSurah = "59"
+	RagSurah60  RagSurah = "60"
+	RagSurah61  RagSurah = "61"
+	RagSurah62  RagSurah = "62"
+	RagSurah63  RagSurah = "63"
+	RagSurah64  RagSurah = "64"
+	RagSurah65  RagSurah = "65"
+	RagSurah66  RagSurah = "66"
+	RagSurah67  RagSurah = "67"
+	RagSurah68  RagSurah = "68"
+	RagSurah69  RagSurah = "69"
+	RagSurah70  RagSurah = "70"
+	RagSurah71  RagSurah = "71"
+	RagSurah72  RagSurah = "72"
+	RagSurah73  RagSurah = "73"
+	RagSurah74  RagSurah = "74"
+	RagSurah75  RagSurah = "75"
+	RagSurah76  RagSurah = "76"
+	RagSurah77  RagSurah = "77"
+	RagSurah78  RagSurah = "78"
+	RagSurah79  RagSurah = "79"
+	RagSurah80  RagSurah = "80"
+	RagSurah81  RagSurah = "81"
+	RagSurah82  RagSurah = "82"
+	RagSurah83  RagSurah = "83"
+	RagSurah84  RagSurah = "84"
+	RagSurah85  RagSurah = "85"
+	RagSurah86  RagSurah = "86"
+	RagSurah87  RagSurah = "87"
+	RagSurah88  RagSurah = "88"
+	RagSurah89  RagSurah = "89"
+	RagSurah90  RagSurah = "90"
+	RagSurah91  RagSurah = "91"
+	RagSurah92  RagSurah = "92"
+	RagSurah93  RagSurah = "93"
+	RagSurah94  RagSurah = "94"
+	RagSurah95  RagSurah = "95"
+	RagSurah96  RagSurah = "96"
+	RagSurah97  RagSurah = "97"
+	RagSurah98  RagSurah = "98"
+	RagSurah99  RagSurah = "99"
+	RagSurah100 RagSurah = "100"
+	RagSurah101 RagSurah = "101"
+	RagSurah102 RagSurah = "102"
+	RagSurah103 RagSurah = "103"
+	RagSurah104 RagSurah = "104"
+	RagSurah105 RagSurah = "105"
+	RagSurah106 RagSurah = "106"
+	RagSurah107 RagSurah = "107"
+	RagSurah108 RagSurah = "108"
+	RagSurah109 RagSurah = "109"
+	RagSurah110 RagSurah = "110"
+	RagSurah111 RagSurah = "111"
+	RagSurah112 RagSurah = "112"
+	RagSurah113 RagSurah = "113"
+	RagSurah114 RagSurah = "114"
+)
+
+func (e *RagSurah) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RagSurah(s)
+	case string:
+		*e = RagSurah(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RagSurah: %T", src)
+	}
+	return nil
+}
+
+type NullRagSurah struct {
+	RagSurah RagSurah `json:"rag_surah"`
+	Valid    bool     `json:"valid"` // Valid is true if RagSurah is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRagSurah) Scan(value interface{}) error {
+	if value == nil {
+		ns.RagSurah, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RagSurah.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRagSurah) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RagSurah), nil
 }
 
 type Memory struct {
-	ID        int32
-	UserID    pgtype.UUID
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	Memory    string
+	ID        int32              `db:"id" json:"id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Memory    string             `db:"memory" json:"memory"`
 }
 
 type Message struct {
-	ID           int32
-	SessionID    pgtype.UUID
-	UserID       pgtype.UUID
-	CreatedAt    pgtype.Timestamptz
-	Role         MessagesRole
-	Content      string
-	Turn         int32
-	FunctionName pgtype.Text
+	ID           int32               `db:"id" json:"id"`
+	SessionID    pgtype.UUID         `db:"session_id" json:"session_id"`
+	UserID       pgtype.UUID         `db:"user_id" json:"user_id"`
+	CreatedAt    pgtype.Timestamptz  `db:"created_at" json:"created_at"`
+	Role         domain.MessagesRole `db:"role" json:"role"`
+	Content      string              `db:"content" json:"content"`
+	Turn         int32               `db:"turn" json:"turn"`
+	FunctionName pgtype.Text         `db:"function_name" json:"function_name"`
 }
 
 type RagAyat struct {
-	Surah     int32
-	Ayah      int32
-	Ar        string
-	ArUthmani string
-	En        string
+	Surah     domain.RagSurahNumber `db:"surah" json:"surah"`
+	Ayah      domain.RagAyahNumber  `db:"ayah" json:"ayah"`
+	Ar        string                `db:"ar" json:"ar"`
+	ArUthmani string                `db:"ar_uthmani" json:"ar_uthmani"`
+	En        string                `db:"en" json:"en"`
 }
 
 type RagChunk struct {
-	ID                  int64
-	SequenceID          int32
-	CreatedAt           pgtype.Timestamp
-	UpdatedAt           pgtype.Timestamp
-	Granularity         Granularity
-	ContentType         ContentType
-	Source              Source
-	RawChunk            string
-	TokenizedChunk      string
-	ChunkTitle          string
-	TokenizedChunkTitle string
-	ContextHeader       string
-	EmbeddedChunk       string
-	Labels              []int16
-	Embedding           pgvector_go.Vector
-	HasParent           bool
-	ParentID            pgtype.Int4
-	Surah               pgtype.Int4
-	Ayah                pgtype.Int4
+	ID                  int64                 `db:"id" json:"id"`
+	SequenceID          int32                 `db:"sequence_id" json:"sequence_id"`
+	CreatedAt           pgtype.Timestamp      `db:"created_at" json:"created_at"`
+	UpdatedAt           pgtype.Timestamp      `db:"updated_at" json:"updated_at"`
+	Granularity         domain.RagGranularity `db:"granularity" json:"granularity"`
+	ContentType         domain.RagContentType `db:"content_type" json:"content_type"`
+	Source              domain.RagSource      `db:"source" json:"source"`
+	RawChunk            string                `db:"raw_chunk" json:"raw_chunk"`
+	TokenizedChunk      string                `db:"tokenized_chunk" json:"tokenized_chunk"`
+	ChunkTitle          string                `db:"chunk_title" json:"chunk_title"`
+	TokenizedChunkTitle string                `db:"tokenized_chunk_title" json:"tokenized_chunk_title"`
+	ContextHeader       string                `db:"context_header" json:"context_header"`
+	EmbeddedChunk       string                `db:"embedded_chunk" json:"embedded_chunk"`
+	Labels              []int16               `db:"labels" json:"labels"`
+	Embedding           pgvector_go.Vector    `db:"embedding" json:"embedding"`
+	ParentID            pgtype.Int4           `db:"parent_id" json:"parent_id"`
+	Surah               NullRagSurah          `db:"surah" json:"surah"`
+	Ayah                NullRagAyah           `db:"ayah" json:"ayah"`
 }
 
 type RagDocument struct {
-	ID            int32
-	CreatedAt     pgtype.Timestamp
-	UpdatedAt     pgtype.Timestamp
-	Granularity   Granularity
-	ContentType   ContentType
-	Source        Source
-	ContextHeader string
-	Document      string
-	Surah         pgtype.Int4
-	Ayah          pgtype.Int4
+	ID            int32                 `db:"id" json:"id"`
+	CreatedAt     pgtype.Timestamp      `db:"created_at" json:"created_at"`
+	UpdatedAt     pgtype.Timestamp      `db:"updated_at" json:"updated_at"`
+	Granularity   domain.RagGranularity `db:"granularity" json:"granularity"`
+	ContentType   domain.RagContentType `db:"content_type" json:"content_type"`
+	Source        domain.RagSource      `db:"source" json:"source"`
+	ContextHeader string                `db:"context_header" json:"context_header"`
+	Document      string                `db:"document" json:"document"`
+	Surah         NullRagSurah          `db:"surah" json:"surah"`
+	Ayah          NullRagAyah           `db:"ayah" json:"ayah"`
 }
 
 type Session struct {
-	ID        pgtype.UUID
-	UserID    pgtype.UUID
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-	EndedAt   pgtype.Timestamptz
-	Summary   pgtype.Text
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	EndedAt   pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
+	Summary   pgtype.Text        `db:"summary" json:"summary"`
 }
 
 type User struct {
-	ID        pgtype.UUID
-	Email     string
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID        pgtype.UUID        `db:"id" json:"id"`
+	Email     string             `db:"email" json:"email"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }

@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: memories.sql
 
-package database
+package gen
 
 import (
 	"context"
@@ -18,8 +18,8 @@ RETURNING id, user_id, created_at, updated_at, memory
 `
 
 type CreateMemoryParams struct {
-	UserID pgtype.UUID
-	Memory string
+	UserID pgtype.UUID `db:"user_id" json:"user_id"`
+	Memory string      `db:"memory" json:"memory"`
 }
 
 func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Memory, error) {
@@ -43,8 +43,8 @@ LIMIT $2
 `
 
 type GetMemoriesByUserIDParams struct {
-	UserID           pgtype.UUID
-	NumberOfMemories int32
+	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
+	NumberOfMemories int32       `db:"number_of_memories" json:"number_of_memories"`
 }
 
 func (q *Queries) GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUserIDParams) ([]Memory, error) {
@@ -53,7 +53,7 @@ func (q *Queries) GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUser
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Memory
+	items := []Memory{}
 	for rows.Next() {
 		var i Memory
 		if err := rows.Scan(
@@ -100,8 +100,8 @@ RETURNING id, user_id, created_at, updated_at, memory
 `
 
 type UpdateMemoryByIDParams struct {
-	Memory string
-	ID     int32
+	Memory string `db:"memory" json:"memory"`
+	ID     int32  `db:"id" json:"id"`
 }
 
 func (q *Queries) UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error) {

@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: users.sql
 
-package database
+package gen
 
 import (
 	"context"
@@ -18,8 +18,8 @@ RETURNING id, email, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	ID    pgtype.UUID
-	Email string
+	ID    pgtype.UUID `db:"id" json:"id"`
+	Email string      `db:"email" json:"email"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
