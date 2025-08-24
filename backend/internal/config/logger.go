@@ -119,7 +119,7 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 	}
 }
 
-func newLogger(platform string) *slog.Logger {
+func NewLogger(platform string) *slog.Logger {
 	if platform == "dev" {
 		writer := &prettyWriter{
 			target: os.Stdout,

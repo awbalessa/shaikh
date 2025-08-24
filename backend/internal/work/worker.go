@@ -7,12 +7,11 @@ import (
 	"log/slog"
 	"time"
 
-	store "github.com/awbalessa/shaikh/backend/internal/repo"
-	db "github.com/awbalessa/shaikh/backend/internal/repo/gen"
-	"github.com/awbalessa/shaikh/backend/internal/service/agent"
+	"github.com/awbalessa/shaikh/backend/internal/svc/agent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/nats-io/nsc/v2/cmd/store"
 )
 
 type WorkerGroup struct {
@@ -51,7 +50,6 @@ const (
 type syncer struct {
 	name      string
 	cons      jetstream.Consumer
-	store     *store.Store
 	log       *slog.Logger
 	lastFlush time.Time
 	buffer    []jetstream.Msg

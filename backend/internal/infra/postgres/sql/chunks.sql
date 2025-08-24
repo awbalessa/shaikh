@@ -7,7 +7,8 @@ WITH ranked_chunks AS (
     raw_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM rag.chunks
   WHERE id @@@ paradedb.boolean(
     must => ARRAY[
@@ -78,11 +79,12 @@ deduped_chunks AS (
     embedded_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM ranked_chunks
   ORDER BY raw_chunk, score DESC, id  -- deterministic tiebreaker
 )
-SELECT id, score, embedded_chunk, source, surah, ayah
+SELECT id, score, embedded_chunk, source, surah, ayah, parent_id
 FROM deduped_chunks
 ORDER BY score DESC, id
 LIMIT sqlc.arg('number_of_chunks');
@@ -97,7 +99,8 @@ WITH ranked_chunks AS (
     raw_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM rag.chunks
   WHERE
     (
@@ -142,11 +145,12 @@ deduped_chunks AS (
     embedded_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM ranked_chunks
   ORDER BY raw_chunk, score DESC, id  -- deterministic tiebreaker
 )
-SELECT id, score, embedded_chunk, source, surah, ayah
+SELECT id, score, embedded_chunk, source, surah, ayah, parent_id
 FROM deduped_chunks
 ORDER BY score DESC, id
 LIMIT sqlc.arg('number_of_chunks');

@@ -6,12 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/queue"
-	repo "github.com/awbalessa/shaikh/backend/internal/repo"
-	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
-	"github.com/awbalessa/shaikh/backend/internal/service/agent"
-	"github.com/awbalessa/shaikh/backend/internal/work"
+	"github.com/awbalessa/shaikh/backend/internal/svc/agent"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/nats-io/nats.go"
@@ -22,50 +19,36 @@ type Config struct {
 	Pool      *pgxpool.Pool
 	Nats      *nats.Conn
 	JetStream jetstream.JetStream
-	Pipeline  *rag.Pipeline
 	Agent     *agent.Agent
 }
 
-func Configure(ctx context.Context, cfg *config) (*Config, error) {
-	pool, err := NewPostgresPool(ctx, cfg)
+func Configure(ctx context.Context, cfg *Env) (*Config, error) {
+	pool, err := newPostgresPool(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create postgres pool: %w", err)
+		return nil, fmt.Errorf("failed to configure: %w", err)
 	}
 
-	nc, err := NewNatsClient(&nats.Options{
+	nc, err := newNats(&nats.Options{
 		Url:           nats.DefaultURL,
-		Name:          queue.NatsConnNameApi,
-		Timeout:       queue.NatsConnTimeoutTenSeconds,
-		PingInterval:  queue.NatsPingIntervalTwentySeconds,
-		MaxPingsOut:   queue.NatsMaxPingsOutstandingFive,
-		ReconnectWait: queue.NatsReconnectWaitTenSeconds,
+		Name:          NatsConnNameApi,
+		Timeout:       NatsConnTimeoutTenSeconds,
+		PingInterval:  NatsPingIntervalTwentySeconds,
+		MaxPingsOut:   NatsMaxPingsOutstandingFive,
+		ReconnectWait: NatsReconnectWaitTenSeconds,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create nats connection: %w", err)
+		return nil, fmt.Errorf("failed to configure: %w", err)
 	}
 
-	js, err := NewJetStreamClient(nc)
+	js, err := newJetStream(nc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create jetstream context: %w", err)
-	}
-
-	pipeline := NewPipeline(cfg, store)
-	agent, err := NewAgent(agent.AgentConfig{
-		Context:  ctx,
-		Pipeline: pipeline,
-		Store:    store,
-		Stream:   js,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", err)
+		return nil, fmt.Errorf("failed to configure: %w", err)
 	}
 
 	return &Config{
 		Pool:      pool,
 		Nats:      nc,
 		JetStream: js,
-		Pipeline:  pipeline,
-		Agent:     agent,
 	}, nil
 }
 
@@ -74,18 +57,18 @@ func StartAPI(ctx context.Context, cfg *Config) error {
 	return nil
 }
 
-func StartWorkers(ctx context.Context, cfg *Config, cancel context.CancelFunc) error {
-	var workers work.WorkerGroup
+// func StartWorkers(ctx context.Context, cfg *Config, cancel context.CancelFunc) error {
+// 	var workers work.WorkerGroup
 
-	syncer, err := work.BuildSyncer(ctx, cfg.JetStream, cfg.Store)
-	if err != nil {
-		return fmt.Errorf("start worker: %w", err)
-	}
-	workers.Add(syncer)
+// 	syncer, err := work.BuildSyncer(ctx, cfg.JetStream)
+// 	if err != nil {
+// 		return fmt.Errorf("start worker: %w", err)
+// 	}
+// 	workers.Add(syncer)
 
-	workers.StartAll(ctx, cancel)
-	return nil
-}
+// 	workers.StartAll(ctx, cancel)
+// 	return nil
+// }
 
 func (c *Config) Close() {
 	if c.Nats != nil {
@@ -103,7 +86,7 @@ type Env struct {
 	Platform         string
 }
 
-func loadEnv() (*Env, error) {
+func LoadEnv() (*Env, error) {
 	root, err := findDotEnv()
 	if err != nil {
 		return nil, err
@@ -191,6 +174,15 @@ func newPostgresPool(ctx context.Context, env *Env) (*pgxpool.Pool, error) {
 	return conn, nil
 }
 
+const (
+	NatsConnNameApi               string        = "shaikh-api"
+	NatsConnNameWorker            string        = "shaikh-worker"
+	NatsConnTimeoutTenSeconds     time.Duration = 10 * time.Second
+	NatsPingIntervalTwentySeconds time.Duration = 20 * time.Second
+	NatsMaxPingsOutstandingFive   int           = 5
+	NatsReconnectWaitTenSeconds   time.Duration = 10 * time.Second
+)
+
 func newNats(opts *nats.Options) (*nats.Conn, error) {
 	nc, err := nats.Connect(
 		opts.Url,
@@ -214,33 +206,4 @@ func newJetStream(nc *nats.Conn) (jetstream.JetStream, error) {
 	}
 
 	return js, err
-}
-
-func newStore(cfg *Config, pool *pgxpool.Pool) *repo.Store {
-	return repo.New(repo.StoreConfig{
-		Config:  cfg,
-		Pool:    pool,
-		Queries: gen.New(pool),
-	})
-}
-
-func NewPipeline(cfg *Config, store *repo.Store) *rag.Pipeline {
-	return rag.NewPipeline(rag.PipelineConfig{
-		Config: cfg,
-		Store:  store,
-	})
-}
-
-func NewAgent(cfg agent.AgentConfig) (*agent.Agent, error) {
-	agent, err := agent.NewAgent(agent.AgentConfig{
-		Context:  cfg.Context,
-		Pipeline: cfg.Pipeline,
-		Store:    cfg.Store,
-		Stream:   cfg.Stream,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create agent: %w", err)
-	}
-
-	return agent, nil
 }

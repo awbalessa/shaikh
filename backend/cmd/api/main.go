@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+
+	"github.com/awbalessa/shaikh/backend/internal/config"
 )
 
 func main() {
@@ -11,16 +13,25 @@ func main() {
 		context.Background(),
 	)
 
-	cfg, err := configure()
+	env, err := config.LoadEnv()
 	if err != nil {
 		cancel()
 		slog.With(
 			"err", err,
-		).Error("failed to configure")
+		).Error("failed to start")
 		os.Exit(1)
 	}
 
 	slog.SetDefault(
-		newLogger(cfg.platform),
+		config.NewLogger(env.Platform),
 	)
+
+	_, err = config.Configure(ctx, env)
+	if err != nil {
+		cancel()
+		slog.With(
+			"err", err,
+		).Error("failed to start")
+		os.Exit(1)
+	}
 }

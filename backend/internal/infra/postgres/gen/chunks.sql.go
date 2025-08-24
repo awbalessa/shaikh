@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -20,7 +21,8 @@ WITH ranked_chunks AS (
     raw_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM rag.chunks
   WHERE id @@@ paradedb.boolean(
     must => ARRAY[
@@ -91,11 +93,12 @@ deduped_chunks AS (
     embedded_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM ranked_chunks
   ORDER BY raw_chunk, score DESC, id  -- deterministic tiebreaker
 )
-SELECT id, score, embedded_chunk, source, surah, ayah
+SELECT id, score, embedded_chunk, source, surah, ayah, parent_id
 FROM deduped_chunks
 ORDER BY score DESC, id
 LIMIT $1
@@ -117,6 +120,7 @@ type LexicalSearchRow struct {
 	Source        RagSource    `db:"source"`
 	Surah         NullRagSurah `db:"surah"`
 	Ayah          NullRagAyah  `db:"ayah"`
+	ParentID      pgtype.Int4  `db:"parent_id"`
 }
 
 func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error) {
@@ -142,6 +146,7 @@ func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([
 			&i.Source,
 			&i.Surah,
 			&i.Ayah,
+			&i.ParentID,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +167,8 @@ WITH ranked_chunks AS (
     raw_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM rag.chunks
   WHERE
     (
@@ -207,11 +213,12 @@ deduped_chunks AS (
     embedded_chunk,
     source,
     surah,
-    ayah
+    ayah,
+    parent_id
   FROM ranked_chunks
   ORDER BY raw_chunk, score DESC, id  -- deterministic tiebreaker
 )
-SELECT id, score, embedded_chunk, source, surah, ayah
+SELECT id, score, embedded_chunk, source, surah, ayah, parent_id
 FROM deduped_chunks
 ORDER BY score DESC, id
 LIMIT $1
@@ -233,6 +240,7 @@ type SemanticSearchRow struct {
 	Source        RagSource    `db:"source"`
 	Surah         NullRagSurah `db:"surah"`
 	Ayah          NullRagAyah  `db:"ayah"`
+	ParentID      pgtype.Int4  `db:"parent_id"`
 }
 
 func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error) {
@@ -258,6 +266,7 @@ func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) 
 			&i.Source,
 			&i.Surah,
 			&i.Ayah,
+			&i.ParentID,
 		); err != nil {
 			return nil, err
 		}
