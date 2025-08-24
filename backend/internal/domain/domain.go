@@ -1,7 +1,6 @@
-package domain
+package dom
 
 import (
-	"context"
 	"encoding/json"
 
 	"github.com/google/uuid"
@@ -538,37 +537,6 @@ type SearchQuery struct {
 type SearchResult struct {
 	Chunk
 	Relevance float64
-}
-
-type Vector []float32
-
-type Embedder interface {
-	EmbedQueries(ctx context.Context, queries []string) ([]Vector, error)
-}
-
-type ScoredIndex struct {
-	Index     int
-	Relevance float64
-}
-
-type Reranker interface {
-	RerankDocuments(
-		ctx context.Context,
-		query string,
-		documents []string,
-		topk TopK,
-	) ([]ScoredIndex, error)
-}
-
-type Searcher interface {
-	SemanticSearch(
-		ctx context.Context,
-		vector VectorWithFilter,
-	) ([]Chunk, error)
-	LexicalSearch(
-		ctx context.Context,
-		query QueryWithFilter,
-	) ([]Chunk, error)
 }
 
 const (

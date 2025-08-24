@@ -1,4 +1,4 @@
-package observe
+package config
 
 import (
 	"bytes"
@@ -7,14 +7,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"time"
-
-	"github.com/lmittmann/tint"
 )
 
-type LoggerOptions struct {
-	JSON  bool
-	Level slog.Level
+type loggerOpts struct {
+	json  bool
+	level slog.Level
 }
 
 type prettyWriter struct {
@@ -27,28 +24,24 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 	case "json":
 		var out bytes.Buffer
 
-		// Use json.Decoder to decode tokens in order
 		decoder := json.NewDecoder(bytes.NewReader(p))
 		var orderedFields []struct {
 			Key   string
 			Value any
 		}
 
-		// Expect start of object
 		t, err := decoder.Token()
 		if err != nil || t != json.Delim('{') {
 			return w.target.Write(p)
 		}
 
 		for decoder.More() {
-			// Read key
 			keyToken, err := decoder.Token()
 			if err != nil {
 				return w.target.Write(p)
 			}
 			key := keyToken.(string)
 
-			// Read value
 			var val any
 			if err := decoder.Decode(&val); err != nil {
 				return w.target.Write(p)
@@ -60,12 +53,10 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 			}{Key: key, Value: val})
 		}
 
-		// Expect end of object
 		if _, err := decoder.Token(); err != nil {
 			return w.target.Write(p)
 		}
 
-		// Write manually with indent
 		out.WriteString("{\n")
 		for i, kv := range orderedFields {
 			v, _ := json.MarshalIndent(kv.Value, "  ", "  ")
@@ -115,7 +106,6 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 			}
 		}
 
-		// final field
 		if buf.Len() > 0 {
 			out.WriteString("  ")
 			out.Write(buf.Bytes())
@@ -129,24 +119,21 @@ func (w *prettyWriter) Write(p []byte) (int, error) {
 	}
 }
 
-func NewLogger(opts LoggerOptions) *slog.Logger {
-	if !opts.JSON {
-		handler := tint.NewHandler(os.Stderr, &tint.Options{
-			AddSource:  true,
-			Level:      opts.Level,
-			TimeFormat: time.Kitchen,
-			NoColor:    false,
+func newLogger(platform string) *slog.Logger {
+	if platform == "dev" {
+		writer := &prettyWriter{
+			target: os.Stdout,
+			format: "json",
+		}
+
+		handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
+		return slog.New(handler)
+	} else {
+		handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
 		})
 		return slog.New(handler)
 	}
-
-	writer := &prettyWriter{
-		target: os.Stdout,
-		format: "json",
-	}
-
-	handler := slog.NewJSONHandler(writer, &slog.HandlerOptions{
-		Level: opts.Level,
-	})
-	return slog.New(handler)
 }

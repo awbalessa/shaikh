@@ -1,4 +1,4 @@
-package queue
+package work
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	store "github.com/awbalessa/shaikh/backend/internal/repo/postgres"
-	database "github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	store "github.com/awbalessa/shaikh/backend/internal/repo"
+	db "github.com/awbalessa/shaikh/backend/internal/repo/gen"
 	"github.com/awbalessa/shaikh/backend/internal/service/agent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -187,7 +187,7 @@ func (s *syncer) flush(ctx context.Context) error {
 	s.log.With(
 		slog.Int("buffer_size", len(s.buffer)),
 		slog.String("time_since_last_flush", s.lastFlush.Format(time.RFC822)),
-	).DebugContext(ctx, "flushed buffer to database")
+	).DebugContext(ctx, "flushed buffer to db")
 
 	s.buffer = nil
 	s.lastFlush = time.Now()
@@ -208,10 +208,10 @@ func (s *syncer) createMessagesFromInteraction(
 		Valid: true,
 		Bytes: load.UserID,
 	}
-	_, err := s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
+	_, err := s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
 		SessionID: pgSessionId,
 		UserID:    pgUserId,
-		Role:      database.MessagesRoleUser,
+		Role:      db.MessagesRoleUser,
 		Content:   load.Interaction.Input.UserInput.Text,
 		Turn:      int32(load.Interaction.TurnNumber),
 	})
@@ -220,10 +220,10 @@ func (s *syncer) createMessagesFromInteraction(
 	}
 
 	if load.Interaction.Input.FunctionResponse != nil && load.Interaction.Input.FunctionName != "" {
-		_, err = s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
+		_, err = s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
 			SessionID: pgSessionId,
 			UserID:    pgUserId,
-			Role:      database.MessagesRoleFunction,
+			Role:      db.MessagesRoleFunction,
 			FunctionName: pgtype.Text{
 				Valid:  true,
 				String: string(load.Interaction.Input.FunctionName),
@@ -235,10 +235,10 @@ func (s *syncer) createMessagesFromInteraction(
 			return fmt.Errorf("failed to create messages from interaction: %w", err)
 		}
 	}
-	_, err = s.store.Pg.CreateMessageTx(ctx, tx, database.CreateMessageParams{
+	_, err = s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
 		SessionID: pgSessionId,
 		UserID:    pgUserId,
-		Role:      database.MessagesRoleModel,
+		Role:      db.MessagesRoleModel,
 		Content:   load.Interaction.ModelOutput.Text,
 		Turn:      int32(load.Interaction.TurnNumber),
 	})

@@ -1,4 +1,4 @@
-package repo
+package infra
 
 import (
 	"context"
@@ -6,23 +6,65 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
-func (f *dragonflyClient) Set(
+const (
+	flyDialTimout      time.Duration = 1 * time.Second
+	flyPoolTimeout     time.Duration = 1 * time.Second
+	flyReadTimeout     time.Duration = 500 * time.Millisecond
+	flyWriteTimeout    time.Duration = 500 * time.Millisecond
+	flyConnMaxIdleTime time.Duration = 5 * time.Minute
+	flyConnMaxLifetime time.Duration = 30 * time.Minute
+	flyPoolSize        int           = 10
+	flyMinIdleConns    int           = 2
+)
+
+type DragonflyRepo struct {
+	Fly *redis.Client
+	Log *slog.Logger
+}
+
+func NewDragonflyRepo(env *config.Env) *DragonflyRepo {
+	log := slog.Default().With(
+		"component", "dragonfly",
+	)
+
+	fly := redis.NewClient(&redis.Options{
+		Addr:                  env.DragonFlyAddress,
+		ContextTimeoutEnabled: true,
+		DialTimeout:           flyDialTimout,
+		PoolTimeout:           flyPoolTimeout,
+		ReadTimeout:           flyReadTimeout,
+		WriteTimeout:          flyWriteTimeout,
+		ConnMaxIdleTime:       flyConnMaxIdleTime,
+		ConnMaxLifetime:       flyConnMaxLifetime,
+		PoolSize:              flyPoolSize,
+		MinIdleConns:          flyMinIdleConns,
+		ClientName:            "shaikh-api",
+	})
+
+	return &DragonflyRepo{
+		Fly: fly,
+		Log: log,
+	}
+}
+
+func (f *DragonflyRepo) Set(
 	ctx context.Context,
 	key string,
 	value []byte,
 	expr time.Duration,
 ) error {
 	const method = "Set"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 		slog.String("expiration", expr.String()),
 	)
 
-	cmd := f.cli.Set(ctx, key, value, expr)
+	cmd := f.Fly.Set(ctx, key, value, expr)
 	if err := cmd.Err(); err != nil {
 		log.With(
 			"err", err,
@@ -37,17 +79,17 @@ func (f *dragonflyClient) Set(
 	return nil
 }
 
-func (f *dragonflyClient) Get(
+func (f *DragonflyRepo) Get(
 	ctx context.Context,
 	key string,
 ) ([]byte, error) {
 	const method = "Get"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 	)
 
-	cmd := f.cli.Get(ctx, key)
+	cmd := f.Fly.Get(ctx, key)
 	bytes, err := cmd.Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -65,20 +107,20 @@ func (f *dragonflyClient) Get(
 	return bytes, nil
 }
 
-func (f *dragonflyClient) SetNX(
+func (f *DragonflyRepo) SetNX(
 	ctx context.Context,
 	key string,
 	value []byte,
 	expr time.Duration,
 ) (bool, error) {
 	const method = "SetNX"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 		slog.String("expiration", expr.String()),
 	)
 
-	cmd := f.cli.SetNX(ctx, key, value, expr)
+	cmd := f.Fly.SetNX(ctx, key, value, expr)
 	ok, err := cmd.Result()
 	if err != nil {
 		log.With(
@@ -94,17 +136,17 @@ func (f *dragonflyClient) SetNX(
 	return ok, nil
 }
 
-func (f *dragonflyClient) Del(
+func (f *DragonflyRepo) Del(
 	ctx context.Context,
 	key string,
 ) error {
 	const method = "Del"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 	)
 
-	cmd := f.cli.Del(ctx, key)
+	cmd := f.Fly.Del(ctx, key)
 	n, err := cmd.Result()
 	if err != nil {
 		log.With("err", err).ErrorContext(ctx, "failed to delete cache")
@@ -115,19 +157,19 @@ func (f *dragonflyClient) Del(
 	return nil
 }
 
-func (f *dragonflyClient) RefreshTTL(
+func (f *DragonflyRepo) RefreshTTL(
 	ctx context.Context,
 	key string,
 	ttl time.Duration,
 ) error {
 	const method = "RefreshTTL"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 		slog.String("new_ttl", ttl.String()),
 	)
 
-	cmd := f.cli.Expire(ctx, key, ttl)
+	cmd := f.Fly.Expire(ctx, key, ttl)
 	ok, err := cmd.Result()
 	if err != nil {
 		log.With("err", err).ErrorContext(ctx, "failed to refresh TTL")
@@ -143,17 +185,17 @@ func (f *dragonflyClient) RefreshTTL(
 	return nil
 }
 
-func (f *dragonflyClient) Exists(
+func (f *DragonflyRepo) Exists(
 	ctx context.Context,
 	key string,
 ) (bool, error) {
 	const method = "Exists"
-	log := f.logger.With(
+	log := f.Log.With(
 		slog.String("method", method),
 		slog.String("key", key),
 	)
 
-	cmd := f.cli.Exists(ctx, key)
+	cmd := f.Fly.Exists(ctx, key)
 	n, err := cmd.Result()
 	if err != nil {
 		log.With("err", err).ErrorContext(ctx, "failed to check existence")

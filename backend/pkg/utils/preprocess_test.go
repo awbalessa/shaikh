@@ -1,4 +1,4 @@
-package arabic
+package utils
 
 import (
 	"testing"

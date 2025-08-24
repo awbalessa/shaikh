@@ -1,4 +1,4 @@
-package repo
+package infra
 
 import (
 	"context"
@@ -6,31 +6,56 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/repo"
-	db "github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	dom "github.com/awbalessa/shaikh/backend/internal/domain"
+	db "github.com/awbalessa/shaikh/backend/internal/infra/postgres/gen"
+	"github.com/awbalessa/shaikh/backend/pkg/utils"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// NewPostgresRepo creates a new PostgresRepo instance.
-func NewPostgresRepo(pool *pgxpool.Pool, logger *slog.Logger) *PostgresRepo {
-	return &PostgresRepo{
-		queries: db.New(pool),
-		pool:    pool,
-		logger:  logger,
-	}
+type Postgres struct {
+	pool *pgxpool.Pool
+	log  *slog.Logger
 }
 
-// Ensure PostgresRepo implements the repo.Store interface.
-var _ repo.Store = (*PostgresRepo)(nil)
+func NewPostgres(pool *pgxpool.Pool, log *slog.Logger) *Postgres {
+	return &Postgres{pool: pool, log: log}
+}
 
-func (pg *PostgresRepo) RunSemanticSearch(
+func (p *Postgres) Runner() db.Querier { return db.New(p.pool) }
+
+func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to open pool with tx: %w", err)
+	}
+
+	q := db.New(tx)
+	if err := fn(q); err != nil {
+		_ = tx.Rollback(ctx)
+		return fmt.Errorf("failed to run query with tx: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+type SearchRepo struct {
+	q   db.Querier
+	log *slog.Logger
+}
+
+func NewSearchRepo(q db.Querier, log *slog.Logger) *SearchRepo {
+	return &SearchRepo{q: q, log: log}
+}
+
+func (r *SearchRepo) SemanticSearch(
 	ctx context.Context,
-	arg db.SemanticSearchParams,
-) ([]db.SemanticSearchRow, error) {
-	const method = "RunSemanticSearch"
-	log := pg.logger.With(
+	vector dom.VectorWithFilter,
+	topk dom.TopK,
+) ([]dom.Chunk, error) {
+	const method = "SemanticSearch"
+	log := r.log.With(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.Int("vector_len", len(arg.Vector.Slice())),
@@ -43,7 +68,7 @@ func (pg *PostgresRepo) RunSemanticSearch(
 	log.DebugContext(ctx, "running semantic search...")
 
 	start := time.Now()
-	rows, err := pg.queries.SemanticSearch(
+	rows, err := r.q.SemanticSearch(
 		ctx,
 		arg,
 	)
@@ -63,12 +88,12 @@ func (pg *PostgresRepo) RunSemanticSearch(
 	return rows, nil
 }
 
-func (pg *postgresClient) RunLexicalSearch(
+func (r *SearchRepo) LexicalSearch(
 	ctx context.Context,
 	arg db.LexicalSearchParams,
 ) ([]db.LexicalSearchRow, error) {
 	const method = "RunLexicalSearch"
-	log := pg.logger.With(
+	log := r.log.With(
 		slog.String("method", method),
 		slog.Int("number_of_chunks", int(arg.NumberOfChunks)),
 		slog.String("query", arg.Query),
@@ -93,7 +118,7 @@ func (pg *postgresClient) RunLexicalSearch(
 	).DebugContext(ctx, "tokenized query: running lexical search...")
 
 	start := time.Now()
-	rows, err := pg.queries.LexicalSearch(
+	rows, err := r.q.LexicalSearch(
 		ctx,
 		arg,
 	)
@@ -123,23 +148,16 @@ func tokenizeQuery(query string) (string, error) {
 	return tokenized, nil
 }
 
-func (pg *postgresClient) GetAyatByKeys(ctx context.Context, surah int32, ayat []int32) ([]db.RagAyat, error) {
-	rows, err := pg.queries.GetAyatByKeys(ctx, db.GetAyatByKeysParams{
-		Surah: surah,
-		Ayat:  ayat,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ayat by keys: %w", err)
-	}
-
-	return rows, nil
+type MemoryRepo struct {
+	q   db.Querier
+	log *slog.Logger
 }
 
-func (pg *postgresClient) GetMemoriesByUserID(
+func (r *MemoryRepo) GetMemoriesByUserID(
 	ctx context.Context,
 	arg db.GetMemoriesByUserIDParams,
 ) ([]db.Memory, error) {
-	rows, err := pg.queries.GetMemoriesByUserID(ctx, db.GetMemoriesByUserIDParams{
+	rows, err := r.q.GetMemoriesByUserID(ctx, db.GetMemoriesByUserIDParams{
 		NumberOfMemories: arg.NumberOfMemories,
 		UserID:           arg.UserID,
 	})
@@ -150,11 +168,11 @@ func (pg *postgresClient) GetMemoriesByUserID(
 	return rows, nil
 }
 
-func (pg *postgresClient) GetSessionsByUserID(
+func (pg *PostgresRepo) GetSessionsByUserID(
 	ctx context.Context,
 	arg db.GetSessionsByUserIDParams,
 ) ([]db.Session, error) {
-	rows, err := pg.queries.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
+	rows, err := pg.Queries.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
 		NumberOfSessions: arg.NumberOfSessions,
 		UserID:           arg.UserID,
 	})
@@ -165,11 +183,11 @@ func (pg *postgresClient) GetSessionsByUserID(
 	return rows, nil
 }
 
-func (pg *postgresClient) GetMessagesBySessionID(
+func (pg *PostgresRepo) GetMessagesBySessionID(
 	ctx context.Context,
 	sessionID pgtype.UUID,
 ) ([]db.Message, error) {
-	rows, err := pg.queries.GetMessagesBySessionID(ctx, sessionID)
+	rows, err := pg.Queries.GetMessagesBySessionID(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages by session id: %w", err)
 	}
@@ -177,11 +195,11 @@ func (pg *postgresClient) GetMessagesBySessionID(
 	return rows, nil
 }
 
-func (pg *postgresClient) GetMessagesBySessionIDAsc(
+func (pg *PostgresRepo) GetMessagesBySessionIDAsc(
 	ctx context.Context,
 	sessionID pgtype.UUID,
 ) ([]db.Message, error) {
-	rows, err := pg.queries.GetMessagesBySessionIDAsc(ctx, sessionID)
+	rows, err := pg.Queries.GetMessagesBySessionIDAsc(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
 	}
@@ -189,11 +207,11 @@ func (pg *postgresClient) GetMessagesBySessionIDAsc(
 	return rows, nil
 }
 
-func (pg *postgresClient) GetMessagesBySessionIDOrdered(
+func (pg *PostgresRepo) GetMessagesBySessionIDOrdered(
 	ctx context.Context,
 	sessionID pgtype.UUID,
 ) ([]db.Message, error) {
-	rows, err := pg.queries.GetMessagesBySessionIdOrdered(ctx, sessionID)
+	rows, err := pg.Queries.GetMessagesBySessionIdOrdered(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
 	}
@@ -201,11 +219,11 @@ func (pg *postgresClient) GetMessagesBySessionIDOrdered(
 	return rows, nil
 }
 
-func (pg *postgresClient) CreateMessage(
+func (pg *PostgresRepo) CreateMessage(
 	ctx context.Context,
 	arg db.CreateMessageParams,
 ) (db.Message, error) {
-	rows, err := pg.queries.CreateMessage(ctx, arg)
+	rows, err := pg.Queries.CreateMessage(ctx, arg)
 	if err != nil {
 		return db.Message{}, fmt.Errorf("failed to create message: %w", err)
 	}
@@ -213,7 +231,7 @@ func (pg *postgresClient) CreateMessage(
 	return rows, nil
 }
 
-func (pg *postgresClient) CreateMessageTx(
+func (pg *PostgresRepo) CreateMessageTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	arg db.CreateMessageParams,
