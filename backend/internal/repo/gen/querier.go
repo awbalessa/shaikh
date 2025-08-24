@@ -2,12 +2,12 @@
 // versions:
 //   sqlc v1.29.0
 
-package gen
+package db
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 type Querier interface {
@@ -21,12 +21,12 @@ type Querier interface {
 	GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUserIDParams) ([]Memory, error)
 	GetMemoryByID(ctx context.Context, id int32) (Memory, error)
 	GetMessageByID(ctx context.Context, id int32) (Message, error)
-	GetMessagesBySessionID(ctx context.Context, sessionID pgtype.UUID) ([]Message, error)
-	GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtype.UUID) ([]Message, error)
-	GetMessagesBySessionIdOrdered(ctx context.Context, sessionID pgtype.UUID) ([]Message, error)
-	GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error)
+	GetMessagesBySessionID(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
+	GetMessagesBySessionIDAsc(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
+	GetMessagesBySessionIdOrdered(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
+	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error)
-	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error)
 	LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error)
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)

@@ -2,13 +2,20 @@
 -- +goose StatementBegin
 CREATE TABLE public.messages (
     id integer NOT NULL,
-    session_id uuid,
-    user_id uuid,
+    session_id uuid NOT NULL,
+    user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     role public.messages_role NOT NULL,
-    content text NOT NULL,
+    model public.large_language_model NOT NULL,
     turn integer NOT NULL,
-    function_name text
+    total_input_tokens integer,
+    total_output_tokens integer,
+    -- for roles 'user' and 'model'
+    content text,
+    -- for role 'function'
+    function_name text,
+    function_call jsonb,
+    function_response jsonb
 );
 
 ALTER TABLE ONLY public.messages
@@ -34,10 +41,19 @@ ALTER TABLE ONLY public.messages
 
 CREATE INDEX idx_messages_session_id ON public.messages USING btree (session_id);
 CREATE INDEX idx_messages_user_id ON public.messages USING btree (user_id);
+CREATE INDEX idx_messages_function_call_gin
+  ON public.messages
+  USING GIN (function_call jsonb_path_ops);
+
+CREATE INDEX idx_messages_function_response_gin
+  ON public.messages
+  USING GIN (function_response jsonb_path_ops);
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
+DROP INDEX IF EXISTS idx_messages_function_call_gin;
+DROP INDEX IF EXISTS idx_messages_function_response_gin;
 DROP INDEX IF EXISTS public.idx_messages_user_id;
 DROP INDEX IF EXISTS public.idx_messages_session_id;
 

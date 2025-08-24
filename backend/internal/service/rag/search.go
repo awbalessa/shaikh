@@ -1,4 +1,4 @@
-package rag
+package service
 
 import (
 	"context"
@@ -8,18 +8,17 @@ import (
 	"sort"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
-	models "github.com/awbalessa/shaikh/backend/internal/domain"
+	domain "github.com/awbalessa/shaikh/backend/internal/domain"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 )
 
 type PromptWithFilters struct {
 	Prompt               string
-	NullableContentTypes []gen.ContentType
-	NullableSources      []gen.Source
-	NullableSurahs       []models.SurahNumber
-	NullableAyahs        []models.AyahNumber
+	NullableContentTypes []domain.ContentType
+	NullableSources      []domain.Source
+	NullableSurahs       []domain.SurahNumber
+	NullableAyahs        []domain.AyahNumber
 }
 
 type SearchParameters struct {
@@ -214,25 +213,25 @@ func filtersToLabels(f queryFilters) *queryLabelFilters {
 
 	if len(f.contentTypes) > 0 {
 		for _, ct := range f.contentTypes {
-			contentTypes = append(contentTypes, int16(models.ContentTypeToLabel[ct]))
+			contentTypes = append(contentTypes, int16(domain.ContentTypeToLabel[ct]))
 		}
 	}
 
 	if len(f.sources) > 0 {
 		for _, src := range f.sources {
-			sources = append(sources, int16(models.SourceToLabel[src]))
+			sources = append(sources, int16(domain.SourceToLabel[src]))
 		}
 	}
 
 	if len(f.surahs) > 0 {
 		for _, sur := range f.surahs {
-			surahs = append(surahs, int16(models.SurahNumberToLabel[sur]))
+			surahs = append(surahs, int16(domain.SurahNumberToLabel[sur]))
 		}
 	}
 
 	if len(f.ayahs) > 0 {
 		for _, aya := range f.ayahs {
-			ayahs = append(ayahs, int16(models.AyahNumberToLabel[aya]))
+			ayahs = append(ayahs, int16(domain.AyahNumberToLabel[aya]))
 		}
 	}
 

@@ -3,12 +3,10 @@
 //   sqlc v1.29.0
 // source: documents.sql
 
-package gen
+package db
 
 import (
 	"context"
-
-	"shaikh/internal/domain"
 )
 
 const getDocumentByID = `-- name: GetDocumentByID :one
@@ -17,10 +15,10 @@ WHERE id = $1
 `
 
 type GetDocumentByIDRow struct {
-	Source   domain.RagSource `db:"source" json:"source"`
-	Document string           `db:"document" json:"document"`
-	Surah    NullRagSurah     `db:"surah" json:"surah"`
-	Ayah     NullRagAyah      `db:"ayah" json:"ayah"`
+	Source   RagSource    `db:"source"`
+	Document string       `db:"document"`
+	Surah    NullRagSurah `db:"surah"`
+	Ayah     NullRagAyah  `db:"ayah"`
 }
 
 func (q *Queries) GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error) {
@@ -41,14 +39,14 @@ WHERE surah = $1 AND ayah = $2
 `
 
 type GetDocumentByKeyParams struct {
-	Surah NullRagSurah `db:"surah" json:"surah"`
-	Ayah  NullRagAyah  `db:"ayah" json:"ayah"`
+	Surah NullRagSurah `db:"surah"`
+	Ayah  NullRagAyah  `db:"ayah"`
 }
 
 type GetDocumentByKeyRow struct {
-	ID       int32            `db:"id" json:"id"`
-	Source   domain.RagSource `db:"source" json:"source"`
-	Document string           `db:"document" json:"document"`
+	ID       int32     `db:"id"`
+	Source   RagSource `db:"source"`
+	Document string    `db:"document"`
 }
 
 func (q *Queries) GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error) {

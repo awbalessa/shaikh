@@ -3,12 +3,12 @@
 //   sqlc v1.29.0
 // source: sessions.sql
 
-package gen
+package db
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createSession = `-- name: CreateSession :one
@@ -18,8 +18,8 @@ RETURNING id, user_id, created_at, updated_at, ended_at, summary
 `
 
 type CreateSessionParams struct {
-	ID     pgtype.UUID `db:"id" json:"id"`
-	UserID pgtype.UUID `db:"user_id" json:"user_id"`
+	ID     uuid.UUID `db:"id"`
+	UserID uuid.UUID `db:"user_id"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -41,7 +41,7 @@ SELECT id, user_id, created_at, updated_at, ended_at, summary FROM sessions
 WHERE id = $1
 `
 
-func (q *Queries) GetSessionByID(ctx context.Context, id pgtype.UUID) (Session, error) {
+func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error) {
 	row := q.db.QueryRow(ctx, getSessionByID, id)
 	var i Session
 	err := row.Scan(
@@ -63,8 +63,8 @@ LIMIT $2
 `
 
 type GetSessionsByUserIDParams struct {
-	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
-	NumberOfSessions int32       `db:"number_of_sessions" json:"number_of_sessions"`
+	UserID           uuid.UUID `db:"user_id"`
+	NumberOfSessions int64     `db:"number_of_sessions"`
 }
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error) {

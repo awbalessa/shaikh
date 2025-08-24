@@ -166,20 +166,22 @@ func (s *syncer) flush(ctx context.Context) error {
 	payloads := make([]agent.SyncPayload, len(s.buffer))
 	for i, m := range s.buffer {
 		if err := json.Unmarshal(m.Data(), &payloads[i]); err != nil {
-			return fmt.Errorf("failed to flush buffer: %w", err)
+			return fmt.Errorf("failed to unmarshal payload: %w", err)
 		}
 
 		if err := s.createMessagesFromInteraction(ctx, tx, payloads[i]); err != nil {
-			return fmt.Errorf("failed to flush buffer: %w", err)
-		}
-
-		if err := m.Ack(); err != nil {
-			return fmt.Errorf("failed to flush buffer: %w", err)
+			return fmt.Errorf("failed to create messages from interaction: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to flush buffer: %w", err)
+		return fmt.Errorf("failed to commit buffer: %w", err)
+	}
+
+	for _, m := range s.buffer {
+		if err := m.Ack(); err != nil {
+			s.log.With("err", err).ErrorContext(ctx, "failed to ack message")
+		}
 	}
 
 	s.log.With(

@@ -2,8 +2,8 @@
 -- +goose StatementBegin
 CREATE TABLE rag.documents (
     id integer NOT NULL,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
     granularity rag.granularity NOT NULL,
     content_type rag.content_type NOT NULL,
     source rag.source NOT NULL,

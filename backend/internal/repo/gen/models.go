@@ -2,16 +2,59 @@
 // versions:
 //   sqlc v1.29.0
 
-package gen
+package db
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	pgvector_go "github.com/pgvector/pgvector-go"
-	"shaikh/internal/domain"
 )
+
+type LargeLanguageModel string
+
+const (
+	LargeLanguageModelGemini25Flash LargeLanguageModel = "gemini-2.5-flash"
+)
+
+func (e *LargeLanguageModel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LargeLanguageModel(s)
+	case string:
+		*e = LargeLanguageModel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LargeLanguageModel: %T", src)
+	}
+	return nil
+}
+
+type NullLargeLanguageModel struct {
+	LargeLanguageModel LargeLanguageModel
+	Valid              bool // Valid is true if LargeLanguageModel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLargeLanguageModel) Scan(value interface{}) error {
+	if value == nil {
+		ns.LargeLanguageModel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LargeLanguageModel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLargeLanguageModel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LargeLanguageModel), nil
+}
 
 type MessagesRole string
 
@@ -34,8 +77,8 @@ func (e *MessagesRole) Scan(src interface{}) error {
 }
 
 type NullMessagesRole struct {
-	MessagesRole MessagesRole `json:"messages_role"`
-	Valid        bool         `json:"valid"` // Valid is true if MessagesRole is not NULL
+	MessagesRole MessagesRole
+	Valid        bool // Valid is true if MessagesRole is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -360,8 +403,8 @@ func (e *RagAyah) Scan(src interface{}) error {
 }
 
 type NullRagAyah struct {
-	RagAyah RagAyah `json:"rag_ayah"`
-	Valid   bool    `json:"valid"` // Valid is true if RagAyah is not NULL
+	RagAyah RagAyah
+	Valid   bool // Valid is true if RagAyah is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -401,8 +444,8 @@ func (e *RagContentType) Scan(src interface{}) error {
 }
 
 type NullRagContentType struct {
-	RagContentType RagContentType `json:"rag_content_type"`
-	Valid          bool           `json:"valid"` // Valid is true if RagContentType is not NULL
+	RagContentType RagContentType
+	Valid          bool // Valid is true if RagContentType is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -445,8 +488,8 @@ func (e *RagGranularity) Scan(src interface{}) error {
 }
 
 type NullRagGranularity struct {
-	RagGranularity RagGranularity `json:"rag_granularity"`
-	Valid          bool           `json:"valid"` // Valid is true if RagGranularity is not NULL
+	RagGranularity RagGranularity
+	Valid          bool // Valid is true if RagGranularity is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -486,8 +529,8 @@ func (e *RagSource) Scan(src interface{}) error {
 }
 
 type NullRagSource struct {
-	RagSource RagSource `json:"rag_source"`
-	Valid     bool      `json:"valid"` // Valid is true if RagSource is not NULL
+	RagSource RagSource
+	Valid     bool // Valid is true if RagSource is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -640,8 +683,8 @@ func (e *RagSurah) Scan(src interface{}) error {
 }
 
 type NullRagSurah struct {
-	RagSurah RagSurah `json:"rag_surah"`
-	Valid    bool     `json:"valid"` // Valid is true if RagSurah is not NULL
+	RagSurah RagSurah
+	Valid    bool // Valid is true if RagSurah is not NULL
 }
 
 // Scan implements the Scanner interface.
@@ -663,78 +706,83 @@ func (ns NullRagSurah) Value() (driver.Value, error) {
 }
 
 type Memory struct {
-	ID        int32              `db:"id" json:"id"`
-	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	Memory    string             `db:"memory" json:"memory"`
+	ID        int32     `db:"id"`
+	UserID    uuid.UUID `db:"user_id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+	Memory    string    `db:"memory"`
 }
 
 type Message struct {
-	ID           int32               `db:"id" json:"id"`
-	SessionID    pgtype.UUID         `db:"session_id" json:"session_id"`
-	UserID       pgtype.UUID         `db:"user_id" json:"user_id"`
-	CreatedAt    pgtype.Timestamptz  `db:"created_at" json:"created_at"`
-	Role         domain.MessagesRole `db:"role" json:"role"`
-	Content      string              `db:"content" json:"content"`
-	Turn         int32               `db:"turn" json:"turn"`
-	FunctionName pgtype.Text         `db:"function_name" json:"function_name"`
+	ID                int32              `db:"id"`
+	SessionID         uuid.UUID          `db:"session_id"`
+	UserID            uuid.UUID          `db:"user_id"`
+	CreatedAt         time.Time          `db:"created_at"`
+	Role              MessagesRole       `db:"role"`
+	Model             LargeLanguageModel `db:"model"`
+	Turn              int32              `db:"turn"`
+	TotalInputTokens  pgtype.Int4        `db:"total_input_tokens"`
+	TotalOutputTokens pgtype.Int4        `db:"total_output_tokens"`
+	Content           pgtype.Text        `db:"content"`
+	FunctionName      pgtype.Text        `db:"function_name"`
+	FunctionCall      json.RawMessage    `db:"function_call"`
+	FunctionResponse  json.RawMessage    `db:"function_response"`
 }
 
 type RagAyat struct {
-	Surah     domain.RagSurahNumber `db:"surah" json:"surah"`
-	Ayah      domain.RagAyahNumber  `db:"ayah" json:"ayah"`
-	Ar        string                `db:"ar" json:"ar"`
-	ArUthmani string                `db:"ar_uthmani" json:"ar_uthmani"`
-	En        string                `db:"en" json:"en"`
+	Surah     RagSurah `db:"surah"`
+	Ayah      RagAyah  `db:"ayah"`
+	Ar        string   `db:"ar"`
+	ArUthmani string   `db:"ar_uthmani"`
+	En        string   `db:"en"`
 }
 
 type RagChunk struct {
-	ID                  int64                 `db:"id" json:"id"`
-	SequenceID          int32                 `db:"sequence_id" json:"sequence_id"`
-	CreatedAt           pgtype.Timestamp      `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamp      `db:"updated_at" json:"updated_at"`
-	Granularity         domain.RagGranularity `db:"granularity" json:"granularity"`
-	ContentType         domain.RagContentType `db:"content_type" json:"content_type"`
-	Source              domain.RagSource      `db:"source" json:"source"`
-	RawChunk            string                `db:"raw_chunk" json:"raw_chunk"`
-	TokenizedChunk      string                `db:"tokenized_chunk" json:"tokenized_chunk"`
-	ChunkTitle          string                `db:"chunk_title" json:"chunk_title"`
-	TokenizedChunkTitle string                `db:"tokenized_chunk_title" json:"tokenized_chunk_title"`
-	ContextHeader       string                `db:"context_header" json:"context_header"`
-	EmbeddedChunk       string                `db:"embedded_chunk" json:"embedded_chunk"`
-	Labels              []int16               `db:"labels" json:"labels"`
-	Embedding           pgvector_go.Vector    `db:"embedding" json:"embedding"`
-	ParentID            pgtype.Int4           `db:"parent_id" json:"parent_id"`
-	Surah               NullRagSurah          `db:"surah" json:"surah"`
-	Ayah                NullRagAyah           `db:"ayah" json:"ayah"`
+	ID                  int64              `db:"id"`
+	SequenceID          int32              `db:"sequence_id"`
+	CreatedAt           time.Time          `db:"created_at"`
+	UpdatedAt           time.Time          `db:"updated_at"`
+	Granularity         RagGranularity     `db:"granularity"`
+	ContentType         RagContentType     `db:"content_type"`
+	Source              RagSource          `db:"source"`
+	RawChunk            string             `db:"raw_chunk"`
+	TokenizedChunk      string             `db:"tokenized_chunk"`
+	ChunkTitle          string             `db:"chunk_title"`
+	TokenizedChunkTitle string             `db:"tokenized_chunk_title"`
+	ContextHeader       string             `db:"context_header"`
+	EmbeddedChunk       string             `db:"embedded_chunk"`
+	Labels              []int16            `db:"labels"`
+	Embedding           pgvector_go.Vector `db:"embedding"`
+	ParentID            pgtype.Int4        `db:"parent_id"`
+	Surah               NullRagSurah       `db:"surah"`
+	Ayah                NullRagAyah        `db:"ayah"`
 }
 
 type RagDocument struct {
-	ID            int32                 `db:"id" json:"id"`
-	CreatedAt     pgtype.Timestamp      `db:"created_at" json:"created_at"`
-	UpdatedAt     pgtype.Timestamp      `db:"updated_at" json:"updated_at"`
-	Granularity   domain.RagGranularity `db:"granularity" json:"granularity"`
-	ContentType   domain.RagContentType `db:"content_type" json:"content_type"`
-	Source        domain.RagSource      `db:"source" json:"source"`
-	ContextHeader string                `db:"context_header" json:"context_header"`
-	Document      string                `db:"document" json:"document"`
-	Surah         NullRagSurah          `db:"surah" json:"surah"`
-	Ayah          NullRagAyah           `db:"ayah" json:"ayah"`
+	ID            int32          `db:"id"`
+	CreatedAt     time.Time      `db:"created_at"`
+	UpdatedAt     time.Time      `db:"updated_at"`
+	Granularity   RagGranularity `db:"granularity"`
+	ContentType   RagContentType `db:"content_type"`
+	Source        RagSource      `db:"source"`
+	ContextHeader string         `db:"context_header"`
+	Document      string         `db:"document"`
+	Surah         NullRagSurah   `db:"surah"`
+	Ayah          NullRagAyah    `db:"ayah"`
 }
 
 type Session struct {
-	ID        pgtype.UUID        `db:"id" json:"id"`
-	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	EndedAt   pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
-	Summary   pgtype.Text        `db:"summary" json:"summary"`
+	ID        uuid.UUID   `db:"id"`
+	UserID    uuid.UUID   `db:"user_id"`
+	CreatedAt time.Time   `db:"created_at"`
+	UpdatedAt time.Time   `db:"updated_at"`
+	EndedAt   time.Time   `db:"ended_at"`
+	Summary   pgtype.Text `db:"summary"`
 }
 
 type User struct {
-	ID        pgtype.UUID        `db:"id" json:"id"`
-	Email     string             `db:"email" json:"email"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID        uuid.UUID `db:"id"`
+	Email     string    `db:"email"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
 }

@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 CREATE TABLE public.memories (
     id integer NOT NULL,
-    user_id uuid,
+    user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     memory text NOT NULL

@@ -1,20 +1,12 @@
-package rag
+package service
 
 import (
 	"log/slog"
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/repo"
+	"github.com/nats-io/nsc/v2/cmd/store"
 )
 
-const (
-	Top5Documents  TopK = 5
-	Top10Documents TopK = 10
-	Top15Documents TopK = 15
-	Top20Documents TopK = 20
-)
-
-type TopK int
 
 type PipelineConfig struct {
 	Config *config.Config

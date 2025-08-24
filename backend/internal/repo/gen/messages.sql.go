@@ -3,28 +3,34 @@
 //   sqlc v1.29.0
 // source: messages.sql
 
-package gen
+package db
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"shaikh/internal/domain"
 )
 
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO messages (session_id, user_id, role, content, turn, function_name)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, session_id, user_id, created_at, role, content, turn, function_name
+INSERT INTO messages (session_id, user_id, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, session_id, user_id, created_at, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response
 `
 
 type CreateMessageParams struct {
-	SessionID    pgtype.UUID         `db:"session_id" json:"session_id"`
-	UserID       pgtype.UUID         `db:"user_id" json:"user_id"`
-	Role         domain.MessagesRole `db:"role" json:"role"`
-	Content      string              `db:"content" json:"content"`
-	Turn         int32               `db:"turn" json:"turn"`
-	FunctionName pgtype.Text         `db:"function_name" json:"function_name"`
+	SessionID         uuid.UUID          `db:"session_id"`
+	UserID            uuid.UUID          `db:"user_id"`
+	Role              MessagesRole       `db:"role"`
+	Model             LargeLanguageModel `db:"model"`
+	Turn              int32              `db:"turn"`
+	TotalInputTokens  pgtype.Int4        `db:"total_input_tokens"`
+	TotalOutputTokens pgtype.Int4        `db:"total_output_tokens"`
+	Content           pgtype.Text        `db:"content"`
+	FunctionName      pgtype.Text        `db:"function_name"`
+	FunctionCall      json.RawMessage    `db:"function_call"`
+	FunctionResponse  json.RawMessage    `db:"function_response"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {
@@ -32,9 +38,14 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		arg.SessionID,
 		arg.UserID,
 		arg.Role,
-		arg.Content,
+		arg.Model,
 		arg.Turn,
+		arg.TotalInputTokens,
+		arg.TotalOutputTokens,
+		arg.Content,
 		arg.FunctionName,
+		arg.FunctionCall,
+		arg.FunctionResponse,
 	)
 	var i Message
 	err := row.Scan(
@@ -43,15 +54,20 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 		&i.UserID,
 		&i.CreatedAt,
 		&i.Role,
-		&i.Content,
+		&i.Model,
 		&i.Turn,
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.Content,
 		&i.FunctionName,
+		&i.FunctionCall,
+		&i.FunctionResponse,
 	)
 	return i, err
 }
 
 const getMessageByID = `-- name: GetMessageByID :one
-SELECT id, session_id, user_id, created_at, role, content, turn, function_name FROM messages
+SELECT id, session_id, user_id, created_at, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response FROM messages
 WHERE id = $1
 `
 
@@ -64,20 +80,25 @@ func (q *Queries) GetMessageByID(ctx context.Context, id int32) (Message, error)
 		&i.UserID,
 		&i.CreatedAt,
 		&i.Role,
-		&i.Content,
+		&i.Model,
 		&i.Turn,
+		&i.TotalInputTokens,
+		&i.TotalOutputTokens,
+		&i.Content,
 		&i.FunctionName,
+		&i.FunctionCall,
+		&i.FunctionResponse,
 	)
 	return i, err
 }
 
 const getMessagesBySessionID = `-- name: GetMessagesBySessionID :many
-SELECT id, session_id, user_id, created_at, role, content, turn, function_name FROM messages
+SELECT id, session_id, user_id, created_at, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response FROM messages
 WHERE session_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.UUID) ([]Message, error) {
+func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID uuid.UUID) ([]Message, error) {
 	rows, err := q.db.Query(ctx, getMessagesBySessionID, sessionID)
 	if err != nil {
 		return nil, err
@@ -92,9 +113,14 @@ func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.U
 			&i.UserID,
 			&i.CreatedAt,
 			&i.Role,
-			&i.Content,
+			&i.Model,
 			&i.Turn,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.Content,
 			&i.FunctionName,
+			&i.FunctionCall,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}
@@ -107,12 +133,12 @@ func (q *Queries) GetMessagesBySessionID(ctx context.Context, sessionID pgtype.U
 }
 
 const getMessagesBySessionIDAsc = `-- name: GetMessagesBySessionIDAsc :many
-SELECT id, session_id, user_id, created_at, role, content, turn, function_name FROM messages
+SELECT id, session_id, user_id, created_at, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response FROM messages
 WHERE session_id = $1
 ORDER BY created_at ASC
 `
 
-func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtype.UUID) ([]Message, error) {
+func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID uuid.UUID) ([]Message, error) {
 	rows, err := q.db.Query(ctx, getMessagesBySessionIDAsc, sessionID)
 	if err != nil {
 		return nil, err
@@ -127,9 +153,14 @@ func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtyp
 			&i.UserID,
 			&i.CreatedAt,
 			&i.Role,
-			&i.Content,
+			&i.Model,
 			&i.Turn,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.Content,
 			&i.FunctionName,
+			&i.FunctionCall,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}
@@ -142,12 +173,12 @@ func (q *Queries) GetMessagesBySessionIDAsc(ctx context.Context, sessionID pgtyp
 }
 
 const getMessagesBySessionIdOrdered = `-- name: GetMessagesBySessionIdOrdered :many
-SELECT id, session_id, user_id, created_at, role, content, turn, function_name FROM messages
+SELECT id, session_id, user_id, created_at, role, model, turn, total_input_tokens, total_output_tokens, content, function_name, function_call, function_response FROM messages
 WHERE session_id = $1
 ORDER BY turn ASC
 `
 
-func (q *Queries) GetMessagesBySessionIdOrdered(ctx context.Context, sessionID pgtype.UUID) ([]Message, error) {
+func (q *Queries) GetMessagesBySessionIdOrdered(ctx context.Context, sessionID uuid.UUID) ([]Message, error) {
 	rows, err := q.db.Query(ctx, getMessagesBySessionIdOrdered, sessionID)
 	if err != nil {
 		return nil, err
@@ -162,9 +193,14 @@ func (q *Queries) GetMessagesBySessionIdOrdered(ctx context.Context, sessionID p
 			&i.UserID,
 			&i.CreatedAt,
 			&i.Role,
-			&i.Content,
+			&i.Model,
 			&i.Turn,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.Content,
 			&i.FunctionName,
+			&i.FunctionCall,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}
@@ -177,7 +213,7 @@ func (q *Queries) GetMessagesBySessionIdOrdered(ctx context.Context, sessionID p
 }
 
 const getUserMessagesByUserID = `-- name: GetUserMessagesByUserID :many
-SELECT m.id, m.session_id, m.user_id, m.created_at, m.role, m.content, m.turn, m.function_name
+SELECT m.id, m.session_id, m.user_id, m.created_at, m.role, m.model, m.turn, m.total_input_tokens, m.total_output_tokens, m.content, m.function_name, m.function_call, m.function_response
 FROM messages m
 JOIN sessions s ON m.session_id = s.id
 WHERE m.user_id = $1
@@ -187,8 +223,8 @@ LIMIT $2
 `
 
 type GetUserMessagesByUserIDParams struct {
-	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
-	NumberOfMessages int32       `db:"number_of_messages" json:"number_of_messages"`
+	UserID           uuid.UUID `db:"user_id"`
+	NumberOfMessages int64     `db:"number_of_messages"`
 }
 
 func (q *Queries) GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error) {
@@ -206,9 +242,14 @@ func (q *Queries) GetUserMessagesByUserID(ctx context.Context, arg GetUserMessag
 			&i.UserID,
 			&i.CreatedAt,
 			&i.Role,
-			&i.Content,
+			&i.Model,
 			&i.Turn,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.Content,
 			&i.FunctionName,
+			&i.FunctionCall,
+			&i.FunctionResponse,
 		); err != nil {
 			return nil, err
 		}

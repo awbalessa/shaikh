@@ -3,12 +3,12 @@
 //   sqlc v1.29.0
 // source: memories.sql
 
-package gen
+package db
 
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 const createMemory = `-- name: CreateMemory :one
@@ -18,8 +18,8 @@ RETURNING id, user_id, created_at, updated_at, memory
 `
 
 type CreateMemoryParams struct {
-	UserID pgtype.UUID `db:"user_id" json:"user_id"`
-	Memory string      `db:"memory" json:"memory"`
+	UserID uuid.UUID `db:"user_id"`
+	Memory string    `db:"memory"`
 }
 
 func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Memory, error) {
@@ -43,8 +43,8 @@ LIMIT $2
 `
 
 type GetMemoriesByUserIDParams struct {
-	UserID           pgtype.UUID `db:"user_id" json:"user_id"`
-	NumberOfMemories int32       `db:"number_of_memories" json:"number_of_memories"`
+	UserID           uuid.UUID `db:"user_id"`
+	NumberOfMemories int64     `db:"number_of_memories"`
 }
 
 func (q *Queries) GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUserIDParams) ([]Memory, error) {
@@ -100,8 +100,8 @@ RETURNING id, user_id, created_at, updated_at, memory
 `
 
 type UpdateMemoryByIDParams struct {
-	Memory string `db:"memory" json:"memory"`
-	ID     int32  `db:"id" json:"id"`
+	Memory string `db:"memory"`
+	ID     int32  `db:"id"`
 }
 
 func (q *Queries) UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error) {

@@ -13,6 +13,10 @@ CREATE TYPE public.messages_role AS ENUM (
     'function'
 );
 
+CREATE TYPE public.large_language_model AS ENUM (
+    'gemini-2.5-flash'
+);
+
 CREATE TYPE rag.ayah AS ENUM (
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20',
     '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40',
@@ -65,6 +69,7 @@ DROP TYPE IF EXISTS rag.granularity;
 DROP TYPE IF EXISTS rag.content_type;
 DROP TYPE IF EXISTS rag.ayah;
 DROP TYPE IF EXISTS public.messages_role;
+DROP TYPE IF EXISTS public.large_language_model;
 
 DROP EXTENSION IF EXISTS vectorscale;
 DROP EXTENSION IF EXISTS vector;

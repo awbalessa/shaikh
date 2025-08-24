@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/config"
-	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	"github.com/awbalessa/shaikh/backend/internal/app"
+	db "github.com/awbalessa/shaikh/backend/internal/repo/gen"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -21,26 +21,26 @@ const (
 	flyMinIdleConns    int           = 2
 )
 
-type postgresClient struct {
+type PostgresRepo struct {
 	Pool    *pgxpool.Pool
-	queries *gen.Queries
+	queries db.Querier
 	logger  *slog.Logger
 }
 
-type dragonflyClient struct {
+type DragonflyRepo struct {
 	cli    *redis.Client
 	logger *slog.Logger
 }
 
 type StoreConfig struct {
-	Config  *config.Config
+	Config  *app.Config
 	Pool    *pgxpool.Pool
-	Queries *gen.Queries
+	Queries *db.Queries
 }
 
 type Store struct {
-	Pg  *postgresClient
-	Fly *dragonflyClient
+	Pg  *PostgresRepo
+	Fly *DragonflyRepo
 }
 
 func New(cfg StoreConfig) *Store {
@@ -67,12 +67,12 @@ func New(cfg StoreConfig) *Store {
 	})
 
 	return &Store{
-		Pg: &postgresClient{
+		Pg: &PostgresRepo{
 			Pool:    cfg.Pool,
 			queries: cfg.Queries,
 			logger:  pg_log,
 		},
-		Fly: &dragonflyClient{
+		Fly: &DragonflyRepo{
 			cli:    fly,
 			logger: fly_log,
 		},

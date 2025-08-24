@@ -3,23 +3,21 @@
 //   sqlc v1.29.0
 // source: ayat.sql
 
-package gen
+package db
 
 import (
 	"context"
-
-	"shaikh/internal/domain"
 )
 
 const getAyatByKeys = `-- name: GetAyatByKeys :many
 SELECT surah, ayah, ar, ar_uthmani, en FROM rag.ayat
 WHERE surah = $1
-    AND ayah = ANY($2::int[])
+    AND ayah = ANY($2::rag.ayah[])
 `
 
 type GetAyatByKeysParams struct {
-	Surah domain.RagSurahNumber `db:"surah" json:"surah"`
-	Ayat  []int32               `db:"ayat" json:"ayat"`
+	Surah RagSurah  `db:"surah"`
+	Ayat  []RagAyah `db:"ayat"`
 }
 
 func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error) {
