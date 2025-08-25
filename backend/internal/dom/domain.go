@@ -2,6 +2,7 @@ package dom
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,9 +26,10 @@ type User struct {
 }
 
 type Session struct {
-	ID      uuid.UUID
-	UserID  uuid.UUID
-	Summary *string
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	LastAccessed time.Time
+	Summary      *string
 }
 
 type MsgMeta struct {
@@ -72,7 +74,8 @@ func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
 func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type Memory struct {
-	ID      int32
-	UserID  uuid.UUID
-	Content string
+	ID        int32
+	UserID    uuid.UUID
+	UpdatedAt time.Time
+	Content   string
 }

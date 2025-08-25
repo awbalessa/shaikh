@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	db "github.com/awbalessa/shaikh/backend/internal/infra/postgres/gen"
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
@@ -13,19 +14,70 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
+const (
+	postgresSSLMode               string = "sslmode=disable"
+	postgresMaxConns              string = "pool_max_conns=8"
+	postgresMinConns              string = "pool_min_conns=2"
+	postgresMinIdleConns          string = "pool_min_idle_conns=2"
+	postgresMaxConnLifetime       string = "pool_max_conn_lifetime=30m"
+	postgresMaxConnLifetimeJitter string = "pool_max_conn_lifetime_jitter=5m"
+	postgresMaxConnIdleTime       string = "pool_max_conn_idle_time=15m"
+	postgresPoolHealthCheckPeriod string = "pool_health_check_period=30s"
+)
+
 type Postgres struct {
-	pool *pgxpool.Pool
-	log  *slog.Logger
+	Pool *pgxpool.Pool
+	Log  *slog.Logger
 }
 
-func NewPostgres(pool *pgxpool.Pool, log *slog.Logger) *Postgres {
-	return &Postgres{pool: pool, log: log}
+func NewPostgres(ctx context.Context, log *slog.Logger, env *config.Env) (*Postgres, error) {
+	connStr := fmt.Sprintf(
+		"%s?%s&%s&%s&%s&%s&%s&%s&%s",
+		env.PostgresUrl,
+		postgresSSLMode,
+		postgresMaxConns,
+		postgresMinConns,
+		postgresMinIdleConns,
+		postgresMaxConnLifetime,
+		postgresMaxConnLifetimeJitter,
+		postgresMaxConnIdleTime,
+		postgresPoolHealthCheckPeriod,
+	)
+
+	pgxCfg, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		slog.With(
+			slog.Any("err", err),
+			slog.String("postgres_url", connStr),
+		).ErrorContext(
+			ctx,
+			"failed to parse postgres url",
+		)
+		return nil, fmt.Errorf("failed to create postgres: %w", err)
+	}
+
+	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
+	if err != nil {
+		slog.With(
+			slog.Any("err", err),
+			slog.String("postgres_url", connStr),
+		).ErrorContext(
+			ctx,
+			"failed to create postgres",
+		)
+		return nil, fmt.Errorf("failed to create postgres: %w", err)
+	}
+
+	return &Postgres{
+		Pool: conn,
+		Log:  log,
+	}, nil
 }
 
-func (p *Postgres) Runner() db.Querier { return db.New(p.pool) }
+func (p *Postgres) Runner() db.Querier { return db.New(p.Pool) }
 
 func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) error {
-	tx, err := p.pool.Begin(ctx)
+	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to open pool with tx: %w", err)
 	}

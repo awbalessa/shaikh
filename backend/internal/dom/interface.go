@@ -62,8 +62,8 @@ type LLMFunctionCall struct {
 }
 
 type LLMFunctionResponse struct {
-	Name     string
-	Response map[string]any
+	Name    string
+	Content map[string]any
 }
 
 type LLMPart struct {
@@ -188,4 +188,17 @@ type LLM interface {
 		window []*LLMContent,
 		cfg *LLMCountConfig,
 	) (int32, error)
+}
+
+type PubOptions struct {
+	MsgID string
+}
+
+type PubAck struct {
+	Stream string
+	Seq    uint64
+}
+
+type Publisher interface {
+	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
 }

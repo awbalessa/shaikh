@@ -192,7 +192,10 @@ type SearchResult struct {
 	Relevance float64
 }
 
+type FunctionName string
+
 const (
+	FunctionSearch   FunctionName  = "Search()"
 	AgentStream      string        = "AGENT"
 	SyncerSubject    string        = "agent.context.sync"
 	SyncIdleTime     time.Duration = 2 * time.Minute

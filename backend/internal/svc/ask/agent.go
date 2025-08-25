@@ -17,7 +17,7 @@ type AgentConfig struct {
 	Stream  jetstream.JetStream
 }
 
-type AskSvc struct {
+type Agent struct {
 	agents    map[agentName]*agentProfile
 	functions map[functionName]function
 	Log       *slog.Logger
@@ -256,7 +256,7 @@ func (a *Agent) getFunction(fn functionName) (function, error) {
 }
 
 const (
-	search functionName = "Search()"
+	Search functionName = "Search()"
 )
 
 var (
