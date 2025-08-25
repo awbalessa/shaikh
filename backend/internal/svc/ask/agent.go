@@ -7,16 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/repo/postgres/gen"
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/nats-io/nats.go/jetstream"
 	"google.golang.org/genai"
-)
-
-const (
-	AgentStream      string        = "AGENT"
-	SyncerSubject    string        = "agent.context.sync"
-	SyncIdleTime     time.Duration = 2 * time.Minute
-	SyncMaxBatchSize int           = 5
 )
 
 type AgentConfig struct {
@@ -24,10 +17,10 @@ type AgentConfig struct {
 	Stream  jetstream.JetStream
 }
 
-type Agent struct {
+type AskSvc struct {
 	agents    map[agentName]*agentProfile
 	functions map[functionName]function
-	logger    *slog.Logger
+	Log       *slog.Logger
 	gc        *geminiClient
 	js        jetstream.JetStream
 }
