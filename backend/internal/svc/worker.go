@@ -1,4 +1,4 @@
-package work
+package svc
 
 import (
 	"context"
@@ -7,11 +7,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/svc/agent"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/nats-io/nsc/v2/cmd/store"
 )
 
 type WorkerGroup struct {
@@ -58,7 +56,6 @@ type syncer struct {
 func BuildSyncer(
 	ctx context.Context,
 	stream jetstream.JetStream,
-	store *store.Store,
 ) (*syncer, error) {
 	cons, err := stream.CreateOrUpdateConsumer(ctx, agent.AgentStream, jetstream.ConsumerConfig{
 		Durable:       syncerDurableName,

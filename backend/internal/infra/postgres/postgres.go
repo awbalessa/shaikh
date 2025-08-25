@@ -339,6 +339,22 @@ func tokenizeQuery(query string) (string, error) {
 // 	return msg, nil
 // }
 
+var SourceToRagSource = map[dom.Source]db.RagSource{
+	dom.SourceTafsirIbnKathir: db.RagSourceTafsirIbnKathir,
+}
+
+var RagSourceToSource = map[db.RagSource]dom.Source{
+	db.RagSourceTafsirIbnKathir: dom.SourceTafsirIbnKathir,
+}
+
+var ContentTypeToRagContentType = map[dom.ContentType]db.RagContentType{
+	dom.ContentTypeTafsir: db.RagContentTypeTafsir,
+}
+
+var RagContentTypeToContentType = map[db.RagContentType]dom.ContentType{
+	db.RagContentTypeTafsir: dom.ContentTypeTafsir,
+}
+
 var SurahNumberToRagSurah = map[dom.SurahNumber]db.RagSurah{
 	dom.SurahNumber1:   db.RagSurah1,
 	dom.SurahNumber2:   db.RagSurah2,
@@ -573,7 +589,7 @@ var RagSurahToSurahNumber = map[db.RagSurah]dom.SurahNumber{
 	db.RagSurah114: dom.SurahNumber114,
 }
 
-var AyahNumberToRagSurah = map[dom.AyahNumber]db.RagAyah{
+var AyahNumberToRagAyah = map[dom.AyahNumber]db.RagAyah{
 	dom.AyahNumber1:   db.RagAyah1,
 	dom.AyahNumber2:   db.RagAyah2,
 	dom.AyahNumber3:   db.RagAyah3,

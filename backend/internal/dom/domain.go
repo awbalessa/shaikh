@@ -527,9 +527,10 @@ type LabelContext struct {
 }
 
 var (
-	ErrNoSubqueries         = errors.New("must pass in at least one subquery")
-	ErrTooManySubqueries    = errors.New("cannot pass in more than 3 sub-queries")
-	ErrAyahNeedsSingleSurah = errors.New("must specify exactly one surah when specifying ayah filters")
+	ErrQueriesVectorsNot1to1 = errors.New("vectors and queries are not one-to-one")
+	ErrNoSubqueries          = errors.New("must pass in at least one subquery")
+	ErrTooManySubqueries     = errors.New("cannot pass in more than 3 sub-queries")
+	ErrAyahNeedsSingleSurah  = errors.New("must specify exactly one surah when specifying ayah filters")
 )
 
 const MaxSubqueries int = 3

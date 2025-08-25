@@ -42,24 +42,29 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 
 	docs := make([]string, 0, len(results))
 	for _, chunk := range results {
-		docs = append(docs, chunk.embeddedChunk)
+		docs = append(docs, chunk.Content)
 	}
 
-	ranks, err := s.vc.rerankDocuments(ctx, arg.RawPrompt, docs, arg.ChunkLimit)
+	ranks, err := s.Reranker.RerankDocuments(ctx, arg.FullQuery, docs, arg.TopK)
 	if err != nil {
 		return nil, fmt.Errorf("failed search: %w", err)
 	}
 
-	final := make([]SearchResult, 0, len(ranks))
+	final := make([]dom.SearchResult, 0, len(ranks))
 	for _, rank := range ranks {
 		chunk := results[rank.Index]
-		final = append(final, SearchResult{
-			ID:            chunk.id,
-			Relevance:     rank.RelevanceScore,
-			EmbeddedChunk: chunk.embeddedChunk,
-			Source:        chunk.source,
-			Surah:         chunk.surah,
-			Ayah:          chunk.ayah,
+		final = append(final, dom.SearchResult{
+			Chunk: dom.Chunk{
+				Document: dom.Document{
+					ID:          chunk.ID,
+					Source:      chunk.Source,
+					Content:     chunk.Content,
+					SurahNumber: chunk.SurahNumber,
+					AyahNumber:  chunk.AyahNumber,
+				},
+				ParentID: chunk.ParentID,
+			},
+			Relevance: rank.Relevance,
 		})
 	}
 
@@ -69,90 +74,6 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 	).DebugContext(ctx, "reranking completed: returning...")
 
 	return final, nil
-}
-
-func (s *SearchSvc) parallelSemanticSearch(
-	ctx context.Context,
-	queries []dom.FullQueryContext,
-	topk int,
-) ([][]dom.Chunk, error) {
-	chunksPerThread := topk / len(queries)
-	results := make([][]dom.Chunk, len(queries))
-
-	g, ctx := errgroup.WithContext(ctx)
-	s.Logger.With(
-		slog.String("method", "parallelSemanticSearch"),
-		slog.Int("chunks_per_thread", chunksPerThread),
-		slog.Int("num_of_threads", len(queries)),
-	).DebugContext(ctx, "starting parallel semantic search...")
-
-	start := time.Now()
-	for i, query := range queries {
-		i, query := i, query
-		g.Go(func() error {
-			if query.Vector == nil {
-				return fmt.Errorf("missing vector for query: %q", query.Query)
-			}
-			rows, err := s.Searcher.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
-			if err != nil {
-				return fmt.Errorf("parallel semantic search error: %w", err)
-			}
-
-			results[i] = rows
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	s.Logger.With(
-		slog.String("method", "parallelSemanticSearch"),
-		slog.String("duration", time.Since(start).String()),
-	).DebugContext(ctx, "parallel semantic search completed: returning...")
-
-	return results, nil
-}
-
-func (s *SearchSvc) parallelLexicalSearch(
-	ctx context.Context,
-	queries []dom.FullQueryContext,
-	topk int,
-) ([][]dom.Chunk, error) {
-	chunksPerThread := topk / len(queries)
-	results := make([][]dom.Chunk, len(queries))
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	p.logger.With(
-		slog.String("method", "parallelLexicalSearch"),
-		slog.Int("chunks_per_thread", chunksPerThread),
-		slog.Int("num_of_threads", len(queries)),
-	).DebugContext(ctx, "starting parallel lexical search...")
-
-	start := time.Now()
-	for i, query := range queries {
-		i, query := i, query
-		g.Go(func() error {
-			rows, err := s.Searcher.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
-			if err != nil {
-				return fmt.Errorf("parallel lexical search error: %w", err)
-			}
-
-			results[i] = rows
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	s.Logger.With(
-		slog.String("duration", time.Since(start).String()),
-	).DebugContext(ctx, "lexical search completed: returning...")
-	return results, nil
 }
 
 func (s *SearchSvc) hybridSearch(
@@ -218,16 +139,16 @@ func (s *SearchSvc) hybridSearch(
 		fused[i] = dom.RRFusion(semRes[i], lexRes[i])
 	}
 
-	var allChunks []resultChunks
+	var allChunks []dom.Chunk
 	for _, group := range fused {
 		allChunks = append(allChunks, group...)
 	}
 
 	seen := make(map[string]bool)
-	deduped := make([]resultChunks, 0, len(allChunks))
+	deduped := make([]dom.Chunk, 0, len(allChunks))
 	for _, chunk := range allChunks {
-		if !seen[chunk.embeddedChunk] {
-			seen[chunk.embeddedChunk] = true
+		if !seen[chunk.Content] {
+			seen[chunk.Content] = true
 			deduped = append(deduped, chunk)
 		}
 	}
@@ -238,6 +159,90 @@ func (s *SearchSvc) hybridSearch(
 		slog.Int("deduped_count", len(deduped)),
 	).DebugContext(ctx, "hybrid search completed: returning...")
 
-	// Return final deduped slice (wrapped in [][]resultChunks to match method signature)
 	return deduped, nil
+}
+
+func (s *SearchSvc) parallelSemanticSearch(
+	ctx context.Context,
+	queries []dom.FullQueryContext,
+	topk int,
+) ([][]dom.Chunk, error) {
+	chunksPerThread := topk / len(queries)
+	results := make([][]dom.Chunk, len(queries))
+
+	g, ctx := errgroup.WithContext(ctx)
+	s.Logger.With(
+		slog.String("method", "parallelSemanticSearch"),
+		slog.Int("chunks_per_thread", chunksPerThread),
+		slog.Int("num_of_threads", len(queries)),
+	).DebugContext(ctx, "starting parallel semantic search...")
+
+	start := time.Now()
+	for i, query := range queries {
+		i, query := i, query
+		g.Go(func() error {
+			if query.Vector == nil {
+				return fmt.Errorf("missing vector for query: %q", query.Query)
+			}
+			rows, err := s.Searcher.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
+			if err != nil {
+				return fmt.Errorf("parallel semantic search error: %w", err)
+			}
+
+			results[i] = rows
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	s.Logger.With(
+		slog.String("method", "parallelSemanticSearch"),
+		slog.String("duration", time.Since(start).String()),
+	).DebugContext(ctx, "parallel semantic search completed: returning...")
+
+	return results, nil
+}
+
+func (s *SearchSvc) parallelLexicalSearch(
+	ctx context.Context,
+	queries []dom.FullQueryContext,
+	topk int,
+) ([][]dom.Chunk, error) {
+	chunksPerThread := topk / len(queries)
+	results := make([][]dom.Chunk, len(queries))
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	s.Logger.With(
+		slog.String("method", "parallelLexicalSearch"),
+		slog.Int("chunks_per_thread", chunksPerThread),
+		slog.Int("num_of_threads", len(queries)),
+	).DebugContext(ctx, "starting parallel lexical search...")
+
+	start := time.Now()
+	for i, query := range queries {
+		i, query := i, query
+		g.Go(func() error {
+			rows, err := s.Searcher.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
+			if err != nil {
+				return fmt.Errorf("parallel lexical search error: %w", err)
+			}
+
+			results[i] = rows
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	s.Logger.With(
+		slog.String("method", "parallelLexicalSearch"),
+		slog.String("duration", time.Since(start).String()),
+	).DebugContext(ctx, "lexical search completed: returning...")
+	return results, nil
 }
