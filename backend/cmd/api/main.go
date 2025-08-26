@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(
+	_, cancel := context.WithCancel(
 		context.Background(),
 	)
 
@@ -25,13 +25,4 @@ func main() {
 	slog.SetDefault(
 		config.NewLogger(env.Platform),
 	)
-
-	_, err = config.Configure(ctx, env)
-	if err != nil {
-		cancel()
-		slog.With(
-			"err", err,
-		).Error("failed to start")
-		os.Exit(1)
-	}
 }

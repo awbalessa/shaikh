@@ -1,4 +1,4 @@
-package infra
+package pro
 
 import (
 	"context"
@@ -227,7 +227,7 @@ func toGenaiConfig(cfg *dom.LLMGenConfig) *genai.GenerateContentConfig {
 	}
 }
 
-func toGenaiTools(tools []dom.LLMFunctionDecl) []*genai.Tool {
+func toGenaiTools(tools []*dom.LLMFunctionDecl) []*genai.Tool {
 	if len(tools) == 0 {
 		return nil
 	}

@@ -1,4 +1,4 @@
-package infra
+package pro
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
-	db "github.com/awbalessa/shaikh/backend/internal/infra/postgres/gen"
+	db "github.com/awbalessa/shaikh/backend/internal/pro/postgres/gen"
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
