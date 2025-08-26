@@ -53,12 +53,16 @@ func NewJS(nats *Nats) (jetstream.JetStream, error) {
 	return js, nil
 }
 
-type NatsClient struct {
+type NatsPublisher struct {
 	Js  jetstream.JetStream
 	Log *slog.Logger
 }
 
-func (c *NatsClient) Publish(
+func NewNatsPublisher(js jetstream.JetStream, log *slog.Logger) *NatsPublisher {
+	return &NatsPublisher{Js: js, Log: log}
+}
+
+func (c *NatsPublisher) Publish(
 	ctx context.Context,
 	subject string,
 	data []byte,

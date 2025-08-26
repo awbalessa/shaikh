@@ -33,13 +33,13 @@ const (
 	voyageRerankV2p5Lite       string        = "rerank-2.5-lite"
 )
 
-type VoyageClient struct {
+type VoyageEmbedderReranker struct {
 	Cli    *retryablehttp.Client
 	Log    *slog.Logger
 	apiKey string
 }
 
-func NewVoyageClient(env *config.Env, maxRetries int, timeout time.Duration, log *slog.Logger) *VoyageClient {
+func NewVoyageEmbedderReranker(env *config.Env, maxRetries int, timeout time.Duration, log *slog.Logger) *VoyageEmbedderReranker {
 	client := &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -61,7 +61,7 @@ func NewVoyageClient(env *config.Env, maxRetries int, timeout time.Duration, log
 	retryClient.CheckRetry = retryablehttp.ErrorPropagatedRetryPolicy
 	retryClient.Backoff = retryablehttp.DefaultBackoff
 
-	return &VoyageClient{
+	return &VoyageEmbedderReranker{
 		Cli:    retryClient,
 		apiKey: env.VoyageAPIKey,
 		Log:    log,
@@ -117,7 +117,7 @@ type voyageRerankingResponse struct {
 	Usage  usage             `json:"usage"`
 }
 
-func (v *VoyageClient) EmbedQueries(
+func (v *VoyageEmbedderReranker) EmbedQueries(
 	ctx context.Context,
 	queries []string,
 ) ([]dom.Vector, error) {
@@ -226,7 +226,7 @@ func (v *VoyageClient) EmbedQueries(
 	return vectors, nil
 }
 
-func (v *VoyageClient) RerankDocuments(
+func (v *VoyageEmbedderReranker) RerankDocuments(
 	ctx context.Context,
 	query string,
 	docs []string,

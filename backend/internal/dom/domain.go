@@ -40,6 +40,10 @@ type MsgMeta struct {
 	Turn              int32
 	TotalInputTokens  *int32
 	TotalOutputTokens *int32
+	Content           *string
+	FnName            *string
+	FunctionCall      json.RawMessage
+	FunctionResponse  json.RawMessage
 }
 
 type Message interface {
@@ -49,7 +53,7 @@ type Message interface {
 
 type UserMessage struct {
 	MsgMeta
-	Content string
+	MsgContent string
 }
 
 func (m *UserMessage) Role() MessageRole { return UserRole }
@@ -57,7 +61,7 @@ func (m *UserMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type ModelMessage struct {
 	MsgMeta
-	Content string
+	MsgContent string
 }
 
 func (m *ModelMessage) Role() MessageRole { return ModelRole }

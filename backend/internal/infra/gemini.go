@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -28,17 +29,17 @@ const (
 	geminiResponseMimeJSON      string        = "application/json"
 )
 
-type GeminiClient struct {
+type GeminiLLM struct {
 	Cli *genai.Client
 	Log *slog.Logger
 }
 
-func NewGeminiClient(
+func NewGeminiLLM(
 	ctx context.Context,
 	maxRetries int,
 	timeout time.Duration,
 	log *slog.Logger,
-) (*GeminiClient, error) {
+) (*GeminiLLM, error) {
 	baseClient := &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -74,50 +75,93 @@ func NewGeminiClient(
 		return nil, fmt.Errorf("failed to create new gemini client: %w", err)
 	}
 
-	return &GeminiClient{
+	return &GeminiLLM{
 		Cli: gc,
 		Log: log,
 	}, nil
 }
 
-func (g *GeminiClient) Stream(
+func (g *GeminiLLM) Stream(
 	ctx context.Context,
 	model string,
 	window []*dom.LLMContent,
 	cfg *dom.LLMGenConfig,
-	onPart func(dom.LLMPart) bool,
-) error {
+	yield func(*dom.LLMPart, error) bool,
+) *dom.LLMGenResult {
 	gWindow := toGenaiContents(window)
 	gCfg := toGenaiConfig(cfg)
+
+	var str strings.Builder
+	var output dom.ModelOutput
+	var usage dom.TokenUsage
+	var finishMessage string
+	var finishReason dom.FinishReason
 
 	stream := g.Cli.Models.GenerateContentStream(ctx, string(model), gWindow, gCfg)
 	for resp, err := range stream {
 		if err != nil {
-			return fmt.Errorf("gemini stream error: %w", err)
+			yield(nil, fmt.Errorf("gemini stream error: %w", err))
+			return &dom.LLMGenResult{
+				FinalOutput:   &output,
+				Usage:         &usage,
+				FinishReason:  finishReason,
+				FinishMessage: finishMessage,
+			}
 		}
 		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
 			continue
 		}
+
+		if r := resp.Candidates[0].FinishReason; r != "" {
+			finishReason = dom.FinishReason(r)
+		}
+		if m := resp.Candidates[0].FinishMessage; m != "" {
+			finishMessage = m
+		}
+
+		if resp.UsageMetadata != nil {
+			if inp := resp.UsageMetadata.PromptTokenCount; inp != 0 {
+				usage.InputTokens = inp
+			}
+			if op := resp.UsageMetadata.CandidatesTokenCount; op != 0 {
+				usage.OutputTokens = op
+			}
+		}
+
 		for _, p := range resp.Candidates[0].Content.Parts {
 			part := dom.LLMPart{}
 			if p.Text != "" {
 				part.Text = p.Text
+				str.WriteString(p.Text)
+				output.Text = str.String()
 			}
 			if p.FunctionCall != nil {
 				part.FunctionCall = &dom.LLMFunctionCall{
 					Name: p.FunctionCall.Name,
 					Args: p.FunctionCall.Args,
 				}
+				output.FunctionCall = part.FunctionCall
 			}
-			if !onPart(part) {
-				return nil
+			if !yield(&part, nil) {
+				return &dom.LLMGenResult{
+					FinalOutput:   &output,
+					Usage:         &usage,
+					FinishReason:  finishReason,
+					FinishMessage: finishMessage,
+				}
 			}
 		}
 	}
-	return nil
+
+	return &dom.LLMGenResult{
+		FinalOutput:   &output,
+		Usage:         &usage,
+		FinishReason:  finishReason,
+		FinishMessage: finishMessage,
+	}
 }
 
-func (g *GeminiClient) CountTokens(
+func (g *GeminiLLM) CountTokens(
 	ctx context.Context,
 	model string,
 	window []*dom.LLMContent,
@@ -163,7 +207,7 @@ func toGenaiContent(c *dom.LLMContent) *genai.Content {
 			parts = append(parts, &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
 					Name:     p.FunctionResponse.Name,
-					Response: p.FunctionResponse.Response,
+					Response: p.FunctionResponse.Content,
 				},
 			})
 		}

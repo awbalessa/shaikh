@@ -63,20 +63,21 @@ func NewAgent(cfg AgentConfig) (*Agent, error) {
 		},
 	}
 
-	_, err = cfg.Stream.CreateStream(cfg.Context, jetstream.StreamConfig{
-		Name:        AgentStream,
-		Subjects:    []string{"agent.context.*"},
-		Retention:   jetstream.WorkQueuePolicy,
-		Storage:     jetstream.FileStorage,
-		MaxAge:      jsMsgsMaxAge,
-		MaxMsgSize:  1 * 1024 * 1024,
-		DenyDelete:  true,
-		DenyPurge:   false,
-		AllowRollup: false,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to build new agent: %w", err)
-	}
+	// _, err = cfg.Stream.CreateStream(cfg.Context, jetstream.StreamConfig{
+	// 	Name:        AskSvcStream,
+	// 	Subjects:    []string{"agent.context.*"},
+	// 	Retention:   jetstream.WorkQueuePolicy,
+	// 	Storage:     jetstream.FileStorage,
+	// 	MaxAge:      jsMsgsMaxAge,
+	// 	MaxMsgSize:  1 * 1024 * 1024,
+	// 	DenyDelete:  true,
+	// 	DenyPurge:   false,
+	// 	AllowRollup: false,
+	// })
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to build new agent: %w", err)
+	// }
+	// define this in subscriber / consumer code. Let consumers declare what they do and what they listen to, and the publishers obey the rules of the consumers.
 
 	return &Agent{
 		agents:    amap,
@@ -256,7 +257,7 @@ func (a *Agent) getFunction(fn functionName) (function, error) {
 }
 
 const (
-	Search functionName = "Search()"
+	AskSvcStream string = "ASK"
 )
 
 var (

@@ -2,7 +2,11 @@ package dom
 
 import (
 	"context"
+	"errors"
+	"iter"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type Embedder interface {
@@ -24,6 +28,11 @@ type Reranker interface {
 }
 
 type SemanticSearcher interface {
+	ParallelSemanticSearch(
+		ctx context.Context,
+		queries []FullQueryContext,
+		topk int,
+	) ([][]Chunk, error)
 	SemanticSearch(
 		ctx context.Context,
 		vector VectorWithLabel,
@@ -32,6 +41,11 @@ type SemanticSearcher interface {
 }
 
 type LexicalSearcher interface {
+	ParallelLexicalSearch(
+		ctx context.Context,
+		queries []FullQueryContext,
+		topk int,
+	) ([][]Chunk, error)
 	LexicalSearch(
 		ctx context.Context,
 		query QueryWithFilter,
@@ -120,6 +134,8 @@ type LLMGenConfig struct {
 	Temperature        float32
 	CandidateCount     int32
 	Tools              []LLMFunctionDecl
+	ResponseMimeType   string
+	ResponseSchema     *LLMSchema
 }
 
 type LLMCountConfig struct {
@@ -179,8 +195,8 @@ type LLM interface {
 		model string,
 		window []*LLMContent,
 		cfg *LLMGenConfig,
-		onPart func(LLMPart) bool,
-	) error
+		yield func(*LLMPart, error) bool,
+	) *LLMGenResult
 
 	CountTokens(
 		ctx context.Context,
@@ -188,6 +204,113 @@ type LLM interface {
 		window []*LLMContent,
 		cfg *LLMCountConfig,
 	) (int32, error)
+}
+
+type AgentName string
+
+const (
+	Caller    AgentName = "Caller"
+	Generator AgentName = "Generator"
+)
+
+type AgentProfile struct {
+	Model  string
+	Config *LLMGenConfig
+}
+
+type LLMFunctionName string
+
+const (
+	FunctionSearch LLMFunctionName = "Search()"
+)
+
+type LLMFunction interface {
+	Name() LLMFunctionName
+	Call(ctx context.Context, args map[string]any) (map[string]any, error)
+}
+
+type TokenUsage struct {
+	InputTokens  int32
+	OutputTokens int32
+}
+
+type FinishReason string
+
+const (
+	FinishReasonUnspecified           FinishReason = "FINISH_REASON_UNSPECIFIED"
+	FinishReasonStop                  FinishReason = "STOP"
+	FinishReasonMaxTokens             FinishReason = "MAX_TOKENS"
+	FinishReasonSafety                FinishReason = "SAFETY"
+	FinishReasonRecitation            FinishReason = "RECITATION"
+	FinishReasonLanguage              FinishReason = "LANGUAGE"
+	FinishReasonOther                 FinishReason = "OTHER"
+	FinishReasonBlocklist             FinishReason = "BLOCKLIST"
+	FinishReasonProhibitedContent     FinishReason = "PROHIBITED_CONTENT"
+	FinishReasonSPII                  FinishReason = "SPII"
+	FinishReasonMalformedFunctionCall FinishReason = "MALFORMED_FUNCTION_CALL"
+	FinishReasonImageSafety           FinishReason = "IMAGE_SAFETY"
+	FinishReasonUnexpectedToolCall    FinishReason = "UNEXPECTED_TOOL_CALL"
+)
+
+type LLMGenResult struct {
+	FinalOutput   *ModelOutput
+	Usage         *TokenUsage
+	FinishReason  FinishReason
+	FinishMessage string
+}
+
+type Agent interface {
+	Generate(
+		ctx context.Context,
+		name AgentName,
+		cw []*LLMContent,
+	) iter.Seq2[*LLMPart, error]
+	GenerateWithYield(
+		ctx context.Context,
+		name AgentName,
+		cw []*LLMContent,
+		yield func(*LLMPart, error) bool,
+	) *LLMGenResult
+}
+
+var (
+	ErrAgentDoesNotExist = errors.New("agent does not exist")
+)
+
+type AgentStruct struct {
+	Agents map[AgentName]AgentProfile
+	LLM    LLM
+}
+
+func (a *AgentStruct) Generate(
+	ctx context.Context,
+	name AgentName,
+	cw []*LLMContent,
+) iter.Seq2[*LLMPart, error] {
+	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
+		prof, ok := a.Agents[name]
+		if !ok {
+			yield(nil, ErrAgentDoesNotExist)
+			return
+		}
+
+		a.LLM.Stream(ctx, prof.Model, cw, prof.Config, yield)
+	})
+}
+
+func (a *AgentStruct) GenerateWithYield(
+	ctx context.Context,
+	name AgentName,
+	cw []*LLMContent,
+	yield func(*LLMPart, error) bool,
+) *LLMGenResult {
+	prof, ok := a.Agents[name]
+	if !ok {
+		yield(nil, ErrAgentDoesNotExist)
+		return nil
+	}
+
+	return a.LLM.Stream(ctx, prof.Model, cw, prof.Config, yield)
 }
 
 type PubOptions struct {
@@ -201,4 +324,21 @@ type PubAck struct {
 
 type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
+}
+
+type ContextRepo interface {
+	GetMemoriesByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfMemories int32,
+	) ([]Memory, error)
+	GetSessionsByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfSessions int32,
+	) ([]Session, error)
+	GetMessagesBySessionIDOrdered(
+		ctx context.Context,
+		sessionID uuid.UUID,
+	) ([]Message, error)
 }

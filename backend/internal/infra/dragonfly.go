@@ -21,12 +21,12 @@ const (
 	flyMinIdleConns    int           = 2
 )
 
-type DragonflyRepo struct {
+type DragonflyCache struct {
 	Fly *redis.Client
 	Log *slog.Logger
 }
 
-func NewDragonflyRepo(env *config.Env) *DragonflyRepo {
+func NewDragonflyCache(env *config.Env) *DragonflyCache {
 	log := slog.Default().With(
 		"component", "dragonfly",
 	)
@@ -45,13 +45,13 @@ func NewDragonflyRepo(env *config.Env) *DragonflyRepo {
 		ClientName:            "shaikh-api",
 	})
 
-	return &DragonflyRepo{
+	return &DragonflyCache{
 		Fly: fly,
 		Log: log,
 	}
 }
 
-func (f *DragonflyRepo) Set(
+func (f *DragonflyCache) Set(
 	ctx context.Context,
 	key string,
 	value []byte,
@@ -79,7 +79,7 @@ func (f *DragonflyRepo) Set(
 	return nil
 }
 
-func (f *DragonflyRepo) Get(
+func (f *DragonflyCache) Get(
 	ctx context.Context,
 	key string,
 ) ([]byte, error) {
@@ -107,7 +107,7 @@ func (f *DragonflyRepo) Get(
 	return bytes, nil
 }
 
-func (f *DragonflyRepo) SetNX(
+func (f *DragonflyCache) SetNX(
 	ctx context.Context,
 	key string,
 	value []byte,
@@ -136,7 +136,7 @@ func (f *DragonflyRepo) SetNX(
 	return ok, nil
 }
 
-func (f *DragonflyRepo) Del(
+func (f *DragonflyCache) Del(
 	ctx context.Context,
 	key string,
 ) error {
@@ -157,7 +157,7 @@ func (f *DragonflyRepo) Del(
 	return nil
 }
 
-func (f *DragonflyRepo) RefreshTTL(
+func (f *DragonflyCache) RefreshTTL(
 	ctx context.Context,
 	key string,
 	ttl time.Duration,
@@ -185,7 +185,7 @@ func (f *DragonflyRepo) RefreshTTL(
 	return nil
 }
 
-func (f *DragonflyRepo) Exists(
+func (f *DragonflyCache) Exists(
 	ctx context.Context,
 	key string,
 ) (bool, error) {

@@ -40,7 +40,7 @@ type Worker interface {
 }
 
 const (
-	syncerDurableName         string        = "agent-context-syncer"
+	syncerDurableName         string        = "fix-syncer"
 	syncerAckTime             time.Duration = 3 * time.Minute
 	syncerMaxDeliveryAttempts int           = 5
 )
@@ -243,3 +243,9 @@ func (s *syncer) createMessagesFromInteraction(
 
 	return nil
 }
+
+const (
+	SyncerSubject    string        = "asksvc.context.sync"
+	SyncIdleTime     time.Duration = 2 * time.Minute
+	SyncMaxBatchSize int           = 5
+)

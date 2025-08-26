@@ -3,7 +3,6 @@ package dom
 import (
 	"errors"
 	"sort"
-	"time"
 )
 
 var (
@@ -192,12 +191,25 @@ type SearchResult struct {
 	Relevance float64
 }
 
-type FunctionName string
+type InputPrompt struct {
+	Text             string
+	FunctionResponse *LLMFunctionResponse
+}
 
-const (
-	FunctionSearch   FunctionName  = "Search()"
-	AgentStream      string        = "AGENT"
-	SyncerSubject    string        = "agent.context.sync"
-	SyncIdleTime     time.Duration = 2 * time.Minute
-	SyncMaxBatchSize int           = 5
-)
+type ModelOutput struct {
+	Text         string
+	FunctionCall *LLMFunctionCall
+}
+
+type Interaction struct {
+	Input      InputPrompt
+	Output     ModelOutput
+	TurnNumber int32
+}
+
+type ContextWindow struct {
+	UserMemories     []Memory
+	PreviousSessions []Session
+	History          []Interaction
+	Turns            int32
+}

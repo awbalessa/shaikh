@@ -12,6 +12,7 @@ import (
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -91,16 +92,60 @@ func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) erro
 	return tx.Commit(ctx)
 }
 
-type SearchRepo struct {
+type PostgresSearcher struct {
 	q   db.Querier
 	log *slog.Logger
 }
 
-func NewSearchRepo(q db.Querier, log *slog.Logger) *SearchRepo {
-	return &SearchRepo{q: q, log: log}
+func NewPostgresSearcher(q db.Querier, log *slog.Logger) *PostgresSearcher {
+	return &PostgresSearcher{q: q, log: log}
 }
 
-func (r *SearchRepo) SemanticSearch(
+func (r *PostgresSearcher) ParallelSemanticSearch(
+	ctx context.Context,
+	queries []dom.FullQueryContext,
+	topk int,
+) ([][]dom.Chunk, error) {
+	chunksPerThread := topk / len(queries)
+	results := make([][]dom.Chunk, len(queries))
+
+	g, ctx := errgroup.WithContext(ctx)
+	r.log.With(
+		slog.String("method", "ParallelSemanticSearch"),
+		slog.Int("chunks_per_thread", chunksPerThread),
+		slog.Int("num_of_threads", len(queries)),
+	).DebugContext(ctx, "starting parallel semantic search...")
+
+	start := time.Now()
+	for i, query := range queries {
+		i, query := i, query
+		g.Go(func() error {
+			if query.Vector == nil {
+				return fmt.Errorf("missing vector for query: %q", query.Query)
+			}
+			rows, err := r.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
+			if err != nil {
+				return fmt.Errorf("parallel semantic search error: %w", err)
+			}
+
+			results[i] = rows
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	r.log.With(
+		slog.String("method", "ParallelSemanticSearch"),
+		slog.String("duration", time.Since(start).String()),
+	).DebugContext(ctx, "parallel semantic search completed: returning...")
+
+	return results, nil
+}
+
+func (r *PostgresSearcher) SemanticSearch(
 	ctx context.Context,
 	vector dom.VectorWithLabel,
 	topk int,
@@ -187,7 +232,48 @@ func toSemSearchParams(vwl dom.VectorWithLabel, topk int) db.SemanticSearchParam
 	}
 }
 
-func (r *SearchRepo) LexicalSearch(
+func (r *PostgresSearcher) ParallelLexicalSearch(
+	ctx context.Context,
+	queries []dom.FullQueryContext,
+	topk int,
+) ([][]dom.Chunk, error) {
+	chunksPerThread := topk / len(queries)
+	results := make([][]dom.Chunk, len(queries))
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	r.log.With(
+		slog.String("method", "parallelLexicalSearch"),
+		slog.Int("chunks_per_thread", chunksPerThread),
+		slog.Int("num_of_threads", len(queries)),
+	).DebugContext(ctx, "starting parallel lexical search...")
+
+	start := time.Now()
+	for i, query := range queries {
+		i, query := i, query
+		g.Go(func() error {
+			rows, err := r.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
+			if err != nil {
+				return fmt.Errorf("parallel lexical search error: %w", err)
+			}
+
+			results[i] = rows
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	r.log.With(
+		slog.String("method", "parallelLexicalSearch"),
+		slog.String("duration", time.Since(start).String()),
+	).DebugContext(ctx, "lexical search completed: returning...")
+	return results, nil
+}
+
+func (r *PostgresSearcher) LexicalSearch(
 	ctx context.Context,
 	query dom.QueryWithFilter,
 	topk int,
