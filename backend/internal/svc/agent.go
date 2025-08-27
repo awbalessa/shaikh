@@ -28,6 +28,7 @@ type FnSearchSchema struct {
 
 type FnSearch struct {
 	SearchSvc *SearchSvc
+	Logger *slog.Logger
 }
 
 func (f *FnSearch) Call(
@@ -53,47 +54,43 @@ func (f *FnSearch) Call(
 
 		prompt, _ := pmap["prompt"].(string)
 
-		contentTypes := toContentTypes(pmap["content_type_filters"].([]string))
-		sources := toSources(pmap["source_filters"].([]string))
+		contentTypes := dom.ToContentTypes(pmap["content_type_filters"].([]string))
+		sources := dom.ToSources(pmap["source_filters"].([]string))
 
 		var surahs []dom.SurahNumber
 		var ayahs []dom.AyahNumber
 		if surahAyah, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
-			surahs = toSurahNumbers(surahAyah["surahs"].([]int))
-			ayahs = toAyahNumbers(surahAyah["ayahs"].([]int))
+			surahs = dom.ToSurahNumbers(surahAyah["surahs"].([]int))
+			ayahs = dom.toAyahNumbers(surahAyah["ayahs"].([]int))
 		}
 
-		prompts = append(prompts, rag.PromptWithFilters{
-			Prompt:               prompt,
-			NullableContentTypes: contentTypes,
-			NullableSources:      sources,
-			NullableSurahs:       surahs,
-			NullableAyahs:        ayahs,
+		prompts = append(prompts, dom.QueryWithFilter{
+			Query: prompt,
+			FilterContext: dom.FilterContext{
+				OptionalContentTypes: contentTypes,
+				OptionalSources: sources,
+				OptionalSurahs: surahs,
+				OptionalAyahs: ayahs,
+			},
 		})
-	}
 
-	log := f.logger.With(
+	f.Logger.With(
 		slog.String("full_prompt", fullPrompt),
-		slog.Group("prompts_with_filters",
-			slog.Int("count", len(prompts)),
-			slog.Any("items", prompts),
-		),
-	)
+		slog.Int("prompts_with_filter_count", len(prompts)),
+	).DebugContext(ctx, "searcher agent called Search() function")
 
-	log.DebugContext(ctx, "searcher agent called Search() function")
-
-	params := rag.SearchParameters{
-		RawPrompt:          fullPrompt,
-		ChunkLimit:         rag.Top10Documents,
-		PromptsWithFilters: prompts,
+	params := dom.SearchQuery{
+		FullQuery: fullPrompt,
+		QueriesWithFilters: prompts,
+		TopK: dom.Top20Documents,
 	}
 
-	results, err := f.pipeline.Search(ctx, params)
+	results, err := f.SearchSvc.Search(ctx, params)
 	if err != nil {
-		log.With(
+		f.Logger.With(
 			"err", err,
-		).ErrorContext(ctx, "searcher agent failed to call Search() function")
-		return nil, fmt.Errorf("searcher agent failed to call Search() function: %w", err)
+		).ErrorContext(ctx, "caller failed to call Search() function")
+		return nil, fmt.Errorf("caller failed to call Search() function: %w", err)
 	}
 
 	serialized := make([]map[string]any, 0, len(results))
@@ -101,9 +98,10 @@ func (f *FnSearch) Call(
 		serialized = append(serialized, map[string]any{
 			"relevance": r.Relevance,
 			"source":    r.Source,
-			"document":  r.EmbeddedChunk,
-			"surah":     r.Surah,
-			"ayah":      r.Ayah,
+			"document":  r.Content,
+			"surah":     r.SurahNumber,
+			"ayah":      r.AyahNumber,
+			"parent_id": r.ParentID,
 		})
 	}
 

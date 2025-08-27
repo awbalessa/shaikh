@@ -3,10 +3,13 @@ package dom
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
+	"google.golang.org/
 )
 
 type Embedder interface {
@@ -88,7 +91,7 @@ type LLMPart struct {
 
 type LLMContent struct {
 	Role  LLMRole
-	Parts []LLMPart
+	Parts []*LLMPart
 }
 
 type LLMSchemaType string
@@ -262,14 +265,19 @@ type Agent interface {
 	Generate(
 		ctx context.Context,
 		name AgentName,
-		cw []*LLMContent,
+		win []*LLMContent,
 	) iter.Seq2[*LLMPart, error]
 	GenerateWithYield(
 		ctx context.Context,
 		name AgentName,
-		cw []*LLMContent,
+		win []*LLMContent,
 		yield func(*LLMPart, error) bool,
 	) *LLMGenResult
+	BuildContextWindow(
+		ctx context.Context,
+		name AgentName,
+		cw *ContextWindow,
+	) ([]*LLMContent, error)
 }
 
 var (
@@ -286,7 +294,7 @@ func NewAgent()
 func (a *AgentStruct) Generate(
 	ctx context.Context,
 	name AgentName,
-	cw []*LLMContent,
+	win []*LLMContent,
 ) iter.Seq2[*LLMPart, error] {
 	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
 		prof, ok := a.Agents[name]
@@ -295,14 +303,14 @@ func (a *AgentStruct) Generate(
 			return
 		}
 
-		a.LLM.Stream(ctx, prof.Model, cw, prof.Config, yield)
+		a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
 	})
 }
 
 func (a *AgentStruct) GenerateWithYield(
 	ctx context.Context,
 	name AgentName,
-	cw []*LLMContent,
+	win []*LLMContent,
 	yield func(*LLMPart, error) bool,
 ) *LLMGenResult {
 	prof, ok := a.Agents[name]
@@ -311,7 +319,7 @@ func (a *AgentStruct) GenerateWithYield(
 		return nil
 	}
 
-	return a.LLM.Stream(ctx, prof.Model, cw, prof.Config, yield)
+	return a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
 }
 
 func BuildCaller() *AgentProfile {
@@ -542,6 +550,133 @@ Your job is to generate a high-quality, evidence-based answer using only the pro
 	}
 }
 
+const (
+	TokenLimit int32 = 200_000
+)
+
+func (a *AgentStruct) BuildContextWindow(
+	ctx context.Context,
+	name AgentName,
+	cw *ContextWindow,
+	now time.Time,
+) ([]*LLMContent, error) {
+	prof, ok := a.Agents[name]
+	if !ok {
+		return nil, ErrAgentDoesNotExist
+	}
+
+	var contents []*LLMContent
+
+	if len(cw.UserMemories) > 0 {
+		var parts []*LLMPart
+		for _, m := range cw.UserMemories {
+			partText := fmt.Sprintf("As of %s, %s",
+				HumanizeFrom(now, m.UpdatedAt),
+				m.Content,
+			)
+			parts = append(parts, &LLMPart{
+				Text: partText,
+			})
+		}
+		contents = append(contents, &LLMContent{
+			Role:  RoleUser,
+			Parts: parts,
+		})
+	}
+
+	if len(cw.PreviousSessions) > 0 {
+		var parts []*LLMPart
+		for _, s := range cw.PreviousSessions {
+			partText := fmt.Sprintf("Last Accessed: %s\nSummary: %s",
+				HumanizeFrom(now, s.LastAccessed),
+				s.Summary,
+			)
+			parts = append(parts, &LLMPart{
+				Text: partText,
+			})
+		}
+		contents = append(contents, &LLMContent{
+			Role:  RoleUser,
+			Parts: parts,
+		})
+	}
+
+	historyContents := make([]*LLMContent, 0, len(cw.history)*2)
+	for _, inter := range cw.History {
+		var userParts []*LLMPart
+		if inter.Input.FunctionResponse != nil {
+			userParts = append(userParts, inter.Input.FunctionResponse)
+		}
+		if inter.Input.Text != nil {
+			userParts = append(userParts, inter.Input.Text)
+		}
+		if len(userParts) > 0 {
+			historyContents = append(historyContents, &LLMContent{
+				Role:  RoleUser,
+				Parts: userParts,
+			})
+		}
+		if inter.Output.Text != nil {
+			historyContents = append(historyContents, &LLMContent{
+				Role:  RoleModel,
+				Parts: []*LLMPart{inter.Output.Text},
+			})
+		}
+	}
+
+	ctc := &LLMCountConfig{
+		SystemInstruction: prof.Config.SystemInstructions,
+		Tools:             prof.Config.Tools,
+	}
+
+	for {
+		fullContext := append(contents, historyContents...)
+
+		tokens, err := a.LLM.CountTokens(ctx, prof.Model, fullContext, ctc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build context window: %w", err)
+		}
+
+		if tokens < TokenLimit {
+			contents = fullContext
+			break
+		}
+
+		if len(historyContents) > 1 {
+			historyContents = historyContents[2:]
+		} else {
+			historyContents = nil
+			break
+		}
+	}
+
+	return contents, nil
+}
+
+func HumanizeFrom(now, t time.Time) string {
+	d := now.Sub(t)
+	if d < 0 {
+		d = -d
+	}
+
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d minutes ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d hours ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%d weeks ago", int(d.Hours()/(24*7)))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%d months ago", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%d years ago", int(d.Hours()/(24*365)))
+	}
+}
+
 type PubOptions struct {
 	MsgID string
 }
@@ -553,21 +688,4 @@ type PubAck struct {
 
 type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
-}
-
-type ContextRepo interface {
-	GetMemoriesByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfMemories int32,
-	) ([]Memory, error)
-	GetSessionsByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfSessions int32,
-	) ([]Session, error)
-	GetMessagesBySessionIDOrdered(
-		ctx context.Context,
-		sessionID uuid.UUID,
-	) ([]Message, error)
 }

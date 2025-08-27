@@ -1,8 +1,13 @@
 package dom
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sort"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -207,9 +212,72 @@ type Interaction struct {
 	TurnNumber int32
 }
 
+type SyncPayload struct {
+	UserID      uuid.UUID
+	SessionID   uuid.UUID
+	Interaction *Interaction
+}
+
 type ContextWindow struct {
 	UserMemories     []Memory
 	PreviousSessions []Session
 	History          []Interaction
 	Turns            int32
+}
+
+type ContextCache struct {
+	UserID    uuid.UUID
+	SessionID uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Window    *ContextWindow
+}
+
+type ContextRepo interface {
+	GetMemoriesByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfMemories int32,
+	) ([]Memory, error)
+	GetSessionsByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfSessions int32,
+	) ([]Session, error)
+	GetMessagesBySessionIDOrdered(
+		ctx context.Context,
+		sessionID uuid.UUID,
+	) ([]Message, error)
+}
+
+type ContextManager interface {
+	GetContextCache(
+		ctx context.Context,
+		userID, sessionID uuid.UUID,
+	) (*ContextCache, error)
+	SetContextCache(
+		ctx context.Context,
+		userID, sessionID uuid.UUID,
+		cw *ContextWindow,
+	) error
+	GetDatabaseContext(
+		ctx context.Context,
+		userID, sessionID uuid.UUID,
+	) (*ContextWindow, error)
+}
+
+type ContextManagerStruct struct {
+	Cache
+	ContextRepo
+}
+
+func (c *ContextManagerStruct) GetContextCache(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+) (*ContextCache, error) {
+
+}
+
+func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
+	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }

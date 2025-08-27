@@ -10,20 +10,18 @@ import (
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
-	"github.com/dustin/go-humanize"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genai"
 )
 
 type AskSvc struct {
-	Agent     dom.Agent
-	Cache     dom.Cache
-	Publisher dom.Publisher
-	CtxRepo   dom.ContextRepo
-	SearchSvc *SearchSvc
-	Logger    *slog.Logger
-	Functions map[dom.LLMFunctionName]dom.LLMFunction
+	Agent      dom.Agent
+	Functions  map[dom.LLMFunctionName]dom.LLMFunction
+	CtxManager *ContextManager
+	Publisher  dom.Publisher
+	SearchSvc  *SearchSvc
+	Logger     *slog.Logger
 }
 
 func (a *AskSvc) Ask(
@@ -236,25 +234,6 @@ func (a *AskSvc) handleFunctionCall(
 	return fnPart, nil
 }
 
-func yieldOk(ctx context.Context, yield func(string, error) bool, s string) bool {
-	if ctx.Err() != nil {
-		yield("", ctx.Err())
-		return false
-	}
-	if !yield(s, nil) {
-		return false
-	}
-	return true
-}
-
-const (
-	contextCacheTTL6Hrs  time.Duration = 6 * time.Hour
-	contextCacheTTL12Hrs time.Duration = 12 * time.Hour
-	memories100          int           = 100
-	sessions5            int           = 5
-	tokenLimit           int           = 200_000
-)
-
 type LLMFunctionResponseDTO struct {
 	Name    string         `json:"name"`
 	Content map[string]any `json:"content"`
@@ -281,7 +260,7 @@ type InteractionDTO struct {
 	TurnNumber int32          `json:"turn_number"`
 }
 
-type SyncPayload struct {
+type SyncPayloadDTO struct {
 	UserID         uuid.UUID       `json:"user_id"`
 	SessionID      uuid.UUID       `json:"session_id"`
 	InteractionDTO *InteractionDTO `json:"interaction"`
@@ -294,7 +273,41 @@ type ContextWindowDTO struct {
 	Turns            int32            `json:"turns"`
 }
 
-type ContextCache struct {
+func toDomainContextWindow(cw *ContextWindowDTO) *dom.ContextWindow {
+	if cw == nil {
+		return nil
+	}
+
+	history := make([]dom.Interaction, len(cw.History))
+	for _, i := range cw.History {
+		history = append(history, dom.Interaction{
+			Input: dom.InputPrompt{
+				Text: i.Input.Text,
+				FunctionResponse: &dom.LLMFunctionResponse{
+					Name:    i.Input.FunctionResponse.Name,
+					Content: i.Input.FunctionResponse.Content,
+				},
+			},
+			Output: dom.ModelOutput{
+				Text: i.Output.Text,
+				FunctionCall: &dom.LLMFunctionCall{
+					Name: i.Output.FunctionCall.Name,
+					Args: i.Output.FunctionCall.Args,
+				},
+			},
+			TurnNumber: i.TurnNumber,
+		})
+	}
+
+	return &dom.ContextWindow{
+		UserMemories:     cw.UserMemories,
+		PreviousSessions: cw.PreviousSessions,
+		History:          history,
+		Turns:            cw.Turns,
+	}
+}
+
+type ContextCacheDTO struct {
 	UserID    uuid.UUID         `json:"user_id"`
 	SessionID uuid.UUID         `json:"session_id"`
 	CreatedAt time.Time         `json:"created_at"`
@@ -302,8 +315,14 @@ type ContextCache struct {
 	Window    *ContextWindowDTO `json:"context_window"`
 }
 
-func (a *AskSvc) getContext(ctx context.Context) (*ContextCache, []*genai.Content, error) {
-	const method = "getContext"
+type ContextManager struct {
+	dom.Cache
+	dom.ContextRepo
+	Logger *slog.Logger
+}
+
+func (a *AskSvc) GetContext(ctx context.Context, name dom.AgentName) (*ContextCacheDTO, []*dom.LLMContent, error) {
+	const method = "GetContext"
 	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
@@ -312,18 +331,18 @@ func (a *AskSvc) getContext(ctx context.Context) (*ContextCache, []*genai.Conten
 	)
 
 	now := time.Now()
-	sc, err := a.getContextCache(ctx, userID, sessionID)
+	cc, err := a.CtxManager.getContextCache(ctx, userID, sessionID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get context: %w", err)
 	}
 
-	if sc == nil {
-		window, err := a.getDbContext(ctx, userID, sessionID)
+	if cc == nil {
+		window, err := a.CtxManager.getDbContext(ctx, userID, sessionID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to get context: %w", err)
 		}
 
-		sc = &ContextCache{
+		cc = &ContextCacheDTO{
 			UserID:    userID,
 			SessionID: sessionID,
 			CreatedAt: time.Now(),
@@ -332,7 +351,9 @@ func (a *AskSvc) getContext(ctx context.Context) (*ContextCache, []*genai.Conten
 		}
 	}
 
-	cw, err := a.buildContextWindow(ctx, sc.Window, searcherAgent)
+	cw := toDomainContextWindow(cc.Window)
+
+	win, err := a.Agent.BuildContextWindow(ctx, name, cw)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get context: %w", err)
 	}
@@ -341,10 +362,10 @@ func (a *AskSvc) getContext(ctx context.Context) (*ContextCache, []*genai.Conten
 		slog.String("duration", time.Since(now).String()),
 	).DebugContext(ctx, "retrieved context successfully")
 
-	return sc, cw, nil
+	return cc, win, nil
 }
 
-func (a *AskSvc) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*ContextCache, error) {
+func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*ContextCacheDTO, error) {
 	const method = "getContextCache"
 	log := a.Logger.With(slog.String("method", method))
 
@@ -361,7 +382,7 @@ func (a *AskSvc) getContextCache(ctx context.Context, userID, sessionID uuid.UUI
 		return nil, nil
 	}
 
-	var cc ContextCache
+	var cc ContextCacheDTO
 	if err := json.Unmarshal(bytes, &cc); err != nil {
 		log.With("err", err).ErrorContext(ctx, "failed to unmarshal context cache")
 		return nil, fmt.Errorf("getContextCache: %w", err)
@@ -372,9 +393,10 @@ func (a *AskSvc) getContextCache(ctx context.Context, userID, sessionID uuid.UUI
 	).DebugContext(ctx, "retrieved context cache successfully")
 
 	return &cc, nil
+	Logger * slog.Logger
 }
 
-func (a *AskSvc) getDbContext(
+func (c *ContextManager) getDbContext(
 	ctx context.Context,
 	userID, sessionID uuid.UUID,
 ) (*ContextWindowDTO, error) {
@@ -474,11 +496,12 @@ func (a *AskSvc) getDbContext(
 		History:          interactions,
 		Turns:            turns,
 	}, nil
+	Logger * slog.Logger
 }
 
-func (a *AskSvc) setContext(
+func (c *ContextManager) setContext(
 	ctx context.Context,
-	cc *ContextCache,
+	cc *ContextCacheDTO,
 	interaction *InteractionDTO,
 ) error {
 	if err := a.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
@@ -489,9 +512,10 @@ func (a *AskSvc) setContext(
 		return fmt.Errorf("failed to set context: %w", err)
 	}
 	return nil
+	Logger * slog.Logger
 }
 
-func (a *AskSvc) setContextCache(
+func (c *ContextManager) setContextCache(
 	ctx context.Context,
 	userID, sessionID uuid.UUID,
 	win *ContextWindowDTO,
@@ -503,7 +527,7 @@ func (a *AskSvc) setContextCache(
 
 	now := time.Now()
 	win.Turns += 1
-	bytes, err := json.Marshal(&ContextCache{
+	bytes, err := json.Marshal(&ContextCacheDTO{
 		UserID:    userID,
 		SessionID: sessionID,
 		CreatedAt: now,
@@ -531,9 +555,10 @@ func (a *AskSvc) setContextCache(
 	).DebugContext(ctx, "set context cache successfully")
 
 	return nil
+	Logger * slog.Logger
 }
 
-func (a *AskSvc) sendContextUpdate(
+func (c *ContextManager) sendContextUpdate(
 	ctx context.Context,
 	userID, sessionID uuid.UUID,
 	interaction *InteractionDTO,
@@ -580,114 +605,4 @@ func (a *AskSvc) sendContextUpdate(
 	).DebugContext(ctx, "sent context update successfully")
 
 	return nil
-}
-
-func (a *AskSvc) buildContextWindow(
-	ctx context.Context,
-	cw *ContextWindowDTO,
-	agent agentName,
-) ([]*dom.LLMContent, error) {
-	const method = "buildContextWindow"
-	log := a.Logger.With(
-		"method", method,
-	)
-
-	prof, err := a.getProfile(agent)
-	if err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to build context window")
-		return nil, fmt.Errorf("failed to build context window: %w", err)
-	}
-
-	var contents []*genai.Content
-
-	if len(cw.userMemories) > 0 {
-		var parts []*genai.Part
-		for _, m := range cw.userMemories {
-			partText := fmt.Sprintf("As of %s, %s",
-				humanize.Time(m.updatedAt),
-				m.memory,
-			)
-			parts = append(parts, genai.NewPartFromText(partText))
-		}
-		contents = append(contents, &genai.Content{
-			Role:  genai.RoleUser,
-			Parts: parts,
-		})
-	}
-
-	if len(cw.previousSessions) > 0 {
-		var parts []*genai.Part
-		for _, s := range cw.previousSessions {
-			partText := fmt.Sprintf("Last Accessed: %s\nSummary: %s",
-				humanize.Time(s.lastAccessed),
-				s.summary,
-			)
-			parts = append(parts, genai.NewPartFromText(partText))
-		}
-		contents = append(contents, &genai.Content{
-			Role:  genai.RoleUser,
-			Parts: parts,
-		})
-	}
-
-	historyContents := make([]*genai.Content, 0, len(cw.history)*2)
-	for _, inter := range cw.history {
-		var userParts []*genai.Part
-		if inter.Input.FunctionResponse != nil {
-			userParts = append(userParts, inter.Input.FunctionResponse)
-		}
-		if inter.Input.UserInput != nil {
-			userParts = append(userParts, inter.Input.UserInput)
-		}
-		if len(userParts) > 0 {
-			historyContents = append(historyContents, &genai.Content{
-				Role:  genai.RoleUser,
-				Parts: userParts,
-			})
-		}
-		if inter.ModelOutputDTO != nil {
-			historyContents = append(historyContents, &genai.Content{
-				Role:  genai.RoleModel,
-				Parts: []*genai.Part{inter.ModelOutputDTO},
-			})
-		}
-	}
-
-	ctc := &genai.CountTokensConfig{
-		SystemInstruction: prof.config.SystemInstruction,
-		Tools:             prof.config.Tools,
-	}
-
-	for {
-		fullContext := append(contents, historyContents...)
-
-		tokResp, err := a.gc.client.Models.CountTokens(ctx, string(prof.model), fullContext, ctc)
-		if err != nil {
-			log.With(
-				"err", err,
-			).ErrorContext(ctx, "failed to build context window")
-			return nil, fmt.Errorf("failed to build context window: %w", err)
-		}
-
-		if tokResp.TotalTokens < int32(tokenLimit) {
-			contents = fullContext
-			break
-		}
-
-		if len(historyContents) > 1 {
-			historyContents = historyContents[2:]
-		} else {
-			historyContents = nil
-			break
-		}
-	}
-
-	log.DebugContext(ctx, "built context window successfully")
-	return contents, nil
-}
-
-func createContextCacheKey(userID uuid.UUID, sessionID uuid.UUID) string {
-	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }

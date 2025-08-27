@@ -463,3 +463,85 @@ var ContentTypeToLabel = map[ContentType]LabelContentType{
 var SourceToLabel = map[Source]LabelSource{
 	SourceTafsirIbnKathir: LabelSourceTafsirIbnKathir,
 }
+
+func ToContentTypes(raw any) []ContentType {
+	if raw == nil {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]ContentType, 0, len(items))
+	for _, v := range items {
+		if s, ok := v.(string); ok {
+			out = append(out, ContentType(s))
+		}
+	}
+	return out
+}
+
+func ToSources(raw any) []Source {
+	if raw == nil {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]Source, 0, len(items))
+	for _, v := range items {
+		if s, ok := v.(string); ok {
+			out = append(out, Source(s))
+		}
+	}
+	return out
+}
+
+func ToSurahNumbers(raw any) []SurahNumber {
+	if raw == nil {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]SurahNumber, 0, len(items))
+	for _, v := range items {
+		switch n := v.(type) {
+		case int:
+			out = append(out, SurahNumber(n))
+		case int32:
+			out = append(out, SurahNumber(n))
+		case int64:
+			out = append(out, SurahNumber(n))
+		case float64:
+			out = append(out, SurahNumber(int(n)))
+		}
+	}
+	return out
+}
+
+func ToAyahNumbers(raw any) []AyahNumber {
+	if raw == nil {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]AyahNumber, 0, len(items))
+	for _, v := range items {
+		switch n := v.(type) {
+		case int:
+			out = append(out, AyahNumber(n))
+		case int32:
+			out = append(out, AyahNumber(n))
+		case int64:
+			out = append(out, AyahNumber(n))
+		case float64:
+			out = append(out, AyahNumber(int(n)))
+		}
+	}
+	return out
+}
