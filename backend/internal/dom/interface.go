@@ -255,7 +255,7 @@ const (
 )
 
 type LLMGenResult struct {
-	FinalOutput   *ModelOutput
+	Output   	  *ModelOutput
 	Usage         *TokenUsage
 	FinishReason  FinishReason
 	FinishMessage string
@@ -349,7 +349,7 @@ Your goal is to assist users in understanding Quranic content deeply, drawing on
 ## 🧠 Prompt Context
 
 You receive:
-- A long conversation history (up to 200,000 tokens) that may include prior questions and retrieved documents.
+- A long conversation history (up to 200,000 tokens) that may include prior questions, responses, function calls, docuemnts, etc.
 - A new user prompt at the end.
 
 Use all available history to decide whether to answer or search.
@@ -517,21 +517,22 @@ func BuildGenerator() *AgentProfile {
 			Text: `
 You are Shaikh — a helpful, multilingual, scholarly AI assistant designed to make learning about the Quran more accessible, structured, and insightful for users of all backgrounds.
 
-Your goal is to assist users in understanding Quranic content deeply, drawing only from the documents provided in the conversation history. You are not allowed to use external tools or data sources. If the documents do not provide enough information to answer, respond humbly and transparently.
+Your goal is to assist users in understanding Quranic content deeply, drawing only from the documents provided in your context window. The documents you see are the results of your previous function calls, which will also be provided to you. If the documents do not provide enough information to answer, respond humbly and transparently.
 
 ## 🔍 Role and Behavior
 
 - Always respond in the **same language** as the user's prompt.
 - Your response should be **visually illustrative and educational**, using rich **Markdown formatting**:
   - Use **headers**, **bold text**, bullet points, **numbered lists**, and **tables** to clarify your response.
-- You must **only answer based on the retrieved documents provided in the conversation history**.
+- You must **only answer based on the retrieved documents provided in the context**.
 - **Do not guess or fabricate answers.** If the context is insufficient, say so clearly and humbly.
 
 ## 🧠 Prompt Context
 
 You receive:
-- A long conversation history (up to 200,000 tokens) that may include prior questions, retrieved documents, and ayat.
-- A new user prompt at the end.
+- A long conversation history (up to 200,000 tokens) that may include prior questions, responses, function calls, documents, etc.
+- A final user prompt.
+- A batch of retrieved documents provided after the final prompt — these are the results of a search, and they represent the most relevant evidence to answer the prompt.
 
 Your job is to generate a high-quality, evidence-based answer using only the provided context.
 `,
@@ -574,9 +575,7 @@ func (a *AgentStruct) BuildContextWindow(
 				HumanizeFrom(now, m.UpdatedAt),
 				m.Content,
 			)
-			parts = append(parts, &LLMPart{
-				Text: partText,
-			})
+			parts = append(parts, &LLMPart{Text: partText})
 		}
 		contents = append(contents, &LLMContent{
 			Role:  RoleUser,
@@ -591,9 +590,7 @@ func (a *AgentStruct) BuildContextWindow(
 				HumanizeFrom(now, s.LastAccessed),
 				s.Summary,
 			)
-			parts = append(parts, &LLMPart{
-				Text: partText,
-			})
+			parts = append(parts, &LLMPart{Text: partText})
 		}
 		contents = append(contents, &LLMContent{
 			Role:  RoleUser,
@@ -601,27 +598,48 @@ func (a *AgentStruct) BuildContextWindow(
 		})
 	}
 
-	historyContents := make([]*LLMContent, 0, len(cw.history)*2)
+	type Turn = []*LLMContent
+	var turns []Turn
+
 	for _, inter := range cw.History {
-		var userParts []*LLMPart
-		if inter.Input.FunctionResponse != nil {
-			userParts = append(userParts, inter.Input.FunctionResponse)
-		}
+		var t Turn
+
 		if inter.Input.Text != nil {
-			userParts = append(userParts, inter.Input.Text)
-		}
-		if len(userParts) > 0 {
-			historyContents = append(historyContents, &LLMContent{
-				Role:  RoleUser,
-				Parts: userParts,
+			t = append(t, &LLMContent{
+				Role:  LLMUserRole,
+				Parts: []*LLMPart{{Text: inter.Input.Text}},
 			})
 		}
+
+		if inter.Output.FunctionCall != nil {
+			t = append(t, &LLMContent{
+				Role:  LLMModelRole,
+				Parts: []*LLMPart{{FunctionCall: inter.Output.FunctionCall}},
+			})
+		}
+
+		if inter.Input.FunctionResponse != nil {
+			t = append(t, &LLMContent{
+				Role:  LLMUserRole,
+				Parts: []*LLMPart{{FunctionResponse: inter.Input.FunctionResponse}},
+			})
+		}
+
 		if inter.Output.Text != nil {
-			historyContents = append(historyContents, &LLMContent{
-				Role:  RoleModel,
-				Parts: []*LLMPart{inter.Output.Text},
+			t = append(t, &LLMContent{
+				Role:  LLMModelRole,
+				Parts: []*LLMPart{{Text: inter.Output.Text}},
 			})
 		}
+
+		if len(t) > 0 {
+			turns = append(turns, t)
+		}
+	}
+
+	var historyContents []*LLMContent
+	for _, t := range turns {
+		historyContents = append(historyContents, t...)
 	}
 
 	ctc := &LLMCountConfig{
@@ -642,8 +660,12 @@ func (a *AgentStruct) BuildContextWindow(
 			break
 		}
 
-		if len(historyContents) > 1 {
-			historyContents = historyContents[2:]
+		if len(turns) > 1 {
+			turns = turns[1:]
+			historyContents = historyContents[:0]
+			for _, t := range turns {
+				historyContents = append(historyContents, t...)
+			}
 		} else {
 			historyContents = nil
 			break

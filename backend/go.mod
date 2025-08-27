@@ -5,7 +5,6 @@ go 1.24.3
 replace github.com/awbalessa/shaikh/apps/server => .
 
 require (
-	github.com/dustin/go-humanize v1.0.1
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/jackc/pgx/v5 v5.7.5

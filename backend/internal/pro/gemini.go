@@ -102,7 +102,7 @@ func (g *GeminiLLM) Stream(
 		if err != nil {
 			yield(nil, fmt.Errorf("gemini stream error: %w", err))
 			return &dom.LLMGenResult{
-				FinalOutput:   &output,
+				Output:        &output,
 				Usage:         &usage,
 				FinishReason:  finishReason,
 				FinishMessage: finishMessage,
@@ -144,7 +144,7 @@ func (g *GeminiLLM) Stream(
 			}
 			if !yield(&part, nil) {
 				return &dom.LLMGenResult{
-					FinalOutput:   &output,
+					Output:        &output,
 					Usage:         &usage,
 					FinishReason:  finishReason,
 					FinishMessage: finishMessage,
@@ -154,7 +154,7 @@ func (g *GeminiLLM) Stream(
 	}
 
 	return &dom.LLMGenResult{
-		FinalOutput:   &output,
+		Output:        &output,
 		Usage:         &usage,
 		FinishReason:  finishReason,
 		FinishMessage: finishMessage,

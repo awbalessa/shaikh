@@ -6,22 +6,24 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/genai"
 )
 
 type AskSvc struct {
 	Agent      dom.Agent
 	Functions  map[dom.LLMFunctionName]dom.LLMFunction
 	CtxManager *ContextManager
-	Publisher  dom.Publisher
 	SearchSvc  *SearchSvc
 	Logger     *slog.Logger
+}
+
+type AskResult struct {
+	Input   *dom.InputPrompt
+	Results []*dom.LLMGenResult
 }
 
 func (a *AskSvc) Ask(
@@ -29,209 +31,107 @@ func (a *AskSvc) Ask(
 	prompt string,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		const method = "Ask"
-		start := time.Now()
-		cc, win, err := a.getContext(ctx)
+		_, win, err := a.GetContext(ctx, dom.Caller)
 		if err != nil {
 			yield("", err)
 			return
 		}
 
-		userIn := genai.NewPartFromText(prompt)
-		var fnOut *genai.Part
-		var modelOut strings.Builder
-
-		log := a.Logger.With(
-			slog.String("method", method),
-			slog.String("userID", cc.UserID.String()),
-			slog.String("sessionID", cc.SessionID.String()),
-			slog.String("created_at", cc.CreatedAt.Format(time.RFC822)),
-			slog.String("updated_at", cc.UpdatedAt.Format(time.RFC822)),
-			slog.Int("turn", cc.Window.Turns+1),
-		)
-
-		log.DebugContext(ctx, "asking agent...")
-		gotFirst := false
-		var ttft time.Duration
-
-		for resp, err := range a.ask(ctx, win, userIn, &fnOut) {
-			if err != nil {
-				yield("", err)
-				return
-			}
-
-			if !gotFirst {
-				ttft = time.Since(start)
-				gotFirst = true
-			}
-			modelOut.WriteString(resp)
-			if !yieldOk(ctx, yield, resp) {
-				return
-			}
-		}
-
-		totalTime := time.Since(start)
-
-		log.With(
-			slog.String("ttft", ttft.String()),
-			slog.String("total_time", totalTime.String()),
-		).DebugContext(ctx, "response recieved: updating context...")
-
-		modelOutPart := genai.NewPartFromText(modelOut.String())
-		lastInteraction := &InteractionDTO{
-			Input: inputPrompt{
-				FunctionResponse: fnOut,
-				UserInput:        userIn,
-			},
-			ModelOutputDTO: modelOutPart,
-			TurnNumber:     cc.Window.turns + 1,
-		}
-		cc.Window.history = append(cc.Window.history, lastInteraction)
-
-		if err = a.setContext(ctx, cc, lastInteraction); err != nil {
-			yield("", err)
-			return
-		}
-
-		log.DebugContext(ctx, "context updated: returning...")
+		_ = a.ask(ctx, prompt, win, yield, 1)
 	})
 }
 
 func (a *AskSvc) ask(
 	ctx context.Context,
-	win []*genai.Content,
-	prompt *genai.Part,
-	fnRes **genai.Part,
-) iter.Seq2[string, error] {
-	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		const method = "ask"
-		log := a.logger.With(
-			"method", method,
-		)
-		prof, err := a.getProfile(searcherAgent)
-		if err != nil {
-			yield("", err)
-			return
-		}
-
-		full := append(win, &genai.Content{
-			Role:  genai.RoleUser,
-			Parts: []*genai.Part{prompt},
-		})
-
-		for resp, err := range a.gc.client.Models.GenerateContentStream(
-			ctx,
-			string(prof.model),
-			full,
-			prof.config,
-		) {
-			if err != nil {
-				log.With(
-					"err", err,
-				).ErrorContext(ctx, "failed to ask agent")
-				yield("", fmt.Errorf("failed to ask agent: %w", err))
-				return
-			}
-
-			if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-				continue
-			}
-
-			for _, part := range resp.Candidates[0].Content.Parts {
-				switch {
-				case part.FunctionCall != nil:
-					log.With(
-						"name", part.FunctionCall.Name,
-					).DebugContext(ctx, "agent called function")
-					fnResponse, err := a.handleFunctionCall(
-						ctx,
-						win,
-						prompt,
-						part.FunctionCall,
-						yield,
-					)
-					if err != nil {
-						yield("", err)
-						return
-					}
-
-					*fnRes = fnResponse
-					return
-
-				case part.Text != "":
-					if !yieldOk(ctx, yield, part.Text) {
-						return
-					}
-				}
-			}
-		}
-	})
-}
-
-func (a *AskSvc) handleFunctionCall(
-	ctx context.Context,
-	win []*genai.Content,
-	prompt *genai.Part,
-	fnCall *genai.FunctionCall,
+	prompt string,
+	win []*dom.LLMContent,
 	yield func(string, error) bool,
-) (*genai.Part, error) {
-	const method = "handleFunctionCall"
-	log := a.logger.With(
-		"method", method,
+	maxFnCalls int32,
+) *AskResult {
+	win = append(win, &dom.LLMContent{
+		Role: dom.LLMUserRole,
+		Parts: []*dom.LLMPart{
+			&dom.LLMPart{Text: prompt},
+		},
+	})
+
+	var fnResp *dom.LLMFunctionResponse = nil
+	results := make([]*dom.LLMGenResult, 0, maxFnCalls+1)
+	syield := func(p *dom.LLMPart, err error) bool {
+		if err != nil {
+			return yield("", fmt.Errorf("ask: %w", err))
+		}
+		if p == nil {
+			return false
+		}
+
+		if p.Text != "" {
+			if !yield(p.Text, nil) {
+				return false
+			}
+			return true
+		}
+		if p.FunctionCall != nil {
+			fnResp, err = a.handleFn(ctx, *p.FunctionCall)
+			if err != nil {
+				return yield("", fmt.Errorf("ask: %w", err))
+			}
+			return true
+		}
+
+		return true
+	}
+
+	results = append(results,
+		a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
 	)
 
-	prof, err := a.getProfile(generatorAgent)
+	if fnResp != nil {
+		win = append(win, &dom.LLMContent{
+			Role: dom.LLMModelRole,
+			Parts: []*dom.LLMPart{
+				&dom.LLMPart{FunctionCall: results[0].Output.FunctionCall},
+			},
+		})
+		win = append(win, &dom.LLMContent{
+			Role: dom.LLMUserRole,
+			Parts: []*dom.LLMPart{
+				&dom.LLMPart{FunctionResponse: fnResp},
+			},
+		})
+
+		results = append(results,
+			a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
+		)
+	}
+
+	return &AskResult{
+		Input: &dom.InputPrompt{
+			Text:             prompt,
+			FunctionResponse: fnResp,
+		},
+		Results: results,
+	}
+}
+
+func (a *AskSvc) handleFn(
+	ctx context.Context,
+	fn dom.LLMFunctionCall,
+) (*dom.LLMFunctionResponse, error) {
+	function, ok := a.Functions[dom.LLMFunctionName(fn.Name)]
+	if !ok {
+		return nil, fmt.Errorf("function %s does not exist", fn.Name)
+	}
+
+	res, err := function.Call(ctx, fn.Args)
 	if err != nil {
-		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
+		return nil, fmt.Errorf("handleFn: %w", err)
 	}
 
-	fn, err := a.getFunction(dom.FunctionName(fnCall.Name))
-	if err != nil {
-		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
-	}
-
-	results, err := fn.call(ctx, fnCall.Args)
-	if err != nil {
-		log.With(
-			"name", fnCall.Name,
-			"args", fnCall.Args,
-		).ErrorContext(ctx, "failed to handle function")
-		return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
-	}
-
-	fnPart := genai.NewPartFromFunctionResponse(string(fn.name()), results)
-
-	full := append(win, &genai.Content{
-		Role:  genai.RoleUser,
-		Parts: []*genai.Part{fnPart, prompt},
-	})
-
-	for resp, err := range a.gc.client.Models.GenerateContentStream(
-		ctx,
-		string(prof.model),
-		full,
-		prof.config,
-	) {
-		if err != nil {
-			log.With(
-				"name", fnCall.Name,
-				"args", fnCall.Args,
-			).ErrorContext(ctx, "failed to handle function")
-			return nil, fmt.Errorf("failed to handle function %s: %w", fnCall.Name, err)
-		}
-
-		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-			continue
-		}
-
-		for _, part := range resp.Candidates[0].Content.Parts {
-			if !yieldOk(ctx, yield, part.Text) {
-				return fnPart, nil
-			}
-		}
-	}
-
-	return fnPart, nil
+	return &dom.LLMFunctionResponse{
+		Name:    fn.Name,
+		Content: res,
+	}, nil
 }
 
 type LLMFunctionResponseDTO struct {
@@ -318,6 +218,7 @@ type ContextCacheDTO struct {
 type ContextManager struct {
 	dom.Cache
 	dom.ContextRepo
+	dom.Publisher
 	Logger *slog.Logger
 }
 
@@ -367,12 +268,12 @@ func (a *AskSvc) GetContext(ctx context.Context, name dom.AgentName) (*ContextCa
 
 func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*ContextCacheDTO, error) {
 	const method = "getContextCache"
-	log := a.Logger.With(slog.String("method", method))
+	log := c.Logger.With(slog.String("method", method))
 
 	now := time.Now()
-	key := createContextCacheKey(userID, sessionID)
+	key := dom.CreateContextCacheKey(userID, sessionID)
 
-	bytes, err := a.Cache.Get(ctx, key)
+	bytes, err := c.Cache.Get(ctx, key)
 	if err != nil {
 		log.With("err", err).ErrorContext(ctx, "failed to get context cache")
 		return nil, fmt.Errorf("getContextCache: %w", err)
@@ -393,7 +294,6 @@ func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID 
 	).DebugContext(ctx, "retrieved context cache successfully")
 
 	return &cc, nil
-	Logger * slog.Logger
 }
 
 func (c *ContextManager) getDbContext(
@@ -401,7 +301,7 @@ func (c *ContextManager) getDbContext(
 	userID, sessionID uuid.UUID,
 ) (*ContextWindowDTO, error) {
 	const method = "getDbContext"
-	log := a.Logger.With(slog.String("method", method))
+	log := c.Logger.With(slog.String("method", method))
 	start := time.Now()
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -413,7 +313,7 @@ func (c *ContextManager) getDbContext(
 	)
 
 	g.Go(func() error {
-		mem, err := a.CtxManager.GetMemoriesByUserID(ctx, userID, int32(memories100))
+		mem, err := c.GetMemoriesByUserID(ctx, userID, 50)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch memories")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -423,7 +323,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		prev, err := a.CtxManager.GetSessionsByUserID(ctx, userID, int32(sessions5))
+		prev, err := c.GetSessionsByUserID(ctx, userID, 5)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch sessions")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -433,7 +333,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		msgs, err := a.CtxManager.GetMessagesBySessionIDOrdered(ctx, sessionID)
+		msgs, err := c.GetMessagesBySessionIDOrdered(ctx, sessionID)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch messages")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -496,7 +396,6 @@ func (c *ContextManager) getDbContext(
 		History:          interactions,
 		Turns:            turns,
 	}, nil
-	Logger * slog.Logger
 }
 
 func (c *ContextManager) setContext(
@@ -504,15 +403,14 @@ func (c *ContextManager) setContext(
 	cc *ContextCacheDTO,
 	interaction *InteractionDTO,
 ) error {
-	if err := a.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
+	if err := c.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
 		return fmt.Errorf("failed to set context: %w", err)
 	}
 
-	if err := a.sendContextUpdate(ctx, cc.UserID, cc.SessionID, interaction); err != nil {
+	if err := c.sendContextUpdate(ctx, cc.UserID, cc.SessionID, interaction); err != nil {
 		return fmt.Errorf("failed to set context: %w", err)
 	}
 	return nil
-	Logger * slog.Logger
 }
 
 func (c *ContextManager) setContextCache(
@@ -521,7 +419,7 @@ func (c *ContextManager) setContextCache(
 	win *ContextWindowDTO,
 ) error {
 	const method = "setContextCache"
-	log := a.Logger.With(
+	log := c.Logger.With(
 		slog.String("method", method),
 	)
 
@@ -541,9 +439,9 @@ func (c *ContextManager) setContextCache(
 		return fmt.Errorf("failed to set context cache: %w", err)
 	}
 
-	key := createContextCacheKey(userID, sessionID)
+	key := dom.CreateContextCacheKey(userID, sessionID)
 
-	if err = a.Cache.Set(ctx, key, bytes, contextCacheTTL6Hrs); err != nil {
+	if err = c.Cache.Set(ctx, key, bytes, dom.ContextCacheTTL6Hrs); err != nil {
 		log.With(
 			"err", err,
 		).ErrorContext(ctx, "failed to set context cache")
@@ -555,7 +453,6 @@ func (c *ContextManager) setContextCache(
 	).DebugContext(ctx, "set context cache successfully")
 
 	return nil
-	Logger * slog.Logger
 }
 
 func (c *ContextManager) sendContextUpdate(
@@ -564,11 +461,11 @@ func (c *ContextManager) sendContextUpdate(
 	interaction *InteractionDTO,
 ) error {
 	const method = "sendContextUpdate"
-	log := a.Logger.With(
+	log := c.Logger.With(
 		slog.String("method", method),
 	)
 
-	load := &SyncPayload{
+	load := &SyncPayloadDTO{
 		UserID:         userID,
 		SessionID:      sessionID,
 		InteractionDTO: interaction,
@@ -583,7 +480,7 @@ func (c *ContextManager) sendContextUpdate(
 		return fmt.Errorf("failed to send context update: %w", err)
 	}
 
-	ack, err := a.Publisher.Publish(ctx, SyncerSubject, data, &dom.PubOptions{
+	_, err = c.Publisher.Publish(ctx, SyncerSubject, data, &dom.PubOptions{
 		MsgID: fmt.Sprintf("%s:%s:%d", userID, sessionID, interaction.TurnNumber),
 	})
 	if err != nil {
@@ -593,12 +490,12 @@ func (c *ContextManager) sendContextUpdate(
 		return fmt.Errorf("failed to send context update: %w", err)
 	}
 
-	if ack.Stream != AskSvcStream {
-		log.With(
-			"stream", ack.Stream,
-		).ErrorContext(ctx, "published to unexpected stream")
-		return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
-	}
+	// if ack.Stream != AskSvcStream {
+	// 	log.With(
+	// 		"stream", ack.Stream,
+	// 	).ErrorContext(ctx, "published to unexpected stream")
+	// 	return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
+	// }
 
 	log.With(
 		slog.String("duration", time.Since(start).String()),

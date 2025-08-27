@@ -233,6 +233,10 @@ type ContextCache struct {
 	Window    *ContextWindow
 }
 
+const (
+	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
+)
+
 type ContextRepo interface {
 	GetMemoriesByUserID(
 		ctx context.Context,
@@ -248,34 +252,6 @@ type ContextRepo interface {
 		ctx context.Context,
 		sessionID uuid.UUID,
 	) ([]Message, error)
-}
-
-type ContextManager interface {
-	GetContextCache(
-		ctx context.Context,
-		userID, sessionID uuid.UUID,
-	) (*ContextCache, error)
-	SetContextCache(
-		ctx context.Context,
-		userID, sessionID uuid.UUID,
-		cw *ContextWindow,
-	) error
-	GetDatabaseContext(
-		ctx context.Context,
-		userID, sessionID uuid.UUID,
-	) (*ContextWindow, error)
-}
-
-type ContextManagerStruct struct {
-	Cache
-	ContextRepo
-}
-
-func (c *ContextManagerStruct) GetContextCache(
-	ctx context.Context,
-	userID, sessionID uuid.UUID,
-) (*ContextCache, error) {
-
 }
 
 func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
