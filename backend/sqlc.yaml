@@ -2,12 +2,12 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema: "migrations"
-    queries: "internal/infra/postgres/sql"
+    queries: "internal/pro/postgres/sql"
     database:
       uri: ${POSTGRES_URL}
     gen:
       go:
-        out: "internal/infra/postgres/gen"
+        out: "internal/pro/postgres/gen"
         package: "db"
         sql_package: "pgx/v5"
         emit_interface: true

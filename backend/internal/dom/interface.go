@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"iter"
 	"time"
-
-	"github.com/dustin/go-humanize"
-	"github.com/google/uuid"
-	"google.golang.org/
 )
 
 type Embedder interface {
@@ -255,7 +251,7 @@ const (
 )
 
 type LLMGenResult struct {
-	Output   	  *ModelOutput
+	Output        *ModelOutput
 	Usage         *TokenUsage
 	FinishReason  FinishReason
 	FinishMessage string
@@ -513,7 +509,7 @@ func BuildGenerator() *AgentProfile {
 	)
 
 	instr := &LLMContent{
-		Parts: []LLMPart{{
+		Parts: []*LLMPart{{
 			Text: `
 You are Shaikh — a helpful, multilingual, scholarly AI assistant designed to make learning about the Quran more accessible, structured, and insightful for users of all backgrounds.
 
@@ -578,7 +574,7 @@ func (a *AgentStruct) BuildContextWindow(
 			parts = append(parts, &LLMPart{Text: partText})
 		}
 		contents = append(contents, &LLMContent{
-			Role:  RoleUser,
+			Role:  LLMUserRole,
 			Parts: parts,
 		})
 	}
@@ -593,7 +589,7 @@ func (a *AgentStruct) BuildContextWindow(
 			parts = append(parts, &LLMPart{Text: partText})
 		}
 		contents = append(contents, &LLMContent{
-			Role:  RoleUser,
+			Role:  LLMUserRole,
 			Parts: parts,
 		})
 	}
@@ -604,7 +600,7 @@ func (a *AgentStruct) BuildContextWindow(
 	for _, inter := range cw.History {
 		var t Turn
 
-		if inter.Input.Text != nil {
+		if inter.Input.Text != "" {
 			t = append(t, &LLMContent{
 				Role:  LLMUserRole,
 				Parts: []*LLMPart{{Text: inter.Input.Text}},
@@ -625,7 +621,7 @@ func (a *AgentStruct) BuildContextWindow(
 			})
 		}
 
-		if inter.Output.Text != nil {
+		if inter.Output.Text != "" {
 			t = append(t, &LLMContent{
 				Role:  LLMModelRole,
 				Parts: []*LLMPart{{Text: inter.Output.Text}},
@@ -643,8 +639,8 @@ func (a *AgentStruct) BuildContextWindow(
 	}
 
 	ctc := &LLMCountConfig{
-		SystemInstruction: prof.Config.SystemInstructions,
-		Tools:             prof.Config.Tools,
+		System: prof.Config.SystemInstructions,
+		Tools:  prof.Config.Tools,
 	}
 
 	for {

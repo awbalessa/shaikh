@@ -21,9 +21,11 @@ type AskSvc struct {
 	Logger     *slog.Logger
 }
 
-type AskResult struct {
-	Input   *dom.InputPrompt
-	Results []*dom.LLMGenResult
+type Inference struct {
+	Input        *dom.InputPrompt
+	Output       *dom.ModelOutput
+	InputTokens  int32
+	OutputTokens int32
 }
 
 func (a *AskSvc) Ask(
@@ -31,13 +33,19 @@ func (a *AskSvc) Ask(
 	prompt string,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		_, win, err := a.GetContext(ctx, dom.Caller)
+		cc, win, err := a.GetContext(ctx, dom.Caller)
 		if err != nil {
 			yield("", err)
 			return
 		}
 
-		_ = a.ask(ctx, prompt, win, yield, 1)
+		infs := a.ask(ctx, prompt, win, yield)
+		inter := toInteractionDTO(prompt, infs, cc.Window.Turns+1)
+
+		if err = a.CtxManager.SetContext(ctx, cc, inter); err != nil {
+			yield("", err)
+			return
+		}
 	})
 }
 
@@ -46,8 +54,9 @@ func (a *AskSvc) ask(
 	prompt string,
 	win []*dom.LLMContent,
 	yield func(string, error) bool,
-	maxFnCalls int32,
-) *AskResult {
+) [2]*Inference {
+	var infs [2]*Inference
+
 	win = append(win, &dom.LLMContent{
 		Role: dom.LLMUserRole,
 		Parts: []*dom.LLMPart{
@@ -55,28 +64,29 @@ func (a *AskSvc) ask(
 		},
 	})
 
-	var fnResp *dom.LLMFunctionResponse = nil
-	results := make([]*dom.LLMGenResult, 0, maxFnCalls+1)
+	var (
+		fnCall *dom.LLMFunctionCall
+		fnResp *dom.LLMFunctionResponse
+	)
+	results := make([]*dom.LLMGenResult, 0, 2)
+
 	syield := func(p *dom.LLMPart, err error) bool {
 		if err != nil {
 			return yield("", fmt.Errorf("ask: %w", err))
 		}
 		if p == nil {
-			return false
+			return true
 		}
 
 		if p.Text != "" {
-			if !yield(p.Text, nil) {
-				return false
-			}
-			return true
+			return yield(p.Text, nil)
 		}
 		if p.FunctionCall != nil {
 			fnResp, err = a.handleFn(ctx, *p.FunctionCall)
 			if err != nil {
 				return yield("", fmt.Errorf("ask: %w", err))
 			}
-			return true
+			return false
 		}
 
 		return true
@@ -85,6 +95,15 @@ func (a *AskSvc) ask(
 	results = append(results,
 		a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
 	)
+
+	infs[0] = &Inference{
+		Input: &dom.InputPrompt{
+			Text: prompt,
+		},
+		Output:       results[0].Output,
+		InputTokens:  results[0].Usage.InputTokens,
+		OutputTokens: results[0].Usage.OutputTokens,
+	}
 
 	if fnResp != nil {
 		win = append(win, &dom.LLMContent{
@@ -101,17 +120,21 @@ func (a *AskSvc) ask(
 		})
 
 		results = append(results,
-			a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
+			a.Agent.GenerateWithYield(ctx, dom.Generator, win, syield),
 		)
+
+		infs[1] = &Inference{
+			Input: &dom.InputPrompt{
+				Text:             prompt,
+				FunctionResponse: fnResp,
+			},
+			Output:       results[1].Output,
+			InputTokens:  results[1].Usage.InputTokens,
+			OutputTokens: results[1].Usage.OutputTokens,
+		}
 	}
 
-	return &AskResult{
-		Input: &dom.InputPrompt{
-			Text:             prompt,
-			FunctionResponse: fnResp,
-		},
-		Results: results,
-	}
+	return infs
 }
 
 func (a *AskSvc) handleFn(
@@ -158,6 +181,7 @@ type InteractionDTO struct {
 	Input      InputPromptDTO `json:"input_prompt"`
 	Output     ModelOutputDTO `json:"model_output"`
 	TurnNumber int32          `json:"turn_number"`
+	Usage      []dom.TokenUsage
 }
 
 type SyncPayloadDTO struct {
@@ -398,7 +422,7 @@ func (c *ContextManager) getDbContext(
 	}, nil
 }
 
-func (c *ContextManager) setContext(
+func (c *ContextManager) SetContext(
 	ctx context.Context,
 	cc *ContextCacheDTO,
 	interaction *InteractionDTO,
@@ -502,4 +526,45 @@ func (c *ContextManager) sendContextUpdate(
 	).DebugContext(ctx, "sent context update successfully")
 
 	return nil
+}
+
+func toInteractionDTO(
+	prompt string,
+	infs [2]*Inference,
+	turn int32,
+) *InteractionDTO {
+	dto := &InteractionDTO{
+		TurnNumber: turn,
+	}
+
+	if infs[0] != nil {
+		dto.Usage = append(dto.Usage, dom.TokenUsage{
+			InputTokens:  infs[0].InputTokens,
+			OutputTokens: infs[0].OutputTokens,
+		})
+	}
+
+	if infs[1] != nil {
+		dto.Input = InputPromptDTO{
+			Text:             prompt,
+			FunctionResponse: (*LLMFunctionResponseDTO)(infs[1].Input.FunctionResponse),
+		}
+		dto.Output = ModelOutputDTO{
+			Text:         infs[1].Output.Text,
+			FunctionCall: (*LLMFunctionCallDTO)(infs[0].Output.FunctionCall),
+		}
+		dto.Usage = append(dto.Usage, dom.TokenUsage{
+			InputTokens:  infs[1].InputTokens,
+			OutputTokens: infs[1].OutputTokens,
+		})
+	} else if infs[0] != nil {
+		dto.Input = InputPromptDTO{
+			Text: prompt,
+		}
+		dto.Output = ModelOutputDTO{
+			Text: infs[0].Output.Text,
+		}
+	}
+
+	return dto
 }

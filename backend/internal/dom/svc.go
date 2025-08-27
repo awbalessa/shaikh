@@ -210,6 +210,7 @@ type Interaction struct {
 	Input      InputPrompt
 	Output     ModelOutput
 	TurnNumber int32
+	Usage      []TokenUsage
 }
 
 type SyncPayload struct {
