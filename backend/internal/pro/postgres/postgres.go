@@ -10,6 +10,9 @@ import (
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	db "github.com/awbalessa/shaikh/backend/internal/pro/postgres/gen"
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
@@ -90,6 +93,89 @@ func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) erro
 	}
 
 	return tx.Commit(ctx)
+}
+
+type PostgresTx struct {
+	q  db.Querier
+	tx pgx.Tx
+}
+
+func (t *PostgresTx) Get(repo any) error {
+	switch r := repo.(type) {
+	case *dom.MessageRepo:
+		*r = &PostgresMessageRepo{q: t.q}
+		return nil
+	default:
+		return fmt.Errorf("unsupported repo type: %T", r)
+	}
+}
+
+func (t *PostgresTx) Commit(ctx context.Context) error {
+	return t.tx.Commit(ctx)
+}
+
+func (t *PostgresTx) Rollback(ctx context.Context) error {
+	return t.tx.Rollback(ctx)
+}
+
+func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin tx: %w", err)
+	}
+
+	q := db.New(tx)
+	return &PostgresTx{
+		q:  q,
+		tx: tx,
+	}, nil
+}
+
+type PostgresMessageRepo struct {
+	q   db.Querier
+	log *slog.Logger
+}
+
+func (m *PostgresMessageRepo) CreateMessage(
+	ctx context.Context,
+	msg dom.Message,
+) (dom.Message, error) {
+	meta := msg.Meta()
+	role := msg.Role()
+	row, err := m.q.CreateMessage(ctx, db.CreateMessageParams{
+		SessionID:         meta.SessionID,
+		UserID:            meta.UserID,
+		Role:              toDbMessageRole[role],
+		Model:             toDbLargeLanguageModel[meta.Model],
+		Turn:              meta.Turn,
+		TotalInputTokens:  toPgtypeInt4(meta.TotalInputTokens),
+		TotalOutputTokens: toPgtypeInt4(meta.TotalOutputTokens),
+		Content:           toPgtypeText(meta.Content),
+		FunctionName:      toPgtypeText(meta.FunctionName),
+		FunctionCall:      meta.FunctionCall,
+		FunctionResponse:  meta.FunctionResponse,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create message: %w", err)
+	}
+	return fromDbMessage(row), nil
+}
+
+func (m *PostgresMessageRepo) GetMessagesBySessionIDOrdered(
+	ctx context.Context,
+	sessionID uuid.UUID,
+) ([]dom.Message, error) {
+	rows, err := m.q.GetMessagesBySessionIdOrdered(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages by session id ordered: %w", err)
+	}
+
+	final := make([]dom.Message, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, fromDbMessage(r))
+	}
+
+	return final, nil
 }
 
 type PostgresSearcher struct {
@@ -379,103 +465,102 @@ func tokenizeQuery(query string) (string, error) {
 	return tokenized, nil
 }
 
-// type MemoryRepo struct {
-// 	q   db.Querier
-// 	log *slog.Logger
-// }
+var toDbLargeLanguageModel = map[dom.LargeLanguageModel]db.LargeLanguageModel{
+	dom.GeminiV2p5Flash:     db.LargeLanguageModelGemini25Flash,
+	dom.GeminiV2p5FlashLite: db.LargeLanguageModelGemini25FlashLite,
+}
 
-// func (r *MemoryRepo) GetMemoriesByUserID(
-// 	ctx context.Context,
-// 	arg db.GetMemoriesByUserIDParams,
-// ) ([]db.Memory, error) {
-// 	rows, err := r.q.GetMemoriesByUserID(ctx, db.GetMemoriesByUserIDParams{
-// 		NumberOfMemories: arg.NumberOfMemories,
-// 		UserID:           arg.UserID,
-// 	})
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get memories by user id: %w", err)
-// 	}
+var fromDbLargeLanguageModel = map[db.LargeLanguageModel]dom.LargeLanguageModel{
+	db.LargeLanguageModelGemini25Flash:     dom.GeminiV2p5Flash,
+	db.LargeLanguageModelGemini25FlashLite: dom.GeminiV2p5FlashLite,
+}
 
-// 	return rows, nil
-// }
+var toDbMessageRole = map[dom.MessageRole]db.MessagesRole{
+	dom.UserRole:     db.MessagesRoleUser,
+	dom.ModelRole:    db.MessagesRoleModel,
+	dom.FunctionRole: db.MessagesRoleFunction,
+}
 
-// func (pg *PostgresRepo) GetSessionsByUserID(
-// 	ctx context.Context,
-// 	arg db.GetSessionsByUserIDParams,
-// ) ([]db.Session, error) {
-// 	rows, err := pg.Queries.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
-// 		NumberOfSessions: arg.NumberOfSessions,
-// 		UserID:           arg.UserID,
-// 	})
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get sessions by user id: %w", err)
-// 	}
+var fromDbMessageRole = map[db.MessagesRole]dom.MessageRole{
+	db.MessagesRoleUser:     dom.UserRole,
+	db.MessagesRoleModel:    dom.ModelRole,
+	db.MessagesRoleFunction: dom.FunctionRole,
+}
 
-// 	return rows, nil
-// }
+func toPgtypeInt4(in *int32) pgtype.Int4 {
+	if in == nil {
+		return pgtype.Int4{}
+	}
 
-// func (pg *PostgresRepo) GetMessagesBySessionID(
-// 	ctx context.Context,
-// 	sessionID pgtype.UUID,
-// ) ([]db.Message, error) {
-// 	rows, err := pg.Queries.GetMessagesBySessionID(ctx, sessionID)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get messages by session id: %w", err)
-// 	}
+	return pgtype.Int4{
+		Valid: true,
+		Int32: int32(*in),
+	}
+}
+func fromPgtypeInt4(v pgtype.Int4) *int32 {
+	if !v.Valid {
+		return nil
+	}
+	val := v.Int32
+	return &val
+}
 
-// 	return rows, nil
-// }
+func toPgtypeText(str *string) pgtype.Text {
+	if str == nil {
+		return pgtype.Text{}
+	}
 
-// func (pg *PostgresRepo) GetMessagesBySessionIDAsc(
-// 	ctx context.Context,
-// 	sessionID pgtype.UUID,
-// ) ([]db.Message, error) {
-// 	rows, err := pg.Queries.GetMessagesBySessionIDAsc(ctx, sessionID)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
-// 	}
+	return pgtype.Text{
+		Valid:  true,
+		String: *str,
+	}
+}
 
-// 	return rows, nil
-// }
+func fromPgtypeText(v pgtype.Text) *string {
+	if !v.Valid {
+		return nil
+	}
+	s := v.String
+	return &s
+}
 
-// func (pg *PostgresRepo) GetMessagesBySessionIDOrdered(
-// 	ctx context.Context,
-// 	sessionID pgtype.UUID,
-// ) ([]db.Message, error) {
-// 	rows, err := pg.Queries.GetMessagesBySessionIdOrdered(ctx, sessionID)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get messages by session id ascending: %w", err)
-// 	}
+func fromDbMessage(row db.Message) dom.Message {
+	meta := dom.MsgMeta{
+		ID:                row.ID,
+		SessionID:         row.SessionID,
+		UserID:            row.UserID,
+		Model:             fromDbLargeLanguageModel[row.Model],
+		Turn:              row.Turn,
+		TotalInputTokens:  fromPgtypeInt4(row.TotalInputTokens),
+		TotalOutputTokens: fromPgtypeInt4(row.TotalOutputTokens),
+		Content:           fromPgtypeText(row.Content),
+		FunctionName:      fromPgtypeText(row.FunctionName),
+		FunctionCall:      row.FunctionCall,
+		FunctionResponse:  row.FunctionResponse,
+	}
 
-// 	return rows, nil
-// }
-
-// func (pg *PostgresRepo) CreateMessage(
-// 	ctx context.Context,
-// 	arg db.CreateMessageParams,
-// ) (db.Message, error) {
-// 	rows, err := pg.Queries.CreateMessage(ctx, arg)
-// 	if err != nil {
-// 		return db.Message{}, fmt.Errorf("failed to create message: %w", err)
-// 	}
-
-// 	return rows, nil
-// }
-
-// func (pg *PostgresRepo) CreateMessageTx(
-// 	ctx context.Context,
-// 	tx pgx.Tx,
-// 	arg db.CreateMessageParams,
-// ) (db.Message, error) {
-// 	q := db.New(tx)
-
-// 	msg, err := q.CreateMessage(ctx, arg)
-// 	if err != nil {
-// 		return db.Message{}, fmt.Errorf("failed to create message tx: %w", err)
-// 	}
-
-// 	return msg, nil
-// }
+	switch row.Role {
+	case db.MessagesRoleUser:
+		return &dom.UserMessage{
+			MsgMeta:    meta,
+			MsgContent: *meta.Content,
+		}
+	case db.MessagesRoleFunction:
+		return &dom.FunctionMessage{
+			MsgMeta:          meta,
+			FunctionName:     *meta.FunctionName,
+			FunctionCall:     meta.FunctionCall,
+			FunctionResponse: meta.FunctionResponse,
+		}
+	case db.MessagesRoleModel:
+		return &dom.ModelMessage{
+			MsgMeta:    meta,
+			MsgContent: *meta.Content,
+		}
+	default:
+		return nil
+	}
+}
 
 var SourceToRagSource = map[dom.Source]db.RagSource{
 	dom.SourceTafsirIbnKathir: db.RagSourceTafsirIbnKathir,

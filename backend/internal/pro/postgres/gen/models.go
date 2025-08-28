@@ -18,7 +18,8 @@ import (
 type LargeLanguageModel string
 
 const (
-	LargeLanguageModelGemini25Flash LargeLanguageModel = "gemini-2.5-flash"
+	LargeLanguageModelGemini25Flash     LargeLanguageModel = "gemini-2.5-flash"
+	LargeLanguageModelGemini25FlashLite LargeLanguageModel = "gemini-2.5-flash-lite"
 )
 
 func (e *LargeLanguageModel) Scan(src interface{}) error {

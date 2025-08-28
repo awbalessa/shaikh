@@ -2,11 +2,91 @@ package dom
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+type Document struct {
+	ID          int32
+	Source      Source
+	Content     string
+	SurahNumber SurahNumber
+	AyahNumber  AyahNumber
+}
+
+type Chunk struct {
+	Document
+	ParentID int32
+}
+
+type User struct {
+	ID    uuid.UUID
+	Email string
+}
+
+type Session struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	LastAccessed time.Time
+	Summary      *string
+}
+
+type MsgMeta struct {
+	ID                int32
+	SessionID         uuid.UUID
+	UserID            uuid.UUID
+	Model             LargeLanguageModel
+	Turn              int32
+	TotalInputTokens  *int32
+	TotalOutputTokens *int32
+	Content           *string
+	FunctionName      *string
+	FunctionCall      json.RawMessage
+	FunctionResponse  json.RawMessage
+}
+
+type Message interface {
+	Role() MessageRole
+	Meta() *MsgMeta
+}
+
+type UserMessage struct {
+	MsgMeta
+	MsgContent string
+}
+
+func (m *UserMessage) Role() MessageRole { return UserRole }
+func (m *UserMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type ModelMessage struct {
+	MsgMeta
+	MsgContent string
+}
+
+func (m *ModelMessage) Role() MessageRole { return ModelRole }
+func (m *ModelMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type FunctionMessage struct {
+	MsgMeta
+	FunctionName     string
+	FunctionCall     json.RawMessage
+	FunctionResponse json.RawMessage
+}
+
+func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
+func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type Memory struct {
+	ID        int32
+	UserID    uuid.UUID
+	UpdatedAt time.Time
+	Content   string
+}
 
 type Embedder interface {
 	EmbedQueries(ctx context.Context, queries []string) ([]Vector, error)
@@ -707,8 +787,6 @@ type PubAck struct {
 type PubMsgMetadata struct {
 	Stream       string
 	Consumer     string
-	Sequence     uint64
-	SubjectSeq   uint64
 	NumDelivered uint64
 	Timestamp    time.Time
 }
@@ -781,29 +859,43 @@ type PubSubConsumerConfig struct {
 }
 
 type PubSubConsumer interface {
-	Fetch(batch int) (PubMsg, error)
+	Fetch(batch int) ([]PubMsg, error)
 	Messages(ctx context.Context) (<-chan PubMsg, error)
 }
 
-type Subscriber interface {
-	Start(ctx context.Context, cons PubSubConsumer) error
-	Process(ctx context.Context, msg PubMsg) error
+type MemoryRepo interface {
+	GetMemoriesByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfMemories int32,
+	) ([]Memory, error)
 }
 
-type SubscriberGroup struct {
-	Subscribers []Subscriber
+type SessionRepo interface {
+	GetSessionsByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfSessions int32,
+	) ([]Session, error)
 }
 
-func (g *SubscriberGroup) Add(s Subscriber) {
-	g.Subscribers = append(g.Subscribers, s)
+type MessageRepo interface {
+	CreateMessage(
+		ctx context.Context,
+		msg Message,
+	) (Message, error)
+	GetMessagesBySessionIDOrdered(
+		ctx context.Context,
+		sessionID uuid.UUID,
+	) ([]Message, error)
 }
 
-func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
-	for _, s := range g.Subscribers {
-		go func(s Subscriber) {
-			if err := s.Start(ctx); err != nil {
-				cancel()
-			}
-		}(s)
-	}
+type Tx interface {
+	Get(repo any) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+type UnitOfWork interface {
+	Begin(ctx context.Context) (Tx, error)
 }

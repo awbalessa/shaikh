@@ -238,21 +238,10 @@ const (
 	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
 )
 
-type ContextRepo interface {
-	GetMemoriesByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfMemories int32,
-	) ([]Memory, error)
-	GetSessionsByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfSessions int32,
-	) ([]Session, error)
-	GetMessagesBySessionIDOrdered(
-		ctx context.Context,
-		sessionID uuid.UUID,
-	) ([]Message, error)
+type ContextRepo struct {
+	MemoryRepo  MemoryRepo
+	SessionRepo SessionRepo
+	MessageRepo MessageRepo
 }
 
 func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
@@ -260,6 +249,30 @@ func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
 }
 
 const (
-	ContextStream         string = "CONTEXT"
-	ContextStreamSubjects string = "context.*"
+	ContextStream        string = "CONTEXT"
+	ContextStreamSubject string = "context.*"
 )
+
+type Subscriber interface {
+	Consumer() PubSubConsumer
+	Start(ctx context.Context) error
+	Process(ctx context.Context, msg PubMsg) error
+}
+
+type SubscriberGroup struct {
+	Subscribers []Subscriber
+}
+
+func (g *SubscriberGroup) Add(s Subscriber) {
+	g.Subscribers = append(g.Subscribers, s)
+}
+
+func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
+	for _, s := range g.Subscribers {
+		go func(s Subscriber) {
+			if err := s.Start(ctx); err != nil {
+				cancel()
+			}
+		}(s)
+	}
+}

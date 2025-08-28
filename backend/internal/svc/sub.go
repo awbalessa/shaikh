@@ -7,8 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -59,58 +58,44 @@ func BuildSyncer(
 	}, nil
 }
 
-func (s *syncer) start(ctx context.Context) error {
-	s.log.InfoContext(ctx, "syncer worker started")
-	defer s.log.InfoContext(ctx, "syncer worker stopped")
+const (
+	SyncerDurableName string        = "syncer"
+	SyncerSubject     string        = dom.ContextStreamSubject + ".sync"
+	SyncIdleTime      time.Duration = 2 * time.Minute
+	SyncMaxBatchSize  int           = 5
+)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			batch, err := s.cons.Fetch(
-				agent.SyncMaxBatchSize,
-			)
-			if err != nil {
-				s.log.With(
-					"err", err,
-				).ErrorContext(ctx, "syncer failed")
-				return fmt.Errorf("syncer failed: %w", err)
-			}
-
-			for m := range batch.Messages() {
-				if err := s.process(ctx, m); err != nil {
-					s.log.With(
-						"err", err,
-					).ErrorContext(ctx, "syncer failed")
-					return fmt.Errorf("syncer failed: %w", err)
-				}
-			}
-
-			if err := batch.Error(); err != nil {
-				s.log.With(
-					"err", err,
-				).ErrorContext(ctx, "syncer failed")
-				return fmt.Errorf("syncer failed: %w", err)
-			}
-
-			s.log.With(
-				"batch_size", agent.SyncMaxBatchSize,
-			).DebugContext(ctx, "processed batch successfully")
-		}
-	}
+type Syncer struct {
+	Cons       dom.PubSubConsumer
+	LastFlush  time.Time
+	Buffer     []dom.PubMsg
+	UnitOfWork dom.UnitOfWork
 }
 
-func (s *syncer) process(ctx context.Context, msg jetstream.Msg) error {
-	s.buffer = append(s.buffer, msg)
+func (s *Syncer) Start(ctx context.Context) error {
+	msgs, err := s.Cons.Messages(ctx)
+	if err != nil {
+		return fmt.Errorf("syncer failed: %w", err)
+	}
 
-	if len(s.buffer) >= agent.SyncMaxBatchSize {
+	for m := range msgs {
+		if err = s.Process(ctx, m); err != nil {
+			return fmt.Errorf("syncer failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Syncer) Process(ctx context.Context, msg dom.PubMsg) error {
+	s.Buffer = append(s.Buffer, msg)
+
+	if len(s.Buffer) >= SyncMaxBatchSize {
 		if err := s.flush(ctx); err != nil {
 			return fmt.Errorf("failed to process message: %w", err)
 		}
 	}
 
-	if time.Since(s.lastFlush) >= agent.SyncIdleTime {
+	if time.Since(s.LastFlush) >= SyncIdleTime {
 		if err := s.flush(ctx); err != nil {
 			return fmt.Errorf("failed to process message: %w", err)
 		}
@@ -119,101 +104,48 @@ func (s *syncer) process(ctx context.Context, msg jetstream.Msg) error {
 	return nil
 }
 
-func (s *syncer) flush(ctx context.Context) error {
-	tx, err := s.store.Pg.Pool.Begin(ctx)
+func (s *Syncer) flush(ctx context.Context) error {
+	tx, err := s.UnitOfWork.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to flush buffer: %w", err)
+		return fmt.Errorf("failed to flush: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	payloads := make([]agent.SyncPayload, len(s.buffer))
-	for i, m := range s.buffer {
-		if err := json.Unmarshal(m.Data(), &payloads[i]); err != nil {
+	loads := make([]SyncPayloadDTO, len(s.Buffer))
+	for i, m := range s.Buffer {
+		if err := json.Unmarshal(m.Data(), &loads[i]); err != nil {
 			return fmt.Errorf("failed to unmarshal payload: %w", err)
 		}
 
-		if err := s.createMessagesFromInteraction(ctx, tx, payloads[i]); err != nil {
+		if err := s.persistMessages(ctx, tx, loads[i]); err != nil {
 			return fmt.Errorf("failed to create messages from interaction: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit buffer: %w", err)
+		return fmt.Errorf("failed to flush: %w", err)
 	}
 
-	for _, m := range s.buffer {
+	for _, m := range s.Buffer {
 		if err := m.Ack(); err != nil {
-			s.log.With("err", err).ErrorContext(ctx, "failed to ack message")
+			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
 
-	s.log.With(
-		slog.Int("buffer_size", len(s.buffer)),
-		slog.String("time_since_last_flush", s.lastFlush.Format(time.RFC822)),
-	).DebugContext(ctx, "flushed buffer to db")
-
-	s.buffer = nil
-	s.lastFlush = time.Now()
+	s.Buffer = nil
+	s.LastFlush = time.Now()
 	return nil
 }
 
-func (s *syncer) createMessagesFromInteraction(
+func (s *Syncer) persistMessages(
 	ctx context.Context,
-	tx pgx.Tx,
-	load agent.SyncPayload,
+	tx dom.Tx,
+	load SyncPayloadDTO,
 ) error {
-	pgSessionId := pgtype.UUID{
-		Valid: true,
-		Bytes: load.SessionID,
+	var mr dom.MessageRepo
+	if err := tx.Get(&mr); err != nil {
+		return fmt.Errorf("failed to persist messages: %w", err)
 	}
 
-	pgUserId := pgtype.UUID{
-		Valid: true,
-		Bytes: load.UserID,
-	}
-	_, err := s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
-		SessionID: pgSessionId,
-		UserID:    pgUserId,
-		Role:      db.MessagesRoleUser,
-		Content:   load.Interaction.Input.UserInput.Text,
-		Turn:      int32(load.Interaction.TurnNumber),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create messages from interaction: %w", err)
-	}
-
-	if load.Interaction.Input.FunctionResponse != nil && load.Interaction.Input.FunctionName != "" {
-		_, err = s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
-			SessionID: pgSessionId,
-			UserID:    pgUserId,
-			Role:      db.MessagesRoleFunction,
-			FunctionName: pgtype.Text{
-				Valid:  true,
-				String: string(load.Interaction.Input.FunctionName),
-			},
-			Content: load.Interaction.Input.FunctionResponse.Text,
-			Turn:    int32(load.Interaction.TurnNumber),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create messages from interaction: %w", err)
-		}
-	}
-	_, err = s.store.Pg.CreateMessageTx(ctx, tx, db.CreateMessageParams{
-		SessionID: pgSessionId,
-		UserID:    pgUserId,
-		Role:      db.MessagesRoleModel,
-		Content:   load.Interaction.ModelOutput.Text,
-		Turn:      int32(load.Interaction.TurnNumber),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create messages from interaction: %w", err)
-	}
-
-	return nil
+	_, err := mr.CreateMessage(ctx context.Context, msg dom.Message)
 }
-
-const (
-	SyncerSubject    string        = "asksvc.context.sync"
-	SyncIdleTime     time.Duration = 2 * time.Minute
-	SyncMaxBatchSize int           = 5
-)

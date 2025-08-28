@@ -340,7 +340,7 @@ func (c *ContextManager) getDbContext(
 	)
 
 	g.Go(func() error {
-		mem, err := c.GetMemoriesByUserID(ctx, userID, 50)
+		mem, err := c.MemoryRepo.GetByUserID(ctx, userID, 50)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch memories")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -350,7 +350,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		prev, err := c.GetSessionsByUserID(ctx, userID, 5)
+		prev, err := c.SessionRepo.GetSessionsByUserID(ctx, userID, 5)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch sessions")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -360,7 +360,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		msgs, err := c.GetMessagesBySessionIDOrdered(ctx, sessionID)
+		msgs, err := c.MessageRepo.GetBySessionIDOrdered(ctx, sessionID)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch messages")
 			return fmt.Errorf("getDbContext: %w", err)
