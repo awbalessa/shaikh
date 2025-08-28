@@ -12,33 +12,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-type WorkerGroup struct {
-	workers []Worker
-}
-
-func (wg *WorkerGroup) Add(w Worker) {
-	wg.workers = append(wg.workers, w)
-}
-
-func (wg *WorkerGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
-	for _, w := range wg.workers {
-		go func(w Worker) {
-			if err := w.start(ctx); err != nil {
-				w.logger().With(
-					"err", err,
-				).ErrorContext(ctx, "worker exited")
-				cancel()
-			}
-		}(w)
-	}
-}
-
-type Worker interface {
-	start(ctx context.Context) error
-	process(ctx context.Context, msg jetstream.Msg) error
-	logger() *slog.Logger
-}
-
 const (
 	syncerDurableName         string        = "fix-syncer"
 	syncerAckTime             time.Duration = 3 * time.Minute
@@ -80,15 +53,10 @@ func BuildSyncer(
 	return &syncer{
 		name:      syncerDurableName,
 		cons:      cons,
-		store:     store,
 		log:       logger,
 		lastFlush: time.Time{},
 		buffer:    nil,
 	}, nil
-}
-
-func (s *syncer) logger() *slog.Logger {
-	return s.log
 }
 
 func (s *syncer) start(ctx context.Context) error {

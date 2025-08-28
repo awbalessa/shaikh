@@ -28,7 +28,7 @@ type FnSearchSchema struct {
 
 type FnSearch struct {
 	SearchSvc *SearchSvc
-	Logger *slog.Logger
+	Logger    *slog.Logger
 }
 
 func (f *FnSearch) Call(
@@ -61,18 +61,19 @@ func (f *FnSearch) Call(
 		var ayahs []dom.AyahNumber
 		if surahAyah, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
 			surahs = dom.ToSurahNumbers(surahAyah["surahs"].([]int))
-			ayahs = dom.toAyahNumbers(surahAyah["ayahs"].([]int))
+			ayahs = dom.ToAyahNumbers(surahAyah["ayahs"].([]int))
 		}
 
 		prompts = append(prompts, dom.QueryWithFilter{
 			Query: prompt,
 			FilterContext: dom.FilterContext{
 				OptionalContentTypes: contentTypes,
-				OptionalSources: sources,
-				OptionalSurahs: surahs,
-				OptionalAyahs: ayahs,
+				OptionalSources:      sources,
+				OptionalSurahs:       surahs,
+				OptionalAyahs:        ayahs,
 			},
 		})
+	}
 
 	f.Logger.With(
 		slog.String("full_prompt", fullPrompt),
@@ -80,9 +81,9 @@ func (f *FnSearch) Call(
 	).DebugContext(ctx, "searcher agent called Search() function")
 
 	params := dom.SearchQuery{
-		FullQuery: fullPrompt,
+		FullQuery:          fullPrompt,
 		QueriesWithFilters: prompts,
-		TopK: dom.Top20Documents,
+		TopK:               dom.Top20Documents,
 	}
 
 	results, err := f.SearchSvc.Search(ctx, params)

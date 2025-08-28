@@ -328,7 +328,7 @@ func BuildCaller() *AgentProfile {
 	)
 
 	instr := &LLMContent{
-		Parts: []LLMPart{{
+		Parts: []*LLMPart{{
 			Text: `
 You are Shaikh — a helpful, multilingual, scholarly AI assistant designed to make learning about the Quran more accessible, structured, and insightful for users of all backgrounds.
 
@@ -584,7 +584,7 @@ func (a *AgentStruct) BuildContextWindow(
 		for _, s := range cw.PreviousSessions {
 			partText := fmt.Sprintf("Last Accessed: %s\nSummary: %s",
 				HumanizeFrom(now, s.LastAccessed),
-				s.Summary,
+				*s.Summary,
 			)
 			parts = append(parts, &LLMPart{Text: partText})
 		}
@@ -704,6 +704,106 @@ type PubAck struct {
 	Seq    uint64
 }
 
+type PubMsgMetadata struct {
+	Stream       string
+	Consumer     string
+	Sequence     uint64
+	SubjectSeq   uint64
+	NumDelivered uint64
+	Timestamp    time.Time
+}
+
+type PubMsg interface {
+	Data() []byte
+	Subject() string
+	Ack() error
+	Nak() error
+	Term() error
+	InProgress() error
+	Metadata() (PubMsgMetadata, error)
+}
+
+type PubSubRetentionPolicy int
+type PubSubStorageType int
+
+const (
+	WorkQueue PubSubRetentionPolicy = iota
+	LimitsBased
+)
+
+const (
+	FileStorage PubSubStorageType = iota
+)
+
+type PubSubStreamConfig struct {
+	Name       string
+	Subjects   []string
+	Retention  PubSubRetentionPolicy
+	MaxMsgs    int64
+	MaxAge     time.Duration
+	Storage    PubSubStorageType
+	Replicas   int
+	Duplicates time.Duration
+}
+
+type PubSub interface {
+	CreateStream(ctx context.Context, cfg PubSubStreamConfig) error
+	CreateConsumer(ctx context.Context, stream string, cfg PubSubConsumerConfig) (PubSubConsumer, error)
+}
+
 type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
+}
+
+type PubSubDeliverPolicy int
+type PubSubAckPolicy int
+type PubSubReplayPolicy int
+
+const (
+	DeliverAll    PubSubDeliverPolicy = iota
+	AckExplicit   PubSubAckPolicy     = iota
+	ReplayInstant PubSubReplayPolicy  = iota
+)
+
+type PubSubConsumerConfig struct {
+	Name              string
+	Durable           bool
+	InactiveThreshold time.Duration
+	DeliverPolicy     PubSubDeliverPolicy
+	AckPolicy         PubSubAckPolicy
+	AckWait           time.Duration
+	MaxDeliver        int
+	BackOff           []time.Duration
+	FilterSubjects    []string
+	ReplayPolicy      PubSubReplayPolicy
+	MaxRequestBatch   int
+	MaxRequestExpires time.Duration
+}
+
+type PubSubConsumer interface {
+	Fetch(batch int) (PubMsg, error)
+	Messages(ctx context.Context) (<-chan PubMsg, error)
+}
+
+type Subscriber interface {
+	Start(ctx context.Context, cons PubSubConsumer) error
+	Process(ctx context.Context, msg PubMsg) error
+}
+
+type SubscriberGroup struct {
+	Subscribers []Subscriber
+}
+
+func (g *SubscriberGroup) Add(s Subscriber) {
+	g.Subscribers = append(g.Subscribers, s)
+}
+
+func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
+	for _, s := range g.Subscribers {
+		go func(s Subscriber) {
+			if err := s.Start(ctx); err != nil {
+				cancel()
+			}
+		}(s)
+	}
 }

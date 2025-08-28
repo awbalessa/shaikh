@@ -258,3 +258,8 @@ type ContextRepo interface {
 func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
 	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }
+
+const (
+	ContextStream         string = "CONTEXT"
+	ContextStreamSubjects string = "context.*"
+)

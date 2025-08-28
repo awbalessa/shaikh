@@ -53,6 +53,38 @@ func NewJS(nats *Nats) (jetstream.JetStream, error) {
 	return js, nil
 }
 
+type NatsPubSub struct {
+	Conn *nats.Conn
+	Js   jetstream.JetStream
+}
+
+var toJsRetentionPolicy = map[dom.PubSubRetentionPolicy]jetstream.RetentionPolicy{
+	dom.WorkQueue:   jetstream.WorkQueuePolicy,
+	dom.LimitsBased: jetstream.LimitsPolicy,
+}
+
+var toJsStorage = map[dom.PubSubStorageType]jetstream.StorageType{
+	dom.FileStorage: jetstream.FileStorage,
+}
+
+func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfig) error {
+	_, err := n.Js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:       cfg.Name,
+		Subjects:   cfg.Subjects,
+		Retention:  toJsRetentionPolicy[cfg.Retention],
+		MaxMsgs:    cfg.MaxMsgs,
+		MaxAge:     cfg.MaxAge,
+		Storage:    toJsStorage[cfg.Storage],
+		Replicas:   cfg.Replicas,
+		Duplicates: cfg.Duplicates,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create stream: %w", err)
+	}
+
+	return nil
+}
+
 type NatsPublisher struct {
 	Js  jetstream.JetStream
 	Log *slog.Logger
@@ -68,15 +100,9 @@ func (c *NatsPublisher) Publish(
 	data []byte,
 	opts dom.PubOptions,
 ) (*dom.PubAck, error) {
-	msg := &nats.Msg{
-		Subject: subject,
-		Data:    data,
-	}
-
-	msg.Header = nats.Header{}
-	msg.Header.Set("Nats-Msg-Id", opts.MsgID)
-
-	ack, err := c.Js.PublishMsg(ctx, msg)
+	ack, err := c.Js.Publish(ctx, subject, data,
+		jetstream.WithMsgID(opts.MsgID),
+	)
 	if err != nil {
 		c.Log.With(
 			"err", err,

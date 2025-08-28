@@ -42,6 +42,11 @@ func (a *AskSvc) Ask(
 		infs := a.ask(ctx, prompt, win, yield)
 		inter := toInteractionDTO(prompt, infs, cc.Window.Turns+1)
 
+		if cc.Window == nil {
+			cc.Window = &ContextWindowDTO{}
+		}
+		cc.Window.History = append(cc.Window.History, *inter)
+
 		if err = a.CtxManager.SetContext(ctx, cc, inter); err != nil {
 			yield("", err)
 			return
@@ -64,10 +69,8 @@ func (a *AskSvc) ask(
 		},
 	})
 
-	var (
-		fnCall *dom.LLMFunctionCall
-		fnResp *dom.LLMFunctionResponse
-	)
+	var fnResp *dom.LLMFunctionResponse
+
 	results := make([]*dom.LLMGenResult, 0, 2)
 
 	syield := func(p *dom.LLMPart, err error) bool {
@@ -202,7 +205,7 @@ func toDomainContextWindow(cw *ContextWindowDTO) *dom.ContextWindow {
 		return nil
 	}
 
-	history := make([]dom.Interaction, len(cw.History))
+	history := make([]dom.Interaction, 0, len(cw.History))
 	for _, i := range cw.History {
 		history = append(history, dom.Interaction{
 			Input: dom.InputPrompt{
@@ -546,12 +549,18 @@ func toInteractionDTO(
 
 	if infs[1] != nil {
 		dto.Input = InputPromptDTO{
-			Text:             prompt,
-			FunctionResponse: (*LLMFunctionResponseDTO)(infs[1].Input.FunctionResponse),
+			Text: prompt,
+			FunctionResponse: &LLMFunctionResponseDTO{
+				Name:    infs[1].Input.FunctionResponse.Name,
+				Content: infs[1].Input.FunctionResponse.Content,
+			},
 		}
 		dto.Output = ModelOutputDTO{
-			Text:         infs[1].Output.Text,
-			FunctionCall: (*LLMFunctionCallDTO)(infs[0].Output.FunctionCall),
+			Text: infs[1].Output.Text,
+			FunctionCall: &LLMFunctionCallDTO{
+				Name: infs[0].Output.FunctionCall.Name,
+				Args: infs[0].Output.FunctionCall.Args,
+			},
 		}
 		dto.Usage = append(dto.Usage, dom.TokenUsage{
 			InputTokens:  infs[1].InputTokens,
