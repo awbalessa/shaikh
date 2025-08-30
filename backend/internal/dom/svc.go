@@ -206,11 +206,17 @@ type ModelOutput struct {
 	FunctionCall *LLMFunctionCall
 }
 
+type Inference struct {
+	Input        *InputPrompt
+	Output       *ModelOutput
+	InputTokens  int32
+	OutputTokens int32
+	Model        LargeLanguageModel
+}
+
 type Interaction struct {
-	Input      InputPrompt
-	Output     ModelOutput
+	Inferences [2]*Inference
 	TurnNumber int32
-	Usage      []TokenUsage
 }
 
 type SyncPayload struct {

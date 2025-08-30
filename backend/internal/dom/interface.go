@@ -365,8 +365,6 @@ type AgentStruct struct {
 	LLM    LLM
 }
 
-func NewAgent()
-
 func (a *AgentStruct) Generate(
 	ctx context.Context,
 	name AgentName,

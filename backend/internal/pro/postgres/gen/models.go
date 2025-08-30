@@ -715,19 +715,19 @@ type Memory struct {
 }
 
 type Message struct {
-	ID                int32              `db:"id"`
-	SessionID         uuid.UUID          `db:"session_id"`
-	UserID            uuid.UUID          `db:"user_id"`
-	CreatedAt         time.Time          `db:"created_at"`
-	Role              MessagesRole       `db:"role"`
-	Model             LargeLanguageModel `db:"model"`
-	Turn              int32              `db:"turn"`
-	TotalInputTokens  pgtype.Int4        `db:"total_input_tokens"`
-	TotalOutputTokens pgtype.Int4        `db:"total_output_tokens"`
-	Content           pgtype.Text        `db:"content"`
-	FunctionName      pgtype.Text        `db:"function_name"`
-	FunctionCall      json.RawMessage    `db:"function_call"`
-	FunctionResponse  json.RawMessage    `db:"function_response"`
+	ID                int32                  `db:"id"`
+	SessionID         uuid.UUID              `db:"session_id"`
+	UserID            uuid.UUID              `db:"user_id"`
+	CreatedAt         time.Time              `db:"created_at"`
+	Role              MessagesRole           `db:"role"`
+	Turn              int32                  `db:"turn"`
+	Model             NullLargeLanguageModel `db:"model"`
+	TotalInputTokens  pgtype.Int4            `db:"total_input_tokens"`
+	TotalOutputTokens pgtype.Int4            `db:"total_output_tokens"`
+	Content           pgtype.Text            `db:"content"`
+	FunctionName      pgtype.Text            `db:"function_name"`
+	FunctionCall      json.RawMessage        `db:"function_call"`
+	FunctionResponse  json.RawMessage        `db:"function_response"`
 }
 
 type RagAyat struct {

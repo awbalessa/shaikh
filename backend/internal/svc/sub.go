@@ -4,59 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
-	"github.com/nats-io/nats.go/jetstream"
 )
-
-const (
-	syncerDurableName         string        = "fix-syncer"
-	syncerAckTime             time.Duration = 3 * time.Minute
-	syncerMaxDeliveryAttempts int           = 5
-)
-
-type syncer struct {
-	name      string
-	cons      jetstream.Consumer
-	log       *slog.Logger
-	lastFlush time.Time
-	buffer    []jetstream.Msg
-}
-
-func BuildSyncer(
-	ctx context.Context,
-	stream jetstream.JetStream,
-) (*syncer, error) {
-	cons, err := stream.CreateOrUpdateConsumer(ctx, agent.AgentStream, jetstream.ConsumerConfig{
-		Durable:       syncerDurableName,
-		FilterSubject: agent.SyncerSubject,
-		DeliverPolicy: jetstream.DeliverAllPolicy,
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		AckWait:       syncerAckTime,
-		MaxDeliver:    syncerMaxDeliveryAttempts,
-		ReplayPolicy:  jetstream.ReplayInstantPolicy,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	logger := slog.Default().With(
-		"component", "worker-group",
-		slog.String("worker", syncerDurableName),
-		slog.String("subject", agent.SyncerSubject),
-		slog.String("ack_time", syncerAckTime.String()),
-	)
-
-	return &syncer{
-		name:      syncerDurableName,
-		cons:      cons,
-		log:       logger,
-		lastFlush: time.Time{},
-		buffer:    nil,
-	}, nil
-}
 
 const (
 	SyncerDurableName string        = "syncer"
@@ -147,5 +98,88 @@ func (s *Syncer) persistMessages(
 		return fmt.Errorf("failed to persist messages: %w", err)
 	}
 
-	_, err := mr.CreateMessage(ctx context.Context, msg dom.Message)
+	turn := load.InteractionDTO.TurnNumber
+	inf1 := load.InteractionDTO.Inferences[0]
+	_, err := mr.CreateMessage(ctx, &dom.UserMessage{
+		MsgMeta: dom.MsgMeta{
+			SessionID:        load.SessionID,
+			UserID:           load.UserID,
+			Model:            inf1.Model,
+			Turn:             turn,
+			TotalInputTokens: &inf1.InputTokens,
+			Content:          &inf1.Input.Text,
+		},
+		MsgContent: inf1.Input.Text,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to persist messages: %w", err)
+	}
+
+	if len(load.InteractionDTO.Inferences) > 1 {
+		inf2 := load.InteractionDTO.Inferences[1]
+		call, err := toJsonRawMessage(inf2.Output.FunctionCall.Args)
+		if err != nil {
+			return fmt.Errorf("failed to persist messages: %w", err)
+		}
+		resp, err := toJsonRawMessage(inf1.Input.FunctionResponse.Content)
+		if err != nil {
+			return fmt.Errorf("failed to persist messages: %w", err)
+		}
+		_, err = mr.CreateMessage(ctx, &dom.FunctionMessage{
+			MsgMeta: dom.MsgMeta{
+				SessionID:         load.SessionID,
+				UserID:            load.UserID,
+				Turn:              turn,
+				TotalInputTokens:  &inf2.InputTokens,
+				TotalOutputTokens: &inf1.OutputTokens,
+				FunctionName:      &inf1.Input.FunctionResponse.Name,
+				FunctionCall:      call,
+				FunctionResponse:  resp,
+			},
+			FunctionName:     inf1.Input.FunctionResponse.Name,
+			FunctionCall:     call,
+			FunctionResponse: resp,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to persist messages: %w", err)
+		}
+
+		_, err = mr.CreateMessage(ctx, &dom.ModelMessage{
+			MsgMeta: dom.MsgMeta{
+				SessionID:         load.SessionID,
+				UserID:            load.UserID,
+				Model:             inf2.Model,
+				Turn:              turn,
+				TotalOutputTokens: &inf2.OutputTokens,
+				Content:           &inf2.Output.Text,
+			},
+			MsgContent: inf2.Output.Text,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to persist messages: %w", err)
+		}
+
+		return nil
+	}
+
+	_, err = mr.CreateMessage(ctx, &dom.ModelMessage{
+		MsgMeta: dom.MsgMeta{
+			SessionID:         load.SessionID,
+			UserID:            load.UserID,
+			Model:             inf1.Model,
+			Turn:              turn,
+			TotalOutputTokens: &inf1.OutputTokens,
+			Content:           &inf1.Output.Text,
+		},
+		MsgContent: inf1.Output.Text,
+	})
+	return nil
+}
+
+func toJsonRawMessage(m map[string]any) (json.RawMessage, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(b), nil
 }

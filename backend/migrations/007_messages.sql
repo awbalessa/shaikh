@@ -6,8 +6,8 @@ CREATE TABLE public.messages (
     user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     role public.messages_role NOT NULL,
-    model public.large_language_model NOT NULL,
     turn integer NOT NULL,
+    model public.large_language_model,
     total_input_tokens integer,
     total_output_tokens integer,
     -- for roles 'user' and 'model'

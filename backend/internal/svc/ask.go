@@ -21,13 +21,6 @@ type AskSvc struct {
 	Logger     *slog.Logger
 }
 
-type Inference struct {
-	Input        *dom.InputPrompt
-	Output       *dom.ModelOutput
-	InputTokens  int32
-	OutputTokens int32
-}
-
 func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
@@ -59,7 +52,7 @@ func (a *AskSvc) ask(
 	prompt string,
 	win []*dom.LLMContent,
 	yield func(string, error) bool,
-) [2]*Inference {
+) InferenceDTO {
 	var infs [2]*Inference
 
 	win = append(win, &dom.LLMContent{
@@ -180,11 +173,18 @@ type ModelOutputDTO struct {
 	FunctionCall *LLMFunctionCallDTO `json:"function_call"`
 }
 
+type InferenceDTO struct {
+	Input        *InputPromptDTO `json:"input"`
+	Output       *ModelOutputDTO `json:"output"`
+	TurnNumber   int32           `json:"turn_number"`
+	InputTokens  int32
+	OutputTokens int32
+	Model        dom.LargeLanguageModel
+}
+
 type InteractionDTO struct {
-	Input      InputPromptDTO `json:"input_prompt"`
-	Output     ModelOutputDTO `json:"model_output"`
-	TurnNumber int32          `json:"turn_number"`
-	Usage      []dom.TokenUsage
+	Inferences [2]*InferenceDTO `json:"inferences"`
+	TurnNumber int32            `json:"turn_number"`
 }
 
 type SyncPayloadDTO struct {
