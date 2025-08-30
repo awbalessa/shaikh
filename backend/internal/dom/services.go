@@ -2,406 +2,287 @@ package dom
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"iter"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type Document struct {
-	ID          int32
-	Source      Source
-	Content     string
-	SurahNumber SurahNumber
-	AyahNumber  AyahNumber
+var (
+	ErrQueriesVectorsNot1to1 = errors.New("vectors and queries are not one-to-one")
+	ErrNoSubqueries          = errors.New("must pass in at least one subquery")
+	ErrTooManySubqueries     = errors.New("cannot pass in more than 3 sub-queries")
+	ErrAyahNeedsSingleSurah  = errors.New("must specify exactly one surah when specifying ayah filters")
+	ErrAgentDoesNotExist     = errors.New("agent does not exist")
+)
+
+func ValidateSearchQuery(arg SearchQuery) ([]FullQueryContext, error) {
+	if len(arg.QueriesWithFilters) == 0 {
+		return nil, ErrNoSubqueries
+	}
+	if len(arg.QueriesWithFilters) > MaxSubqueries {
+		return nil, ErrTooManySubqueries
+	}
+
+	out := make([]FullQueryContext, 0, len(arg.QueriesWithFilters))
+
+	for _, item := range arg.QueriesWithFilters {
+		f := item.FilterContext // start with the user-provided filters
+
+		switch {
+		case len(f.OptionalAyahs) > 0 && len(f.OptionalSurahs) != 1:
+			return nil, ErrAyahNeedsSingleSurah
+
+		case len(f.OptionalSurahs) > 1:
+			f.OptionalAyahs = nil
+		}
+
+		labels := FiltersToLabels(f)
+
+		out = append(out, FullQueryContext{
+			QueryWithFilter: QueryWithFilter{
+				Query:         item.Query,
+				FilterContext: f,
+			},
+			VectorWithLabel: VectorWithLabel{
+				LabelContext: labels,
+				Vector:       nil,
+			},
+		})
+	}
+
+	return out, nil
 }
 
-type Chunk struct {
-	Document
-	ParentID int32
+func FiltersToLabels(f FilterContext) LabelContext {
+	var (
+		contentTypes []LabelContentType = []LabelContentType{}
+		sources      []LabelSource      = []LabelSource{}
+		surahs       []LabelSurahNumber = []LabelSurahNumber{}
+		ayahs        []LabelAyahNumber  = []LabelAyahNumber{}
+	)
+
+	if len(f.OptionalContentTypes) > 0 {
+		for _, ct := range f.OptionalContentTypes {
+			contentTypes = append(contentTypes, ContentTypeToLabel[ct])
+		}
+	}
+
+	if len(f.OptionalSources) > 0 {
+		for _, src := range f.OptionalSources {
+			sources = append(sources, SourceToLabel[src])
+		}
+	}
+
+	if len(f.OptionalSurahs) > 0 {
+		for _, sur := range f.OptionalSurahs {
+			surahs = append(surahs,
+				LabelSurahNumber(sur+SurahNumber(SurahNumberToLabelOffset)),
+			)
+		}
+	}
+
+	if len(f.OptionalAyahs) > 0 {
+		for _, aya := range f.OptionalAyahs {
+			ayahs = append(ayahs,
+				LabelAyahNumber(aya+AyahNumber(AyahNumberToLabelOffset)),
+			)
+		}
+	}
+
+	return LabelContext{
+		OptionalContentTypeLabels: contentTypes,
+		OptionalSourceLabels:      sources,
+		OptionalSurahLabels:       surahs,
+		OptionalAyahLabels:        ayahs,
+	}
 }
 
-type User struct {
-	ID    uuid.UUID
-	Email string
+func RRFusion(sem []Chunk, lex []Chunk) []Chunk {
+	ranked := rankedLists{}
+	rowMap := make(map[int32]Chunk)
+	semIDs := make([]int32, 0, len(sem))
+	lexIDs := make([]int32, 0, len(lex))
+
+	for _, row := range sem {
+		semIDs = append(semIDs, row.ID)
+		rowMap[row.ID] = row
+	}
+	ranked = append(ranked, semIDs)
+
+	for _, row := range lex {
+		lexIDs = append(lexIDs, row.ID)
+		rowMap[row.ID] = row
+	}
+	ranked = append(ranked, lexIDs)
+
+	scores := rrfusion(ranked)
+
+	pairs := make([]Rank, 0, len(scores))
+	for id, score := range scores {
+		pairs = append(pairs, Rank{Index: id, Relevance: float64(score)})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].Relevance > pairs[j].Relevance
+	})
+
+	total := len(pairs)
+	cutoff := total
+	if total > 100 {
+		cutoff = total / 2
+	}
+	top := pairs[:cutoff]
+
+	fused := make([]Chunk, 0, cutoff)
+	for _, pair := range top {
+		fused = append(fused, rowMap[pair.Index])
+	}
+
+	return fused
 }
 
-type Session struct {
-	ID           uuid.UUID
-	UserID       uuid.UUID
-	LastAccessed time.Time
-	Summary      *string
+func rrfusion(rankings rankedLists) map[int32]float64 {
+	scores := make(map[int32]float64)
+
+	for _, ranking := range rankings {
+		for rank, docID := range ranking {
+			score := 1.0 / float64(
+				RRFConstant+rank,
+			)
+			scores[docID] += score
+		}
+	}
+	return scores
 }
 
-type MsgMeta struct {
-	ID                int32
-	SessionID         uuid.UUID
-	UserID            uuid.UUID
-	Model             LargeLanguageModel
-	Turn              int32
-	TotalInputTokens  *int32
-	TotalOutputTokens *int32
-	Content           *string
-	FunctionName      *string
-	FunctionCall      json.RawMessage
-	FunctionResponse  json.RawMessage
+type FilterContext struct {
+	OptionalContentTypes []ContentType
+	OptionalSources      []Source
+	OptionalSurahs       []SurahNumber
+	OptionalAyahs        []AyahNumber
 }
 
-type Message interface {
-	Role() MessageRole
-	Meta() *MsgMeta
+type LabelContext struct {
+	OptionalContentTypeLabels []LabelContentType
+	OptionalSourceLabels      []LabelSource
+	OptionalSurahLabels       []LabelSurahNumber
+	OptionalAyahLabels        []LabelAyahNumber
 }
 
-type UserMessage struct {
-	MsgMeta
-	MsgContent string
+type QueryWithFilter struct {
+	Query string
+	FilterContext
 }
 
-func (m *UserMessage) Role() MessageRole { return UserRole }
-func (m *UserMessage) Meta() *MsgMeta    { return &m.MsgMeta }
-
-type ModelMessage struct {
-	MsgMeta
-	MsgContent string
+type VectorWithLabel struct {
+	Vector Vector
+	LabelContext
 }
 
-func (m *ModelMessage) Role() MessageRole { return ModelRole }
-func (m *ModelMessage) Meta() *MsgMeta    { return &m.MsgMeta }
-
-type FunctionMessage struct {
-	MsgMeta
-	FunctionName     string
-	FunctionCall     json.RawMessage
-	FunctionResponse json.RawMessage
+type FullQueryContext struct {
+	QueryWithFilter
+	VectorWithLabel
 }
 
-func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
-func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
-
-type Memory struct {
-	ID        int32
-	UserID    uuid.UUID
-	UpdatedAt time.Time
-	Content   string
+type SearchQuery struct {
+	FullQuery          string
+	TopK               TopK
+	QueriesWithFilters []QueryWithFilter
 }
 
-type Embedder interface {
-	EmbedQueries(ctx context.Context, queries []string) ([]Vector, error)
-}
-
-type Rank struct {
-	Index     int32
+type SearchResult struct {
+	Chunk
 	Relevance float64
 }
 
-type Reranker interface {
-	RerankDocuments(
-		ctx context.Context,
-		query string,
-		documents []string,
-		topk TopK,
-	) ([]Rank, error)
+type InputPrompt struct {
+	Text             string               `json:"text"`
+	FunctionResponse *LLMFunctionResponse `json:"function_response,omitempty"`
 }
 
-type SemanticSearcher interface {
-	ParallelSemanticSearch(
-		ctx context.Context,
-		queries []FullQueryContext,
-		topk int,
-	) ([][]Chunk, error)
-	SemanticSearch(
-		ctx context.Context,
-		vector VectorWithLabel,
-		topk int,
-	) ([]Chunk, error)
+type ModelOutput struct {
+	Text         string           `json:"text"`
+	FunctionCall *LLMFunctionCall `json:"function_call,omitempty"`
 }
 
-type LexicalSearcher interface {
-	ParallelLexicalSearch(
-		ctx context.Context,
-		queries []FullQueryContext,
-		topk int,
-	) ([][]Chunk, error)
-	LexicalSearch(
-		ctx context.Context,
-		query QueryWithFilter,
-		topk int,
-	) ([]Chunk, error)
-}
-
-type Searcher interface {
-	SemanticSearcher
-	LexicalSearcher
-}
-
-type Cache interface {
-	Set(ctx context.Context, key string, value []byte, expr time.Duration) error
-	Get(ctx context.Context, key string) ([]byte, error)
-}
-
-type LLMRole string
-
-const (
-	LLMUserRole  LLMRole = "user"
-	LLMModelRole LLMRole = "model"
-)
-
-type LLMFunctionCall struct {
-	Name string
-	Args map[string]any
-}
-
-type LLMFunctionResponse struct {
-	Name    string
-	Content map[string]any
-}
-
-type LLMPart struct {
-	Text             string
-	FunctionCall     *LLMFunctionCall
-	FunctionResponse *LLMFunctionResponse
-}
-
-type LLMContent struct {
-	Role  LLMRole
-	Parts []*LLMPart
-}
-
-type LLMSchemaType string
-
-const (
-	SchemaString  LLMSchemaType = "STRING"
-	SchemaInteger LLMSchemaType = "INTEGER"
-	SchemaNumber  LLMSchemaType = "NUMBER"
-	SchemaBoolean LLMSchemaType = "BOOLEAN"
-	SchemaArray   LLMSchemaType = "ARRAY"
-	SchemaObject  LLMSchemaType = "OBJECT"
-)
-
-type LLMSchema struct {
-	Title       string        `json:"title,omitempty"`
-	Description string        `json:"description,omitempty"`
-	Type        LLMSchemaType `json:"type,omitempty"`
-
-	Format string   `json:"format,omitempty"`
-	Enum   []string `json:"enum,omitempty"`
-
-	Required   []string              `json:"required,omitempty"`
-	Properties map[string]*LLMSchema `json:"properties,omitempty"`
-
-	Items    *LLMSchema `json:"items,omitempty"`
-	MinItems *int64     `json:"minItems,omitempty"`
-	MaxItems *int64     `json:"maxItems,omitempty"`
-
-	Minimum *float64 `json:"minimum,omitempty"`
-	Maximum *float64 `json:"maximum,omitempty"`
-
-	Example any `json:"example,omitempty"`
-}
-
-type LLMFunctionDecl struct {
-	Name        string
-	Description string
-	Parameters  *LLMSchema
-}
-
-type LLMGenConfig struct {
-	SystemInstructions *LLMContent
-	Temperature        float32
-	CandidateCount     int32
-	Tools              []*LLMFunctionDecl
-	ResponseMimeType   string
-	ResponseSchema     *LLMSchema
-}
-
-type LLMCountConfig struct {
-	System *LLMContent
-	Tools  []*LLMFunctionDecl
-}
-
-func Ptr[T any](v T) *T { return &v }
-
-func StringEnum(options ...string) *LLMSchema {
-	return &LLMSchema{
-		Type: SchemaString,
-		Enum: options,
-	}
-}
-
-func ArrayOf(item *LLMSchema, min, max *int64) *LLMSchema {
-	return &LLMSchema{
-		Type:     SchemaArray,
-		Items:    item,
-		MinItems: min,
-		MaxItems: max,
-	}
-}
-
-func ObjectWith(props map[string]*LLMSchema, required ...string) *LLMSchema {
-	return &LLMSchema{
-		Type:       SchemaObject,
-		Properties: props,
-		Required:   required,
-	}
-}
-
-func IntegerRange(min, max *float64) *LLMSchema {
-	return &LLMSchema{
-		Type:    SchemaInteger,
-		Minimum: min,
-		Maximum: max,
-	}
-}
-
-func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
-	if title != nil {
-		s.Title = *title
-	}
-
-	if description != nil {
-		s.Description = *description
-	}
-
-	return s
-}
-
-type LLM interface {
-	Stream(
-		ctx context.Context,
-		model string,
-		window []*LLMContent,
-		cfg *LLMGenConfig,
-		yield func(*LLMPart, error) bool,
-	) *LLMGenResult
-
-	CountTokens(
-		ctx context.Context,
-		model string,
-		window []*LLMContent,
-		cfg *LLMCountConfig,
-	) (int32, error)
-}
-
-type AgentName string
-
-const (
-	Caller    AgentName = "Caller"
-	Generator AgentName = "Generator"
-)
-
-type AgentProfile struct {
-	Model  string
-	Config *LLMGenConfig
-}
-
-type LLMFunctionName string
-
-const (
-	FunctionSearch LLMFunctionName = "Search()"
-)
-
-type LLMFunction interface {
-	Call(ctx context.Context, args map[string]any) (map[string]any, error)
-}
-
-type LLMFunctions map[LLMFunctionName]LLMFunction
-
-type TokenUsage struct {
+type Inference struct {
+	Input        *InputPrompt `json:"input"`
+	Output       *ModelOutput `json:"output"`
 	InputTokens  int32
 	OutputTokens int32
+	Model        LargeLanguageModel
 }
 
-type FinishReason string
+type Interaction struct {
+	Inferences [2]*Inference `json:"inferences"`
+	TurnNumber int32         `json:"turn_number"`
+}
+
+type SyncPayload struct {
+	UserID      uuid.UUID    `json:"user_id"`
+	SessionID   uuid.UUID    `json:"session_id"`
+	Interaction *Interaction `json:"interaction"`
+}
+
+type ContextWindow struct {
+	UserMemories     []Memory      `json:"memories"`
+	PreviousSessions []Session     `json:"previous_sessions"`
+	History          []Interaction `json:"history"`
+	Turns            int32         `json:"turns"`
+}
+
+type ContextCache struct {
+	UserID    uuid.UUID      `json:"user_id"`
+	SessionID uuid.UUID      `json:"session_id"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	Window    *ContextWindow `json:"context_window"`
+}
 
 const (
-	FinishReasonUnspecified           FinishReason = "FINISH_REASON_UNSPECIFIED"
-	FinishReasonStop                  FinishReason = "STOP"
-	FinishReasonMaxTokens             FinishReason = "MAX_TOKENS"
-	FinishReasonSafety                FinishReason = "SAFETY"
-	FinishReasonRecitation            FinishReason = "RECITATION"
-	FinishReasonLanguage              FinishReason = "LANGUAGE"
-	FinishReasonOther                 FinishReason = "OTHER"
-	FinishReasonBlocklist             FinishReason = "BLOCKLIST"
-	FinishReasonProhibitedContent     FinishReason = "PROHIBITED_CONTENT"
-	FinishReasonSPII                  FinishReason = "SPII"
-	FinishReasonMalformedFunctionCall FinishReason = "MALFORMED_FUNCTION_CALL"
-	FinishReasonImageSafety           FinishReason = "IMAGE_SAFETY"
-	FinishReasonUnexpectedToolCall    FinishReason = "UNEXPECTED_TOOL_CALL"
+	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
 )
 
-type LLMGenResult struct {
-	Output        *ModelOutput
-	Usage         *TokenUsage
-	FinishReason  FinishReason
-	FinishMessage string
+type ContextRepo struct {
+	MemoryRepo  MemoryRepo
+	SessionRepo SessionRepo
+	MessageRepo MessageRepo
 }
 
-type Agent interface {
-	Generate(
-		ctx context.Context,
-		name AgentName,
-		win []*LLMContent,
-	) iter.Seq2[*LLMPart, error]
-	GenerateWithYield(
-		ctx context.Context,
-		name AgentName,
-		win []*LLMContent,
-		yield func(*LLMPart, error) bool,
-	) *LLMGenResult
-	BuildContextWindow(
-		ctx context.Context,
-		name AgentName,
-		cw *ContextWindow,
-		now time.Time,
-	) ([]*LLMContent, error)
+func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
+	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }
 
-var AgentToModel = map[AgentName]LargeLanguageModel{
-	Caller:    GeminiV2p5Flash,
-	Generator: GeminiV2p5FlashLite,
-}
-
-var (
-	ErrAgentDoesNotExist = errors.New("agent does not exist")
+const (
+	ContextStream            string = "CONTEXT"
+	ContextStreamSubject     string = "context."
+	ContextStreamSubjectStar string = "context.*"
 )
 
-type AgentStruct struct {
-	Agents map[AgentName]AgentProfile
-	LLM    LLM
+type Subscriber interface {
+	Consumer() PubSubConsumer
+	Start(ctx context.Context) error
+	Process(ctx context.Context, msg PubMsg) error
 }
 
-func (a *AgentStruct) Generate(
-	ctx context.Context,
-	name AgentName,
-	win []*LLMContent,
-) iter.Seq2[*LLMPart, error] {
-	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
-		prof, ok := a.Agents[name]
-		if !ok {
-			yield(nil, ErrAgentDoesNotExist)
-			return
-		}
-
-		a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
-	})
+type SubscriberGroup struct {
+	Subscribers []Subscriber
 }
 
-func (a *AgentStruct) GenerateWithYield(
-	ctx context.Context,
-	name AgentName,
-	win []*LLMContent,
-	yield func(*LLMPart, error) bool,
-) *LLMGenResult {
-	prof, ok := a.Agents[name]
-	if !ok {
-		yield(nil, ErrAgentDoesNotExist)
-		return nil
+func (g *SubscriberGroup) Add(s Subscriber) {
+	g.Subscribers = append(g.Subscribers, s)
+}
+
+func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
+	for _, s := range g.Subscribers {
+		go func(s Subscriber) {
+			if err := s.Start(ctx); err != nil {
+				cancel()
+			}
+		}(s)
 	}
-
-	return a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
 }
 
 func BuildCaller() *AgentProfile {
@@ -633,10 +514,6 @@ Your job is to generate a high-quality, evidence-based answer using only the pro
 	}
 }
 
-const (
-	TokenLimit int32 = 200_000
-)
-
 func (a *AgentStruct) BuildContextWindow(
 	ctx context.Context,
 	name AgentName,
@@ -668,7 +545,7 @@ func (a *AgentStruct) BuildContextWindow(
 	if len(cw.PreviousSessions) > 0 {
 		var parts []*LLMPart
 		for _, s := range cw.PreviousSessions {
-			partText := fmt.Sprintf("Last Accessed: %s\nSummary: %s",
+			partText := fmt.Sprintf("Last Accessed: %s Summary: %s",
 				HumanizeFrom(now, s.LastAccessed),
 				*s.Summary,
 			)
@@ -780,129 +657,4 @@ func HumanizeFrom(now, t time.Time) string {
 	default:
 		return fmt.Sprintf("%d years ago", int(d.Hours()/(24*365)))
 	}
-}
-
-type PubOptions struct {
-	MsgID string
-}
-
-type PubAck struct {
-	Stream string
-	Seq    uint64
-}
-
-type PubMsgMetadata struct {
-	Stream       string
-	Consumer     string
-	NumDelivered uint64
-	Timestamp    time.Time
-}
-
-type PubMsg interface {
-	Data() []byte
-	Subject() string
-	Ack() error
-	Nak() error
-	Term() error
-	InProgress() error
-	Metadata() (PubMsgMetadata, error)
-}
-
-type PubSubRetentionPolicy int
-type PubSubStorageType int
-
-const (
-	WorkQueue PubSubRetentionPolicy = iota
-	LimitsBased
-)
-
-const (
-	FileStorage PubSubStorageType = iota
-)
-
-type PubSubStreamConfig struct {
-	Name       string
-	Subjects   []string
-	Retention  PubSubRetentionPolicy
-	MaxMsgs    int64
-	MaxAge     time.Duration
-	Storage    PubSubStorageType
-	Replicas   int
-	Duplicates time.Duration
-}
-
-type PubSub interface {
-	CreateStream(ctx context.Context, cfg PubSubStreamConfig) error
-	CreateConsumer(ctx context.Context, stream string, cfg PubSubConsumerConfig) (PubSubConsumer, error)
-}
-
-type Publisher interface {
-	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
-}
-
-type PubSubDeliverPolicy int
-type PubSubAckPolicy int
-type PubSubReplayPolicy int
-
-const (
-	DeliverAll    PubSubDeliverPolicy = iota
-	AckExplicit   PubSubAckPolicy     = iota
-	ReplayInstant PubSubReplayPolicy  = iota
-)
-
-type PubSubConsumerConfig struct {
-	Name              string
-	Durable           bool
-	InactiveThreshold time.Duration
-	DeliverPolicy     PubSubDeliverPolicy
-	AckPolicy         PubSubAckPolicy
-	AckWait           time.Duration
-	MaxDeliver        int
-	BackOff           []time.Duration
-	FilterSubjects    []string
-	ReplayPolicy      PubSubReplayPolicy
-	MaxRequestBatch   int
-	MaxRequestExpires time.Duration
-}
-
-type PubSubConsumer interface {
-	Fetch(batch int) ([]PubMsg, error)
-	Messages(ctx context.Context) (<-chan PubMsg, error)
-}
-
-type MemoryRepo interface {
-	GetMemoriesByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfMemories int32,
-	) ([]Memory, error)
-}
-
-type SessionRepo interface {
-	GetSessionsByUserID(
-		ctx context.Context,
-		userID uuid.UUID,
-		numberOfSessions int32,
-	) ([]Session, error)
-}
-
-type MessageRepo interface {
-	CreateMessage(
-		ctx context.Context,
-		msg Message,
-	) (Message, error)
-	GetMessagesBySessionIDOrdered(
-		ctx context.Context,
-		sessionID uuid.UUID,
-	) ([]Message, error)
-}
-
-type Tx interface {
-	Get(repo any) error
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-}
-
-type UnitOfWork interface {
-	Begin(ctx context.Context) (Tx, error)
 }

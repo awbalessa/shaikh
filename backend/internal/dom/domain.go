@@ -1,5 +1,12 @@
 package dom
 
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/google/uuid"
+)
+
 const (
 	SurahNumber1   SurahNumber = 1
 	SurahNumber2   SurahNumber = 2
@@ -464,7 +471,7 @@ var SourceToLabel = map[Source]LabelSource{
 	SourceTafsirIbnKathir: LabelSourceTafsirIbnKathir,
 }
 
-func ToContentTypes(raw any) []ContentType {
+func RawToContentTypes(raw any) []ContentType {
 	if raw == nil {
 		return nil
 	}
@@ -481,7 +488,7 @@ func ToContentTypes(raw any) []ContentType {
 	return out
 }
 
-func ToSources(raw any) []Source {
+func RawToSources(raw any) []Source {
 	if raw == nil {
 		return nil
 	}
@@ -498,7 +505,7 @@ func ToSources(raw any) []Source {
 	return out
 }
 
-func ToSurahNumbers(raw any) []SurahNumber {
+func RawToSurahNumbers(raw any) []SurahNumber {
 	if raw == nil {
 		return nil
 	}
@@ -522,7 +529,7 @@ func ToSurahNumbers(raw any) []SurahNumber {
 	return out
 }
 
-func ToAyahNumbers(raw any) []AyahNumber {
+func RawToAyahNumbers(raw any) []AyahNumber {
 	if raw == nil {
 		return nil
 	}
@@ -544,4 +551,266 @@ func ToAyahNumbers(raw any) []AyahNumber {
 		}
 	}
 	return out
+}
+
+type Document struct {
+	ID          int32
+	Source      Source
+	Content     string
+	SurahNumber SurahNumber
+	AyahNumber  AyahNumber
+}
+
+type Chunk struct {
+	Document
+	ParentID int32
+}
+
+type User struct {
+	ID    uuid.UUID
+	Email string
+}
+
+type Session struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	LastAccessed time.Time
+	Summary      *string
+}
+
+type MsgMeta struct {
+	ID                int32
+	SessionID         uuid.UUID
+	UserID            uuid.UUID
+	Turn              int32
+	Model             *LargeLanguageModel
+	TotalInputTokens  *int32
+	TotalOutputTokens *int32
+	Content           *string
+	FunctionName      *string
+	FunctionCall      json.RawMessage
+	FunctionResponse  json.RawMessage
+}
+
+type Message interface {
+	Role() MessageRole
+	Meta() *MsgMeta
+}
+
+type UserMessage struct {
+	MsgMeta
+	MsgContent string
+}
+
+func (m *UserMessage) Role() MessageRole { return UserRole }
+func (m *UserMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type ModelMessage struct {
+	MsgMeta
+	MsgContent string
+}
+
+func (m *ModelMessage) Role() MessageRole { return ModelRole }
+func (m *ModelMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type FunctionMessage struct {
+	MsgMeta
+	FunctionName     string
+	FunctionCall     json.RawMessage
+	FunctionResponse json.RawMessage
+}
+
+func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
+func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
+
+type Memory struct {
+	ID        int32
+	UserID    uuid.UUID
+	UpdatedAt time.Time
+	Content   string
+}
+
+type LLMRole string
+
+const (
+	LLMUserRole  LLMRole = "user"
+	LLMModelRole LLMRole = "model"
+)
+
+type LLMFunctionCall struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+}
+
+type LLMFunctionResponse struct {
+	Name    string         `json:"name"`
+	Content map[string]any `json:"content"`
+}
+
+type LLMPart struct {
+	Text             string
+	FunctionCall     *LLMFunctionCall
+	FunctionResponse *LLMFunctionResponse
+}
+
+type LLMContent struct {
+	Role  LLMRole
+	Parts []*LLMPart
+}
+
+type LLMSchemaType string
+
+const (
+	SchemaString  LLMSchemaType = "STRING"
+	SchemaInteger LLMSchemaType = "INTEGER"
+	SchemaNumber  LLMSchemaType = "NUMBER"
+	SchemaBoolean LLMSchemaType = "BOOLEAN"
+	SchemaArray   LLMSchemaType = "ARRAY"
+	SchemaObject  LLMSchemaType = "OBJECT"
+)
+
+type LLMSchema struct {
+	Title       string        `json:"title,omitempty"`
+	Description string        `json:"description,omitempty"`
+	Type        LLMSchemaType `json:"type,omitempty"`
+
+	Format string   `json:"format,omitempty"`
+	Enum   []string `json:"enum,omitempty"`
+
+	Required   []string              `json:"required,omitempty"`
+	Properties map[string]*LLMSchema `json:"properties,omitempty"`
+
+	Items    *LLMSchema `json:"items,omitempty"`
+	MinItems *int64     `json:"minItems,omitempty"`
+	MaxItems *int64     `json:"maxItems,omitempty"`
+
+	Minimum *float64 `json:"minimum,omitempty"`
+	Maximum *float64 `json:"maximum,omitempty"`
+
+	Example any `json:"example,omitempty"`
+}
+
+type LLMFunctionDecl struct {
+	Name        string
+	Description string
+	Parameters  *LLMSchema
+}
+
+type LLMGenConfig struct {
+	SystemInstructions *LLMContent
+	Temperature        float32
+	CandidateCount     int32
+	Tools              []*LLMFunctionDecl
+	ResponseMimeType   string
+	ResponseSchema     *LLMSchema
+}
+
+type LLMCountConfig struct {
+	System *LLMContent
+	Tools  []*LLMFunctionDecl
+}
+
+func Ptr[T any](v T) *T { return &v }
+
+func StringEnum(options ...string) *LLMSchema {
+	return &LLMSchema{
+		Type: SchemaString,
+		Enum: options,
+	}
+}
+
+func ArrayOf(item *LLMSchema, min, max *int64) *LLMSchema {
+	return &LLMSchema{
+		Type:     SchemaArray,
+		Items:    item,
+		MinItems: min,
+		MaxItems: max,
+	}
+}
+
+func ObjectWith(props map[string]*LLMSchema, required ...string) *LLMSchema {
+	return &LLMSchema{
+		Type:       SchemaObject,
+		Properties: props,
+		Required:   required,
+	}
+}
+
+func IntegerRange(min, max *float64) *LLMSchema {
+	return &LLMSchema{
+		Type:    SchemaInteger,
+		Minimum: min,
+		Maximum: max,
+	}
+}
+
+func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
+	if title != nil {
+		s.Title = *title
+	}
+
+	if description != nil {
+		s.Description = *description
+	}
+
+	return s
+}
+
+type AgentName string
+
+const (
+	Caller    AgentName = "Caller"
+	Generator AgentName = "Generator"
+)
+
+type AgentProfile struct {
+	Model  string
+	Config *LLMGenConfig
+}
+
+type LLMFunctionName string
+
+const (
+	FunctionSearch LLMFunctionName = "Search()"
+)
+
+type LLMFunctions map[LLMFunctionName]LLMFunction
+
+type TokenUsage struct {
+	InputTokens  int32
+	OutputTokens int32
+}
+
+type FinishReason string
+
+const (
+	FinishReasonUnspecified           FinishReason = "FINISH_REASON_UNSPECIFIED"
+	FinishReasonStop                  FinishReason = "STOP"
+	FinishReasonMaxTokens             FinishReason = "MAX_TOKENS"
+	FinishReasonSafety                FinishReason = "SAFETY"
+	FinishReasonRecitation            FinishReason = "RECITATION"
+	FinishReasonLanguage              FinishReason = "LANGUAGE"
+	FinishReasonOther                 FinishReason = "OTHER"
+	FinishReasonBlocklist             FinishReason = "BLOCKLIST"
+	FinishReasonProhibitedContent     FinishReason = "PROHIBITED_CONTENT"
+	FinishReasonSPII                  FinishReason = "SPII"
+	FinishReasonMalformedFunctionCall FinishReason = "MALFORMED_FUNCTION_CALL"
+	FinishReasonImageSafety           FinishReason = "IMAGE_SAFETY"
+	FinishReasonUnexpectedToolCall    FinishReason = "UNEXPECTED_TOOL_CALL"
+)
+
+type LLMGenResult struct {
+	Output        *ModelOutput
+	Usage         *TokenUsage
+	FinishReason  FinishReason
+	FinishMessage string
+}
+
+const (
+	TokenLimit int32 = 200_000
+)
+
+var AgentToModel = map[AgentName]LargeLanguageModel{
+	Caller:    GeminiV2p5Flash,
+	Generator: GeminiV2p5FlashLite,
 }

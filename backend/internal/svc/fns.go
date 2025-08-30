@@ -14,7 +14,7 @@ type SurahAyahFilters struct {
 	Ayahs  []int32 `json:"ayahs,omitempty"`
 }
 
-type PromptWithFilterDTO struct {
+type PWFFnSearch struct {
 	Prompt             string            `json:"prompt"`
 	ContentTypeFilters []string          `json:"content_type_filters,omitempty"`
 	SourceFilters      []string          `json:"source_filters,omitempty"`
@@ -22,8 +22,8 @@ type PromptWithFilterDTO struct {
 }
 
 type FnSearchSchema struct {
-	FullPrompt         string                `json:"full_prompt"`
-	PromptsWithFilters []PromptWithFilterDTO `json:"prompts_with_filters"`
+	FullPrompt         string        `json:"full_prompt"`
+	PromptsWithFilters []PWFFnSearch `json:"prompts_with_filters"`
 }
 
 type FnSearch struct {
@@ -31,10 +31,25 @@ type FnSearch struct {
 	Logger    *slog.Logger
 }
 
+func BuildFnSearch(se *SearchSvc, log *slog.Logger) *FnSearch {
+	log = log.With(
+		"component", "FnSearch",
+	)
+
+	return &FnSearch{
+		SearchSvc: se,
+		Logger:    log,
+	}
+}
+
 func (f *FnSearch) Call(
 	ctx context.Context,
 	args map[string]any,
 ) (map[string]any, error) {
+	log := f.Logger.With(
+		"method", "Call",
+	)
+
 	fullPrompt, ok := args["full_prompt"].(string)
 	if !ok {
 		return nil, errors.New("missing or invalid 'full_prompt'")
@@ -54,14 +69,14 @@ func (f *FnSearch) Call(
 
 		prompt, _ := pmap["prompt"].(string)
 
-		contentTypes := dom.ToContentTypes(pmap["content_type_filters"].([]string))
-		sources := dom.ToSources(pmap["source_filters"].([]string))
+		contentTypes := dom.RawToContentTypes(pmap["content_type_filters"].([]string))
+		sources := dom.RawToSources(pmap["source_filters"].([]string))
 
 		var surahs []dom.SurahNumber
 		var ayahs []dom.AyahNumber
 		if surahAyah, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
-			surahs = dom.ToSurahNumbers(surahAyah["surahs"].([]int))
-			ayahs = dom.ToAyahNumbers(surahAyah["ayahs"].([]int))
+			surahs = dom.RawToSurahNumbers(surahAyah["surahs"].([]int))
+			ayahs = dom.RawToAyahNumbers(surahAyah["ayahs"].([]int))
 		}
 
 		prompts = append(prompts, dom.QueryWithFilter{
@@ -75,10 +90,11 @@ func (f *FnSearch) Call(
 		})
 	}
 
-	f.Logger.With(
-		slog.String("full_prompt", fullPrompt),
-		slog.Int("prompts_with_filter_count", len(prompts)),
-	).DebugContext(ctx, "searcher agent called Search() function")
+	log.With(
+		"full_prompt", fullPrompt,
+		"prompts_with_filter_count", len(prompts),
+		"raw", args,
+	).DebugContext(ctx, "agent called Search() function")
 
 	params := dom.SearchQuery{
 		FullQuery:          fullPrompt,
@@ -88,10 +104,10 @@ func (f *FnSearch) Call(
 
 	results, err := f.SearchSvc.Search(ctx, params)
 	if err != nil {
-		f.Logger.With(
+		log.With(
 			"err", err,
-		).ErrorContext(ctx, "caller failed to call Search() function")
-		return nil, fmt.Errorf("caller failed to call Search() function: %w", err)
+		).ErrorContext(ctx, "agent failed to call Search() function")
+		return nil, fmt.Errorf("agent failed to call Search() function: %w", err)
 	}
 
 	serialized := make([]map[string]any, 0, len(results))

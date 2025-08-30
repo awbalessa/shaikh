@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"golang.org/x/sync/errgroup"
@@ -17,28 +16,41 @@ type SearchSvc struct {
 	Logger   *slog.Logger
 }
 
+func BuildSearchSvc(se dom.Searcher, em dom.Embedder, re dom.Reranker) *SearchSvc {
+	log := slog.Default().With(
+		"service", "search",
+	)
+
+	return &SearchSvc{
+		Searcher: se,
+		Embedder: em,
+		Reranker: re,
+		Logger:   log,
+	}
+}
+
 func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.SearchResult, error) {
 	queries, err := dom.ValidateSearchQuery(arg)
 	if err != nil {
 		return nil, err
 	}
 
+	log := s.Logger.With(
+		"method", "Search",
+	)
+
 	numOfQueries := len(arg.QueriesWithFilters)
 	s.Logger.With(
-		slog.String("method", "Search"),
-		slog.Int("num_of_prompts", numOfQueries),
+		slog.Int("number_of_queries", numOfQueries),
 		slog.Int("topk", int(arg.TopK)),
-	).DebugContext(ctx, "starting search...")
+	).DebugContext(ctx, "starting hybrid search...")
 
-	start := time.Now()
 	results, err := s.hybridSearch(ctx, queries, dom.InitialChunks200)
 	if err != nil {
-		return nil, fmt.Errorf("failed search: %w", err)
+		return nil, fmt.Errorf("hybrid search failed: %w", err)
 	}
 
-	s.Logger.With(
-		slog.String("duration", time.Since(start).String()),
-	).DebugContext(ctx, "search completed: sending to reranker...")
+	log.DebugContext(ctx, "hybrid search completed, reranking...")
 
 	docs := make([]string, 0, len(results))
 	for _, chunk := range results {
@@ -47,7 +59,7 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 
 	ranks, err := s.Reranker.RerankDocuments(ctx, arg.FullQuery, docs, arg.TopK)
 	if err != nil {
-		return nil, fmt.Errorf("failed search: %w", err)
+		return nil, fmt.Errorf("reranking failed: %w", err)
 	}
 
 	final := make([]dom.SearchResult, 0, len(ranks))
@@ -68,10 +80,9 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 		})
 	}
 
-	s.Logger.With(
-		slog.String("duration", time.Since(start).String()),
-		slog.Int("chunks_returned", len(final)),
-	).DebugContext(ctx, "reranking completed: returning...")
+	log.With(
+		"returned_chunks", len(final),
+	).DebugContext(ctx, "search completed successfully")
 
 	return final, nil
 }
@@ -81,6 +92,10 @@ func (s *SearchSvc) hybridSearch(
 	queries []dom.FullQueryContext,
 	topk int,
 ) ([]dom.Chunk, error) {
+	log := s.Logger.With(
+		"method", "hybridSearch",
+	)
+
 	semChan := make(chan [][]dom.Chunk, 1)
 	lexChan := make(chan [][]dom.Chunk, 1)
 
@@ -88,13 +103,7 @@ func (s *SearchSvc) hybridSearch(
 	chunksPerKind := topk / 2
 
 	g, ctx := errgroup.WithContext(ctx)
-	s.Logger.With(
-		slog.String("method", "hybridSearch"),
-		slog.Int("chunks_per_thread", chunksPerKind),
-		slog.Int("num_of_threads", 2),
-	).DebugContext(ctx, "starting hybrid search...")
 
-	start := time.Now()
 	g.Go(func() error {
 		queriesSlice := make([]string, numOfQueries)
 		for i, q := range queries {
@@ -102,7 +111,7 @@ func (s *SearchSvc) hybridSearch(
 		}
 		vecs, err := s.Embedder.EmbedQueries(ctx, queriesSlice)
 		if err != nil {
-			return fmt.Errorf("hybrid search error: %w", err)
+			return err
 		}
 
 		for i := range queries {
@@ -111,7 +120,7 @@ func (s *SearchSvc) hybridSearch(
 
 		semRes, err := s.Searcher.ParallelSemanticSearch(ctx, queries, chunksPerKind)
 		if err != nil {
-			return fmt.Errorf("hybrid search error: %w", err)
+			return err
 		}
 
 		semChan <- semRes
@@ -121,7 +130,7 @@ func (s *SearchSvc) hybridSearch(
 	g.Go(func() error {
 		lexRes, err := s.Searcher.ParallelLexicalSearch(ctx, queries, chunksPerKind)
 		if err != nil {
-			return fmt.Errorf("hybrid search error: %w", err)
+			return err
 		}
 		lexChan <- lexRes
 		return nil
@@ -153,11 +162,10 @@ func (s *SearchSvc) hybridSearch(
 		}
 	}
 
-	s.Logger.With(
-		slog.String("duration", time.Since(start).String()),
-		slog.Int("fused_count", len(allChunks)),
-		slog.Int("deduped_count", len(deduped)),
-	).DebugContext(ctx, "hybrid search completed: returning...")
+	log.With(
+		"fused_count", len(fused),
+		"deduped_count", len(deduped),
+	).DebugContext(ctx, "hybrid search completed")
 
 	return deduped, nil
 }

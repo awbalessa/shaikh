@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -11,19 +12,33 @@ import (
 
 const (
 	SyncerDurableName string        = "syncer"
-	SyncerSubject     string        = dom.ContextStreamSubject + ".sync"
+	SyncerSubject     string        = dom.ContextStreamSubject + "sync"
 	SyncIdleTime      time.Duration = 2 * time.Minute
 	SyncMaxBatchSize  int           = 5
 )
 
-type Syncer struct {
+type SyncSvc struct {
 	Cons       dom.PubSubConsumer
 	LastFlush  time.Time
 	Buffer     []dom.PubMsg
 	UnitOfWork dom.UnitOfWork
+	Logger     *slog.Logger
 }
 
-func (s *Syncer) Start(ctx context.Context) error {
+func BuildSyncSvc(cons dom.PubSubConsumer, uow dom.UnitOfWork) *SyncSvc {
+	log := slog.Default().With(
+		"service", "sync",
+	)
+	return &SyncSvc{
+		Cons:       cons,
+		LastFlush:  time.Time{},
+		Buffer:     []dom.PubMsg{},
+		UnitOfWork: uow,
+		Logger:     log,
+	}
+}
+
+func (s *SyncSvc) Start(ctx context.Context) error {
 	msgs, err := s.Cons.Messages(ctx)
 	if err != nil {
 		return fmt.Errorf("syncer failed: %w", err)
@@ -37,74 +52,74 @@ func (s *Syncer) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Syncer) Process(ctx context.Context, msg dom.PubMsg) error {
+func (s *SyncSvc) Process(ctx context.Context, msg dom.PubMsg) error {
 	s.Buffer = append(s.Buffer, msg)
 
 	if len(s.Buffer) >= SyncMaxBatchSize {
 		if err := s.flush(ctx); err != nil {
-			return fmt.Errorf("failed to process message: %w", err)
+			return err
 		}
 	}
 
 	if time.Since(s.LastFlush) >= SyncIdleTime {
 		if err := s.flush(ctx); err != nil {
-			return fmt.Errorf("failed to process message: %w", err)
+			return err
 		}
 	}
 
 	return nil
 }
 
-func (s *Syncer) flush(ctx context.Context) error {
+func (s *SyncSvc) flush(ctx context.Context) error {
 	tx, err := s.UnitOfWork.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to flush: %w", err)
+		return err
 	}
 	defer tx.Rollback(ctx)
 
-	loads := make([]SyncPayloadDTO, len(s.Buffer))
+	loads := make([]dom.SyncPayload, len(s.Buffer))
 	for i, m := range s.Buffer {
 		if err := json.Unmarshal(m.Data(), &loads[i]); err != nil {
-			return fmt.Errorf("failed to unmarshal payload: %w", err)
+			return err
 		}
 
 		if err := s.persistMessages(ctx, tx, loads[i]); err != nil {
-			return fmt.Errorf("failed to create messages from interaction: %w", err)
+			return err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to flush: %w", err)
+		return err
 	}
 
 	for _, m := range s.Buffer {
 		if err := m.Ack(); err != nil {
-			return fmt.Errorf("failed to flush: %w", err)
+			return err
 		}
 	}
 
-	s.Buffer = nil
+	s.Buffer = []dom.PubMsg{}
 	s.LastFlush = time.Now()
 	return nil
 }
 
-func (s *Syncer) persistMessages(
+func (s *SyncSvc) persistMessages(
 	ctx context.Context,
 	tx dom.Tx,
-	load SyncPayloadDTO,
+	load dom.SyncPayload,
 ) error {
 	var mr dom.MessageRepo
 	if err := tx.Get(&mr); err != nil {
-		return fmt.Errorf("failed to persist messages: %w", err)
+		return err
 	}
 
-	turn := load.InteractionDTO.TurnNumber
-	inf1 := load.InteractionDTO.Inferences[0]
+	turn := load.Interaction.TurnNumber
+	inf1 := load.Interaction.Inferences[0]
 	_, err := mr.CreateMessage(ctx, &dom.UserMessage{
 		MsgMeta: dom.MsgMeta{
 			SessionID:        load.SessionID,
 			UserID:           load.UserID,
-			Model:            inf1.Model,
+			Model:            &inf1.Model,
 			Turn:             turn,
 			TotalInputTokens: &inf1.InputTokens,
 			Content:          &inf1.Input.Text,
@@ -112,18 +127,18 @@ func (s *Syncer) persistMessages(
 		MsgContent: inf1.Input.Text,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to persist messages: %w", err)
+		return err
 	}
 
-	if len(load.InteractionDTO.Inferences) > 1 {
-		inf2 := load.InteractionDTO.Inferences[1]
+	if len(load.Interaction.Inferences) > 1 {
+		inf2 := load.Interaction.Inferences[1]
 		call, err := toJsonRawMessage(inf2.Output.FunctionCall.Args)
 		if err != nil {
-			return fmt.Errorf("failed to persist messages: %w", err)
+			return err
 		}
 		resp, err := toJsonRawMessage(inf1.Input.FunctionResponse.Content)
 		if err != nil {
-			return fmt.Errorf("failed to persist messages: %w", err)
+			return err
 		}
 		_, err = mr.CreateMessage(ctx, &dom.FunctionMessage{
 			MsgMeta: dom.MsgMeta{
@@ -141,14 +156,14 @@ func (s *Syncer) persistMessages(
 			FunctionResponse: resp,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to persist messages: %w", err)
+			return err
 		}
 
 		_, err = mr.CreateMessage(ctx, &dom.ModelMessage{
 			MsgMeta: dom.MsgMeta{
 				SessionID:         load.SessionID,
 				UserID:            load.UserID,
-				Model:             inf2.Model,
+				Model:             &inf2.Model,
 				Turn:              turn,
 				TotalOutputTokens: &inf2.OutputTokens,
 				Content:           &inf2.Output.Text,
@@ -156,7 +171,7 @@ func (s *Syncer) persistMessages(
 			MsgContent: inf2.Output.Text,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to persist messages: %w", err)
+			return err
 		}
 
 		return nil
@@ -166,7 +181,7 @@ func (s *Syncer) persistMessages(
 		MsgMeta: dom.MsgMeta{
 			SessionID:         load.SessionID,
 			UserID:            load.UserID,
-			Model:             inf1.Model,
+			Model:             &inf1.Model,
 			Turn:              turn,
 			TotalOutputTokens: &inf1.OutputTokens,
 			Content:           &inf1.Output.Text,

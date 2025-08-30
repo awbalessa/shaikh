@@ -2,8 +2,6 @@ package pro
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -31,14 +29,12 @@ const (
 
 type GeminiLLM struct {
 	Cli *genai.Client
-	Log *slog.Logger
 }
 
 func NewGeminiLLM(
 	ctx context.Context,
 	maxRetries int,
 	timeout time.Duration,
-	log *slog.Logger,
 ) (*GeminiLLM, error) {
 	baseClient := &http.Client{
 		Timeout: timeout,
@@ -56,7 +52,6 @@ func NewGeminiLLM(
 
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient = baseClient
-	retryClient.Logger = log
 	retryClient.RetryMax = geminiMaxRetriesThree
 	retryClient.CheckRetry = retryablehttp.ErrorPropagatedRetryPolicy
 	retryClient.Backoff = retryablehttp.DefaultBackoff
@@ -69,15 +64,11 @@ func NewGeminiLLM(
 
 	gc, err := genai.NewClient(ctx, cc)
 	if err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to create new gemini client")
-		return nil, fmt.Errorf("failed to create new gemini client: %w", err)
+		return nil, err
 	}
 
 	return &GeminiLLM{
 		Cli: gc,
-		Log: log,
 	}, nil
 }
 
@@ -100,7 +91,7 @@ func (g *GeminiLLM) Stream(
 	stream := g.Cli.Models.GenerateContentStream(ctx, string(model), gWindow, gCfg)
 	for resp, err := range stream {
 		if err != nil {
-			yield(nil, fmt.Errorf("gemini stream error: %w", err))
+			yield(nil, err)
 			return &dom.LLMGenResult{
 				Output:        &output,
 				Usage:         &usage,
@@ -174,7 +165,7 @@ func (g *GeminiLLM) CountTokens(
 	}
 	resp, err := g.Cli.Models.CountTokens(ctx, string(model), gWindow, cCfg)
 	if err != nil {
-		return 0, fmt.Errorf("gemini count tokens error: %w", err)
+		return 0, err
 	}
 	return resp.TotalTokens, nil
 }

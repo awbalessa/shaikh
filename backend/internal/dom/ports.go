@@ -1,0 +1,270 @@
+package dom
+
+import (
+	"context"
+	"errors"
+	"iter"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+var (
+	ErrNoResults = errors.New("no results found")
+)
+
+type Embedder interface {
+	EmbedQueries(ctx context.Context, queries []string) ([]Vector, error)
+}
+
+type Rank struct {
+	Index     int32
+	Relevance float64
+}
+
+type Reranker interface {
+	RerankDocuments(
+		ctx context.Context,
+		query string,
+		documents []string,
+		topk TopK,
+	) ([]Rank, error)
+}
+
+type SemanticSearcher interface {
+	ParallelSemanticSearch(
+		ctx context.Context,
+		queries []FullQueryContext,
+		topk int,
+	) ([][]Chunk, error)
+	SemanticSearch(
+		ctx context.Context,
+		vector VectorWithLabel,
+		topk int,
+	) ([]Chunk, error)
+}
+
+type LexicalSearcher interface {
+	ParallelLexicalSearch(
+		ctx context.Context,
+		queries []FullQueryContext,
+		topk int,
+	) ([][]Chunk, error)
+	LexicalSearch(
+		ctx context.Context,
+		query QueryWithFilter,
+		topk int,
+	) ([]Chunk, error)
+}
+
+type Searcher interface {
+	SemanticSearcher
+	LexicalSearcher
+}
+
+type Cache interface {
+	Set(ctx context.Context, key string, value []byte, expr time.Duration) error
+	Get(ctx context.Context, key string) ([]byte, error)
+}
+
+type LLM interface {
+	Stream(
+		ctx context.Context,
+		model string,
+		window []*LLMContent,
+		cfg *LLMGenConfig,
+		yield func(*LLMPart, error) bool,
+	) *LLMGenResult
+
+	CountTokens(
+		ctx context.Context,
+		model string,
+		window []*LLMContent,
+		cfg *LLMCountConfig,
+	) (int32, error)
+}
+
+type LLMFunction interface {
+	Call(ctx context.Context, args map[string]any) (map[string]any, error)
+}
+
+type Agent interface {
+	Generate(
+		ctx context.Context,
+		name AgentName,
+		win []*LLMContent,
+	) iter.Seq2[*LLMPart, error]
+	GenerateWithYield(
+		ctx context.Context,
+		name AgentName,
+		win []*LLMContent,
+		yield func(*LLMPart, error) bool,
+	) *LLMGenResult
+	BuildContextWindow(
+		ctx context.Context,
+		name AgentName,
+		cw *ContextWindow,
+		now time.Time,
+	) ([]*LLMContent, error)
+}
+
+type AgentStruct struct {
+	Agents map[AgentName]AgentProfile
+	LLM    LLM
+}
+
+func (a *AgentStruct) Generate(
+	ctx context.Context,
+	name AgentName,
+	win []*LLMContent,
+) iter.Seq2[*LLMPart, error] {
+	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
+		prof, ok := a.Agents[name]
+		if !ok {
+			yield(nil, ErrAgentDoesNotExist)
+			return
+		}
+
+		a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
+	})
+}
+
+func (a *AgentStruct) GenerateWithYield(
+	ctx context.Context,
+	name AgentName,
+	win []*LLMContent,
+	yield func(*LLMPart, error) bool,
+) *LLMGenResult {
+	prof, ok := a.Agents[name]
+	if !ok {
+		yield(nil, ErrAgentDoesNotExist)
+		return nil
+	}
+
+	return a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
+}
+
+type PubOptions struct {
+	MsgID string
+}
+
+type PubAck struct {
+	Stream string
+	Seq    uint64
+}
+
+type PubMsgMetadata struct {
+	Stream       string
+	Consumer     string
+	NumDelivered uint64
+	Timestamp    time.Time
+}
+
+type PubMsg interface {
+	Data() []byte
+	Subject() string
+	Ack() error
+	Nak() error
+	Term() error
+	InProgress() error
+	Metadata() (PubMsgMetadata, error)
+}
+
+type PubSubRetentionPolicy int
+type PubSubStorageType int
+
+const (
+	WorkQueue PubSubRetentionPolicy = iota
+	LimitsBased
+)
+
+const (
+	FileStorage PubSubStorageType = iota
+)
+
+type PubSubStreamConfig struct {
+	Name       string
+	Subjects   []string
+	Retention  PubSubRetentionPolicy
+	MaxMsgs    int64
+	MaxAge     time.Duration
+	Storage    PubSubStorageType
+	Replicas   int
+	Duplicates time.Duration
+}
+
+type PubSub interface {
+	CreateStream(ctx context.Context, cfg PubSubStreamConfig) error
+	CreateConsumer(ctx context.Context, stream string, cfg PubSubConsumerConfig) (PubSubConsumer, error)
+}
+
+type Publisher interface {
+	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
+}
+
+type PubSubDeliverPolicy int
+type PubSubAckPolicy int
+type PubSubReplayPolicy int
+
+const (
+	DeliverAll    PubSubDeliverPolicy = iota
+	AckExplicit   PubSubAckPolicy     = iota
+	ReplayInstant PubSubReplayPolicy  = iota
+)
+
+type PubSubConsumerConfig struct {
+	Name              string
+	Durable           bool
+	InactiveThreshold time.Duration
+	DeliverPolicy     PubSubDeliverPolicy
+	AckPolicy         PubSubAckPolicy
+	AckWait           time.Duration
+	MaxDeliver        int
+	BackOff           []time.Duration
+	FilterSubjects    []string
+	ReplayPolicy      PubSubReplayPolicy
+	MaxRequestBatch   int
+	MaxRequestExpires time.Duration
+}
+
+type PubSubConsumer interface {
+	Fetch(batch int) ([]PubMsg, error)
+	Messages(ctx context.Context) (<-chan PubMsg, error)
+}
+
+type MemoryRepo interface {
+	GetMemoriesByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfMemories int32,
+	) ([]Memory, error)
+}
+
+type SessionRepo interface {
+	GetSessionsByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfSessions int32,
+	) ([]Session, error)
+}
+
+type MessageRepo interface {
+	CreateMessage(
+		ctx context.Context,
+		msg Message,
+	) (Message, error)
+	GetMessagesBySessionIDOrdered(
+		ctx context.Context,
+		sessionID uuid.UUID,
+	) ([]Message, error)
+}
+
+type Tx interface {
+	Get(repo any) error
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+type UnitOfWork interface {
+	Begin(ctx context.Context) (Tx, error)
+}

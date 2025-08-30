@@ -2,9 +2,9 @@ package pro
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -31,7 +31,6 @@ const (
 
 type Postgres struct {
 	Pool *pgxpool.Pool
-	Log  *slog.Logger
 }
 
 func NewPostgres(ctx context.Context, log *slog.Logger, env *config.Env) (*Postgres, error) {
@@ -50,31 +49,16 @@ func NewPostgres(ctx context.Context, log *slog.Logger, env *config.Env) (*Postg
 
 	pgxCfg, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		slog.With(
-			slog.Any("err", err),
-			slog.String("postgres_url", connStr),
-		).ErrorContext(
-			ctx,
-			"failed to parse postgres url",
-		)
-		return nil, fmt.Errorf("failed to create postgres: %w", err)
+		return nil, err
 	}
 
 	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
 	if err != nil {
-		slog.With(
-			slog.Any("err", err),
-			slog.String("postgres_url", connStr),
-		).ErrorContext(
-			ctx,
-			"failed to create postgres",
-		)
-		return nil, fmt.Errorf("failed to create postgres: %w", err)
+		return nil, err
 	}
 
 	return &Postgres{
 		Pool: conn,
-		Log:  log,
 	}, nil
 }
 
@@ -83,13 +67,13 @@ func (p *Postgres) Runner() db.Querier { return db.New(p.Pool) }
 func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) error {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to open pool with tx: %w", err)
+		return err
 	}
 
 	q := db.New(tx)
 	if err := fn(q); err != nil {
 		_ = tx.Rollback(ctx)
-		return fmt.Errorf("failed to run query with tx: %w", err)
+		return err
 	}
 
 	return tx.Commit(ctx)
@@ -121,7 +105,7 @@ func (t *PostgresTx) Rollback(ctx context.Context) error {
 func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin tx: %w", err)
+		return nil, err
 	}
 
 	q := db.New(tx)
@@ -156,7 +140,7 @@ func (m *PostgresMessageRepo) CreateMessage(
 		FunctionResponse:  meta.FunctionResponse,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create message: %w", err)
+		return nil, err
 	}
 	return fromDbMessage(row), nil
 }
@@ -167,7 +151,10 @@ func (m *PostgresMessageRepo) GetMessagesBySessionIDOrdered(
 ) ([]dom.Message, error) {
 	rows, err := m.q.GetMessagesBySessionIdOrdered(ctx, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get messages by session id ordered: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, dom.ErrNoResults
+		}
+		return nil, err
 	}
 
 	final := make([]dom.Message, 0, len(rows))
@@ -179,12 +166,11 @@ func (m *PostgresMessageRepo) GetMessagesBySessionIDOrdered(
 }
 
 type PostgresSearcher struct {
-	q   db.Querier
-	log *slog.Logger
+	q db.Querier
 }
 
-func NewPostgresSearcher(q db.Querier, log *slog.Logger) *PostgresSearcher {
-	return &PostgresSearcher{q: q, log: log}
+func NewPostgresSearcher(q db.Querier) *PostgresSearcher {
+	return &PostgresSearcher{q: q}
 }
 
 func (r *PostgresSearcher) ParallelSemanticSearch(
@@ -196,13 +182,7 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 	results := make([][]dom.Chunk, len(queries))
 
 	g, ctx := errgroup.WithContext(ctx)
-	r.log.With(
-		slog.String("method", "ParallelSemanticSearch"),
-		slog.Int("chunks_per_thread", chunksPerThread),
-		slog.Int("num_of_threads", len(queries)),
-	).DebugContext(ctx, "starting parallel semantic search...")
 
-	start := time.Now()
 	for i, query := range queries {
 		i, query := i, query
 		g.Go(func() error {
@@ -211,7 +191,10 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 			}
 			rows, err := r.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
 			if err != nil {
-				return fmt.Errorf("parallel semantic search error: %w", err)
+				if err != sql.ErrNoRows {
+					return dom.ErrNoResults
+				}
+				return err
 			}
 
 			results[i] = rows
@@ -223,11 +206,6 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 		return nil, err
 	}
 
-	r.log.With(
-		slog.String("method", "ParallelSemanticSearch"),
-		slog.String("duration", time.Since(start).String()),
-	).DebugContext(ctx, "parallel semantic search completed: returning...")
-
 	return results, nil
 }
 
@@ -236,37 +214,15 @@ func (r *PostgresSearcher) SemanticSearch(
 	vector dom.VectorWithLabel,
 	topk int,
 ) ([]dom.Chunk, error) {
-	const method = "SemanticSearch"
-
-	r.log.With(
-		slog.String("method", method),
-		slog.Int("number_of_chunks", topk),
-		slog.String("content_type_labels", fmt.Sprint(vector.OptionalContentTypeLabels)),
-		slog.String("source_labels", fmt.Sprint(vector.OptionalSourceLabels)),
-		slog.String("surah_labels", fmt.Sprint(vector.OptionalSurahLabels)),
-		slog.String("ayah_labels", fmt.Sprint(vector.OptionalAyahLabels)),
-	).DebugContext(ctx, "running semantic search...")
-
 	params := toSemSearchParams(vector, topk)
 
-	start := time.Now()
-	rows, err := r.q.SemanticSearch(
-		ctx,
-		params,
-	)
+	rows, err := r.q.SemanticSearch(ctx, params)
 	if err != nil {
-		r.log.With("err", err).ErrorContext(
-			ctx,
-			"failed to run semantic search",
-		)
-		return nil, fmt.Errorf("failed to run semantic search: %w", err)
+		if err == sql.ErrNoRows {
+			return nil, dom.ErrNoResults
+		}
+		return nil, err
 	}
-
-	r.log.With(
-		slog.String("method", method),
-		slog.String("duration", time.Since(start).String()),
-		slog.Int("result_count", len(rows)),
-	).DebugContext(ctx, "ran semantic search: returning...")
 
 	returned := make([]dom.Chunk, 0, len(rows))
 	for _, row := range rows {
@@ -285,6 +241,115 @@ func (r *PostgresSearcher) SemanticSearch(
 	}
 
 	return returned, nil
+}
+
+func (r *PostgresSearcher) ParallelLexicalSearch(
+	ctx context.Context,
+	queries []dom.FullQueryContext,
+	topk int,
+) ([][]dom.Chunk, error) {
+	chunksPerThread := topk / len(queries)
+	results := make([][]dom.Chunk, len(queries))
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	for i, query := range queries {
+		i, query := i, query
+		g.Go(func() error {
+			rows, err := r.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
+			if err != nil {
+				return err
+			}
+
+			results[i] = rows
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func (r *PostgresSearcher) LexicalSearch(
+	ctx context.Context,
+	query dom.QueryWithFilter,
+	topk int,
+) ([]dom.Chunk, error) {
+	tokenized, err := tokenizeQuery(query.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	query.Query = tokenized
+
+	params := toLexSearchParams(query, topk)
+	rows, err := r.q.LexicalSearch(
+		ctx,
+		params,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	returned := make([]dom.Chunk, 0, len(rows))
+	for _, row := range rows {
+		returned = append(returned,
+			dom.Chunk{
+				Document: dom.Document{
+					ID:          int32(row.ID),
+					Source:      RagSourceToSource[row.Source],
+					Content:     row.EmbeddedChunk,
+					SurahNumber: RagSurahToSurahNumber[row.Surah.RagSurah],
+					AyahNumber:  RagAyahToAyahNumber[row.Ayah.RagAyah],
+				},
+				ParentID: row.ParentID.Int32,
+			},
+		)
+	}
+
+	return returned, nil
+}
+
+func tokenizeQuery(query string) (string, error) {
+	tokenized, err := utils.CleanAndFilterStopwords(query)
+	if err != nil {
+		return "", err
+	}
+
+	return tokenized, nil
+}
+
+func toLexSearchParams(qwf dom.QueryWithFilter, topk int) db.LexicalSearchParams {
+	var (
+		contentTypes []db.RagContentType = []db.RagContentType{}
+		sources      []db.RagSource      = []db.RagSource{}
+		surahs       []db.RagSurah       = []db.RagSurah{}
+		ayahs        []db.RagAyah        = []db.RagAyah{}
+	)
+	for _, ct := range qwf.OptionalContentTypes {
+		contentTypes = append(contentTypes, ContentTypeToRagContentType[ct])
+	}
+	for _, so := range qwf.OptionalSources {
+		sources = append(sources, SourceToRagSource[so])
+	}
+	for _, sur := range qwf.OptionalSurahs {
+		surahs = append(surahs, SurahNumberToRagSurah[sur])
+	}
+	for _, ay := range qwf.OptionalAyahs {
+		ayahs = append(ayahs, AyahNumberToRagAyah[ay])
+	}
+
+	return db.LexicalSearchParams{
+		NumberOfChunks: int64(topk),
+		Query:          qwf.Query,
+		ContentTypes:   contentTypes,
+		Sources:        sources,
+		Surahs:         surahs,
+		Ayahs:          ayahs,
+	}
 }
 
 func toSemSearchParams(vwl dom.VectorWithLabel, topk int) db.SemanticSearchParams {
@@ -318,155 +383,8 @@ func toSemSearchParams(vwl dom.VectorWithLabel, topk int) db.SemanticSearchParam
 	}
 }
 
-func (r *PostgresSearcher) ParallelLexicalSearch(
-	ctx context.Context,
-	queries []dom.FullQueryContext,
-	topk int,
-) ([][]dom.Chunk, error) {
-	chunksPerThread := topk / len(queries)
-	results := make([][]dom.Chunk, len(queries))
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	r.log.With(
-		slog.String("method", "parallelLexicalSearch"),
-		slog.Int("chunks_per_thread", chunksPerThread),
-		slog.Int("num_of_threads", len(queries)),
-	).DebugContext(ctx, "starting parallel lexical search...")
-
-	start := time.Now()
-	for i, query := range queries {
-		i, query := i, query
-		g.Go(func() error {
-			rows, err := r.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
-			if err != nil {
-				return fmt.Errorf("parallel lexical search error: %w", err)
-			}
-
-			results[i] = rows
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	r.log.With(
-		slog.String("method", "parallelLexicalSearch"),
-		slog.String("duration", time.Since(start).String()),
-	).DebugContext(ctx, "lexical search completed: returning...")
-	return results, nil
-}
-
-func (r *PostgresSearcher) LexicalSearch(
-	ctx context.Context,
-	query dom.QueryWithFilter,
-	topk int,
-) ([]dom.Chunk, error) {
-	const method = "LexicalSearch"
-
-	r.log.With(
-		slog.String("method", method),
-		slog.Int("number_of_chunks", topk),
-		slog.String("query", query.Query),
-		slog.String("content_types", fmt.Sprint(query.OptionalContentTypes)),
-		slog.String("sources", fmt.Sprint(query.OptionalSources)),
-		slog.String("surahs", fmt.Sprint(query.OptionalSurahs)),
-		slog.String("ayahs", fmt.Sprint(query.OptionalAyahs)),
-	).DebugContext(ctx, "running lexical search...")
-
-	tokenized, err := tokenizeQuery(query.Query)
-	if err != nil {
-		r.log.With("err", err).ErrorContext(
-			ctx,
-			"failed to tokenize query",
-		)
-		return nil, fmt.Errorf("failed to tokenize query: %w", err)
-	}
-
-	query.Query = tokenized
-
-	params := toLexSearchParams(query, topk)
-	start := time.Now()
-	rows, err := r.q.LexicalSearch(
-		ctx,
-		params,
-	)
-	if err != nil {
-		r.log.With("err", err).ErrorContext(
-			ctx,
-			"failed to run lexical search",
-		)
-		return nil, fmt.Errorf("failed to run lexical search: %w", err)
-	}
-
-	r.log.With(
-		slog.String("tokenized_query", params.Query),
-		slog.String("duration", time.Since(start).String()),
-		slog.Int("result_count", len(rows)),
-	).DebugContext(ctx, "ran lexical search: returning...")
-
-	returned := make([]dom.Chunk, 0, len(rows))
-	for _, row := range rows {
-		returned = append(returned,
-			dom.Chunk{
-				Document: dom.Document{
-					ID:          int32(row.ID),
-					Source:      RagSourceToSource[row.Source],
-					Content:     row.EmbeddedChunk,
-					SurahNumber: RagSurahToSurahNumber[row.Surah.RagSurah],
-					AyahNumber:  RagAyahToAyahNumber[row.Ayah.RagAyah],
-				},
-				ParentID: row.ParentID.Int32,
-			},
-		)
-	}
-
-	return returned, nil
-}
-
-func toLexSearchParams(qwf dom.QueryWithFilter, topk int) db.LexicalSearchParams {
-	var (
-		contentTypes []db.RagContentType = []db.RagContentType{}
-		sources      []db.RagSource      = []db.RagSource{}
-		surahs       []db.RagSurah       = []db.RagSurah{}
-		ayahs        []db.RagAyah        = []db.RagAyah{}
-	)
-	for _, ct := range qwf.OptionalContentTypes {
-		contentTypes = append(contentTypes, ContentTypeToRagContentType[ct])
-	}
-	for _, so := range qwf.OptionalSources {
-		sources = append(sources, SourceToRagSource[so])
-	}
-	for _, sur := range qwf.OptionalSurahs {
-		surahs = append(surahs, SurahNumberToRagSurah[sur])
-	}
-	for _, ay := range qwf.OptionalAyahs {
-		ayahs = append(ayahs, AyahNumberToRagAyah[ay])
-	}
-
-	return db.LexicalSearchParams{
-		NumberOfChunks: int64(topk),
-		Query:          qwf.Query,
-		ContentTypes:   contentTypes,
-		Sources:        sources,
-		Surahs:         surahs,
-		Ayahs:          ayahs,
-	}
-}
-
-func tokenizeQuery(query string) (string, error) {
-	tokenized, err := utils.CleanAndFilterStopwords(query)
-	if err != nil {
-		return "", err
-	}
-
-	return tokenized, nil
-}
-
-func toDbLargeLanguageModel(llm dom.LargeLanguageModel) db.NullLargeLanguageModel {
-	if llm == "" {
+func toDbLargeLanguageModel(llm *dom.LargeLanguageModel) db.NullLargeLanguageModel {
+	if llm == nil {
 		return db.NullLargeLanguageModel{
 			Valid: false,
 		}
@@ -474,7 +392,7 @@ func toDbLargeLanguageModel(llm dom.LargeLanguageModel) db.NullLargeLanguageMode
 
 	return db.NullLargeLanguageModel{
 		Valid:              true,
-		LargeLanguageModel: toDbLargeLanguageModelMap[llm],
+		LargeLanguageModel: toDbLargeLanguageModelMap[*llm],
 	}
 }
 
@@ -542,7 +460,7 @@ func fromDbMessage(row db.Message) dom.Message {
 		ID:                row.ID,
 		SessionID:         row.SessionID,
 		UserID:            row.UserID,
-		Model:             fromDbLargeLanguageModel[row.Model.LargeLanguageModel],
+		Model:             dom.Ptr(fromDbLargeLanguageModel[row.Model.LargeLanguageModel]),
 		Turn:              row.Turn,
 		TotalInputTokens:  fromPgtypeInt4(row.TotalInputTokens),
 		TotalOutputTokens: fromPgtypeInt4(row.TotalOutputTokens),

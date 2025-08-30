@@ -13,7 +13,7 @@ import (
 
 const (
 	NatsConnNameApi               string        = "shaikh-api"
-	NatsConnNameWorker            string        = "shaikh-worker"
+	NatsConnNameWorkers           string        = "shaikh-workers"
 	natsConnTimeoutTenSeconds     time.Duration = 10 * time.Second
 	natsPingIntervalTwentySeconds time.Duration = 20 * time.Second
 	natsMaxPingsOutstandingFive   int           = 5
@@ -25,7 +25,7 @@ type Nats struct {
 	Log  *slog.Logger
 }
 
-func NewNats(name string, log *slog.Logger) (*Nats, error) {
+func NewNats(name string) (*Nats, error) {
 	nc, err := nats.Connect(
 		nats.DefaultURL,
 		nats.Name(name),
@@ -35,19 +35,18 @@ func NewNats(name string, log *slog.Logger) (*Nats, error) {
 		nats.ReconnectWait(natsReconnectWaitTenSeconds),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create nats: %w", err)
+		return nil, err
 	}
 
 	return &Nats{
 		Conn: nc,
-		Log:  log,
 	}, nil
 }
 
 func NewJS(nats *Nats) (jetstream.JetStream, error) {
 	js, err := jetstream.New(nats.Conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create jetstream client: %w", err)
+		return nil, err
 	}
 
 	return js, nil
@@ -79,7 +78,7 @@ func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfi
 		Duplicates: cfg.Duplicates,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create stream: %w", err)
+		return err
 	}
 
 	return nil
@@ -140,11 +139,11 @@ func toNatsMsg(msg jetstream.Msg) dom.PubMsg {
 func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.PubMsg, error) {
 	msgs, err := c.Cons.Fetch(batch)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch: %w", err)
+		return nil, err
 	}
 
 	if msgs.Error() != nil {
-		return nil, fmt.Errorf("failed to fetch: %w", msgs.Error())
+		return nil, msgs.Error()
 	}
 
 	var final []dom.PubMsg
@@ -158,7 +157,7 @@ func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.PubMsg, error) {
 func (c *NatsPubSubConsumer) Messages(ctx context.Context) (<-chan dom.PubMsg, error) {
 	msgs, err := c.Cons.Messages()
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch messages: %w", err)
+		return nil, err
 	}
 
 	out := make(chan dom.PubMsg)
@@ -206,7 +205,7 @@ func (n *NatsPubSub) CreateConsumer(
 			MaxRequestExpires: cfg.MaxRequestExpires,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create consumer: %w", err)
+			return nil, err
 		}
 
 	} else {
@@ -224,7 +223,7 @@ func (n *NatsPubSub) CreateConsumer(
 			MaxRequestExpires: cfg.MaxRequestExpires,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create consumer: %w", err)
+			return nil, err
 		}
 	}
 
@@ -252,16 +251,10 @@ func (c *NatsPublisher) Publish(
 		jetstream.WithMsgID(opts.MsgID),
 	)
 	if err != nil {
-		c.Log.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to publish message")
-		return nil, fmt.Errorf("failed to publish message: %w", err)
+		return nil, err
 	}
 
 	if ack == nil {
-		c.Log.With(
-			"ack", ack,
-		).ErrorContext(ctx, "unexpected publish ack")
 		return nil, fmt.Errorf("unexpected publish ack: %+v", ack)
 	}
 
