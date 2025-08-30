@@ -307,6 +307,8 @@ type LLMFunction interface {
 	Call(ctx context.Context, args map[string]any) (map[string]any, error)
 }
 
+type LLMFunctions map[LLMFunctionName]LLMFunction
+
 type TokenUsage struct {
 	InputTokens  int32
 	OutputTokens int32
@@ -353,7 +355,13 @@ type Agent interface {
 		ctx context.Context,
 		name AgentName,
 		cw *ContextWindow,
+		now time.Time,
 	) ([]*LLMContent, error)
+}
+
+var AgentToModel = map[AgentName]LargeLanguageModel{
+	Caller:    GeminiV2p5Flash,
+	Generator: GeminiV2p5FlashLite,
 }
 
 var (
@@ -678,31 +686,32 @@ func (a *AgentStruct) BuildContextWindow(
 	for _, inter := range cw.History {
 		var t Turn
 
-		if inter.Input.Text != "" {
-			t = append(t, &LLMContent{
-				Role:  LLMUserRole,
-				Parts: []*LLMPart{{Text: inter.Input.Text}},
-			})
-		}
+		inf1 := inter.Inferences[0]
+		t = append(t, &LLMContent{
+			Role:  LLMUserRole,
+			Parts: []*LLMPart{{Text: inf1.Input.Text}},
+		})
 
-		if inter.Output.FunctionCall != nil {
+		if len(inter.Inferences) > 1 {
+			inf2 := inter.Inferences[1]
 			t = append(t, &LLMContent{
 				Role:  LLMModelRole,
-				Parts: []*LLMPart{{FunctionCall: inter.Output.FunctionCall}},
+				Parts: []*LLMPart{{FunctionCall: inf1.Output.FunctionCall}},
 			})
-		}
 
-		if inter.Input.FunctionResponse != nil {
 			t = append(t, &LLMContent{
 				Role:  LLMUserRole,
-				Parts: []*LLMPart{{FunctionResponse: inter.Input.FunctionResponse}},
+				Parts: []*LLMPart{{FunctionResponse: inf2.Input.FunctionResponse}},
 			})
-		}
 
-		if inter.Output.Text != "" {
 			t = append(t, &LLMContent{
 				Role:  LLMModelRole,
-				Parts: []*LLMPart{{Text: inter.Output.Text}},
+				Parts: []*LLMPart{{Text: inf2.Output.Text}},
+			})
+		} else {
+			t = append(t, &LLMContent{
+				Role:  LLMModelRole,
+				Parts: []*LLMPart{{Text: inf1.Output.Text}},
 			})
 		}
 

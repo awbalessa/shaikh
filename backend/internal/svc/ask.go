@@ -15,7 +15,7 @@ import (
 
 type AskSvc struct {
 	Agent      dom.Agent
-	Functions  map[dom.LLMFunctionName]dom.LLMFunction
+	Functions  dom.LLMFunctions
 	CtxManager *ContextManager
 	SearchSvc  *SearchSvc
 	Logger     *slog.Logger
@@ -26,7 +26,15 @@ func (a *AskSvc) Ask(
 	prompt string,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		cc, win, err := a.GetContext(ctx, dom.Caller)
+		cc, err := a.CtxManager.GetContext(ctx)
+		if err != nil {
+			yield("", err)
+			return
+		}
+
+		cw := toDomainContextWindow(cc.Window)
+
+		win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, cw, time.Now())
 		if err != nil {
 			yield("", err)
 			return
@@ -52,8 +60,8 @@ func (a *AskSvc) ask(
 	prompt string,
 	win []*dom.LLMContent,
 	yield func(string, error) bool,
-) InferenceDTO {
-	var infs [2]*Inference
+) [2]*InferenceDTO {
+	var infs [2]*InferenceDTO
 
 	win = append(win, &dom.LLMContent{
 		Role: dom.LLMUserRole,
@@ -92,15 +100,6 @@ func (a *AskSvc) ask(
 		a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
 	)
 
-	infs[0] = &Inference{
-		Input: &dom.InputPrompt{
-			Text: prompt,
-		},
-		Output:       results[0].Output,
-		InputTokens:  results[0].Usage.InputTokens,
-		OutputTokens: results[0].Usage.OutputTokens,
-	}
-
 	if fnResp != nil {
 		win = append(win, &dom.LLMContent{
 			Role: dom.LLMModelRole,
@@ -119,17 +118,54 @@ func (a *AskSvc) ask(
 			a.Agent.GenerateWithYield(ctx, dom.Generator, win, syield),
 		)
 
-		infs[1] = &Inference{
-			Input: &dom.InputPrompt{
-				Text:             prompt,
-				FunctionResponse: fnResp,
+		infs = [2]*InferenceDTO{
+			&InferenceDTO{
+				Input: &InputPromptDTO{
+					Text: prompt,
+				},
+				Output: &ModelOutputDTO{
+					FunctionCall: &LLMFunctionCallDTO{
+						Name: results[0].Output.FunctionCall.Name,
+						Args: results[0].Output.FunctionCall.Args,
+					},
+				},
+				InputTokens:  results[0].Usage.InputTokens,
+				OutputTokens: results[0].Usage.OutputTokens,
+				Model:        dom.AgentToModel[dom.Caller],
 			},
-			Output:       results[1].Output,
-			InputTokens:  results[1].Usage.InputTokens,
-			OutputTokens: results[1].Usage.OutputTokens,
+			&InferenceDTO{
+				Input: &InputPromptDTO{
+					FunctionResponse: &LLMFunctionResponseDTO{
+						Name:    fnResp.Name,
+						Content: fnResp.Content,
+					},
+				},
+				Output: &ModelOutputDTO{
+					Text: results[1].Output.Text,
+				},
+				InputTokens:  results[1].Usage.InputTokens,
+				OutputTokens: results[1].Usage.OutputTokens,
+				Model:        dom.AgentToModel[dom.Generator],
+			},
 		}
+
+		return infs
 	}
 
+	infs = [2]*InferenceDTO{
+		&InferenceDTO{
+			Input: &InputPromptDTO{
+				Text: prompt,
+			},
+			Output: &ModelOutputDTO{
+				Text: results[0].Output.Text,
+			},
+			InputTokens:  results[0].Usage.InputTokens,
+			OutputTokens: results[0].Usage.OutputTokens,
+			Model:        dom.AgentToModel[dom.Caller],
+		},
+		nil,
+	}
 	return infs
 }
 
@@ -160,7 +196,7 @@ type LLMFunctionResponseDTO struct {
 
 type InputPromptDTO struct {
 	Text             string                  `json:"text"`
-	FunctionResponse *LLMFunctionResponseDTO `json:"function_response"`
+	FunctionResponse *LLMFunctionResponseDTO `json:"function_response,omitempty"`
 }
 
 type LLMFunctionCallDTO struct {
@@ -169,14 +205,13 @@ type LLMFunctionCallDTO struct {
 }
 
 type ModelOutputDTO struct {
-	Text         string              `json:"text"`
-	FunctionCall *LLMFunctionCallDTO `json:"function_call"`
+	Text         string              `json:"text,omitempty"`
+	FunctionCall *LLMFunctionCallDTO `json:"function_call,omitempty"`
 }
 
 type InferenceDTO struct {
 	Input        *InputPromptDTO `json:"input"`
 	Output       *ModelOutputDTO `json:"output"`
-	TurnNumber   int32           `json:"turn_number"`
 	InputTokens  int32
 	OutputTokens int32
 	Model        dom.LargeLanguageModel
@@ -207,23 +242,54 @@ func toDomainContextWindow(cw *ContextWindowDTO) *dom.ContextWindow {
 
 	history := make([]dom.Interaction, 0, len(cw.History))
 	for _, i := range cw.History {
-		history = append(history, dom.Interaction{
-			Input: dom.InputPrompt{
-				Text: i.Input.Text,
-				FunctionResponse: &dom.LLMFunctionResponse{
-					Name:    i.Input.FunctionResponse.Name,
-					Content: i.Input.FunctionResponse.Content,
+		var inter dom.Interaction
+		if len(i.Inferences) > 1 {
+			inter = dom.Interaction{
+				Inferences: [2]*dom.Inference{
+					&dom.Inference{
+						Input: &dom.InputPrompt{
+							Text: i.Inferences[0].Input.Text,
+						},
+						Output: &dom.ModelOutput{
+							FunctionCall: (*dom.LLMFunctionCall)(i.Inferences[0].Output.FunctionCall),
+						},
+						InputTokens:  i.Inferences[0].InputTokens,
+						OutputTokens: i.Inferences[0].OutputTokens,
+						Model:        i.Inferences[0].Model,
+					},
+					&dom.Inference{
+						Input: &dom.InputPrompt{
+							FunctionResponse: (*dom.LLMFunctionResponse)(i.Inferences[1].Input.FunctionResponse),
+						},
+						Output: &dom.ModelOutput{
+							Text: i.Inferences[1].Output.Text,
+						},
+						InputTokens:  i.Inferences[1].InputTokens,
+						OutputTokens: i.Inferences[1].OutputTokens,
+						Model:        i.Inferences[1].Model,
+					},
 				},
-			},
-			Output: dom.ModelOutput{
-				Text: i.Output.Text,
-				FunctionCall: &dom.LLMFunctionCall{
-					Name: i.Output.FunctionCall.Name,
-					Args: i.Output.FunctionCall.Args,
+			}
+		} else {
+			inter = dom.Interaction{
+				Inferences: [2]*dom.Inference{
+					&dom.Inference{
+						Input: &dom.InputPrompt{
+							Text: i.Inferences[0].Input.Text,
+						},
+						Output: &dom.ModelOutput{
+							Text: i.Inferences[0].Output.Text,
+						},
+						InputTokens:  i.Inferences[0].InputTokens,
+						OutputTokens: i.Inferences[0].OutputTokens,
+						Model:        i.Inferences[0].Model,
+					},
+					nil,
 				},
-			},
-			TurnNumber: i.TurnNumber,
-		})
+			}
+		}
+
+		history = append(history, inter)
 	}
 
 	return &dom.ContextWindow{
@@ -249,25 +315,25 @@ type ContextManager struct {
 	Logger *slog.Logger
 }
 
-func (a *AskSvc) GetContext(ctx context.Context, name dom.AgentName) (*ContextCacheDTO, []*dom.LLMContent, error) {
+func (c *ContextManager) GetContext(ctx context.Context) (*ContextCacheDTO, error) {
 	const method = "GetContext"
 	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
-	log := a.Logger.With(
+	log := c.Logger.With(
 		slog.String("method", method),
 	)
 
 	now := time.Now()
-	cc, err := a.CtxManager.getContextCache(ctx, userID, sessionID)
+	cc, err := c.getContextCache(ctx, userID, sessionID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get context: %w", err)
+		return nil, fmt.Errorf("failed to get context: %w", err)
 	}
 
 	if cc == nil {
-		window, err := a.CtxManager.getDbContext(ctx, userID, sessionID)
+		window, err := c.getDbContext(ctx, userID, sessionID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get context: %w", err)
+			return nil, fmt.Errorf("failed to get context: %w", err)
 		}
 
 		cc = &ContextCacheDTO{
@@ -279,18 +345,11 @@ func (a *AskSvc) GetContext(ctx context.Context, name dom.AgentName) (*ContextCa
 		}
 	}
 
-	cw := toDomainContextWindow(cc.Window)
-
-	win, err := a.Agent.BuildContextWindow(ctx, name, cw)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get context: %w", err)
-	}
-
 	log.With(
 		slog.String("duration", time.Since(now).String()),
 	).DebugContext(ctx, "retrieved context successfully")
 
-	return cc, win, nil
+	return cc, nil
 }
 
 func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*ContextCacheDTO, error) {
@@ -340,7 +399,7 @@ func (c *ContextManager) getDbContext(
 	)
 
 	g.Go(func() error {
-		mem, err := c.MemoryRepo.GetByUserID(ctx, userID, 50)
+		mem, err := c.MemoryRepo.GetMemoriesByUserID(ctx, userID, 50)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch memories")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -360,7 +419,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		msgs, err := c.MessageRepo.GetBySessionIDOrdered(ctx, sessionID)
+		msgs, err := c.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sessionID)
 		if err != nil {
 			log.With("err", err).ErrorContext(ctx, "failed to fetch messages")
 			return fmt.Errorf("getDbContext: %w", err)
@@ -375,37 +434,64 @@ func (c *ContextManager) getDbContext(
 
 	var (
 		interactions []InteractionDTO
-		current      InteractionDTO = InteractionDTO{}
+		inf1         InferenceDTO = InferenceDTO{}
+		inf2         InferenceDTO = InferenceDTO{}
+		has2infs     bool         = false
 	)
 	for _, m := range messages {
-		switch m.Role() {
+		meta := m.Meta()
+		role := m.Role()
+		switch role {
 		case dom.UserRole:
-			current.Input.Text = *m.Meta().Content
-		case dom.FunctionRole:
-			var call map[string]any
-			if err := json.Unmarshal(m.Meta().FunctionCall, &call); err != nil {
-				log.With("err", err).ErrorContext(ctx, "failed to decode function response")
-				return nil, fmt.Errorf("getDbContext: %w", err)
+			inf1 = InferenceDTO{
+				Input: &InputPromptDTO{
+					Text: *meta.Content,
+				},
+				InputTokens: *meta.TotalInputTokens,
 			}
-			current.Output.FunctionCall = &LLMFunctionCallDTO{
-				Name: *m.Meta().FnName,
+		case dom.FunctionRole:
+			has2infs = true
+			call, err := fromJsonRawMessage(meta.FunctionCall)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := fromJsonRawMessage(meta.FunctionResponse)
+			if err != nil {
+				return nil, err
+			}
+			inf1.Output.FunctionCall = &LLMFunctionCallDTO{
+				Name: *meta.FunctionName,
 				Args: call,
 			}
+			inf1.OutputTokens = *meta.TotalOutputTokens
+			inf2 = InferenceDTO{
+				Input: &InputPromptDTO{
+					FunctionResponse: &LLMFunctionResponseDTO{
+						Name:    *meta.FunctionName,
+						Content: resp,
+					},
+				},
+				InputTokens: *meta.TotalInputTokens,
+			}
 
-			var resp map[string]any
-			if err := json.Unmarshal(m.Meta().FunctionResponse, &resp); err != nil {
-				log.With("err", err).ErrorContext(ctx, "failed to decode function response")
-				return nil, fmt.Errorf("getDbContext: %w", err)
-			}
-			current.Input.FunctionResponse = &LLMFunctionResponseDTO{
-				Name:    *m.Meta().FnName,
-				Content: resp,
-			}
 		case dom.ModelRole:
-			current.Output.Text = *m.Meta().Content
-			current.TurnNumber = m.Meta().Turn
-			interactions = append(interactions, current)
-			current = InteractionDTO{}
+			if !has2infs {
+				inf1.Output.Text = *meta.Content
+				inf1.OutputTokens = *meta.TotalOutputTokens
+				inf1.Model = meta.Model
+			} else {
+				inf2.Output.Text = *meta.Content
+				inf2.OutputTokens = *meta.TotalOutputTokens
+				inf2.Model = meta.Model
+			}
+
+			has2infs = false
+			interactions = append(interactions, InteractionDTO{
+				Inferences: [2]*InferenceDTO{&inf1, &inf2},
+				TurnNumber: meta.Turn,
+			})
+			inf1 = InferenceDTO{}
+			inf2 = InferenceDTO{}
 		}
 	}
 
@@ -533,47 +619,71 @@ func (c *ContextManager) sendContextUpdate(
 
 func toInteractionDTO(
 	prompt string,
-	infs [2]*Inference,
+	infs [2]*InferenceDTO,
 	turn int32,
 ) *InteractionDTO {
 	dto := &InteractionDTO{
 		TurnNumber: turn,
 	}
 
-	if infs[0] != nil {
-		dto.Usage = append(dto.Usage, dom.TokenUsage{
+	if len(infs) > 1 {
+		dto.Inferences[0] = &InferenceDTO{
+			Input: &InputPromptDTO{
+				Text: infs[0].Input.Text,
+			},
+			Output: &ModelOutputDTO{
+				FunctionCall: infs[0].Output.FunctionCall,
+			},
 			InputTokens:  infs[0].InputTokens,
 			OutputTokens: infs[0].OutputTokens,
-		})
-	}
+			Model:        infs[0].Model,
+		}
 
-	if infs[1] != nil {
-		dto.Input = InputPromptDTO{
-			Text: prompt,
-			FunctionResponse: &LLMFunctionResponseDTO{
-				Name:    infs[1].Input.FunctionResponse.Name,
-				Content: infs[1].Input.FunctionResponse.Content,
+		dto.Inferences[1] = &InferenceDTO{
+			Input: &InputPromptDTO{
+				FunctionResponse: infs[1].Input.FunctionResponse,
 			},
-		}
-		dto.Output = ModelOutputDTO{
-			Text: infs[1].Output.Text,
-			FunctionCall: &LLMFunctionCallDTO{
-				Name: infs[0].Output.FunctionCall.Name,
-				Args: infs[0].Output.FunctionCall.Args,
+			Output: &ModelOutputDTO{
+				Text: infs[1].Output.Text,
 			},
-		}
-		dto.Usage = append(dto.Usage, dom.TokenUsage{
 			InputTokens:  infs[1].InputTokens,
 			OutputTokens: infs[1].OutputTokens,
-		})
-	} else if infs[0] != nil {
-		dto.Input = InputPromptDTO{
-			Text: prompt,
+			Model:        infs[1].Model,
 		}
-		dto.Output = ModelOutputDTO{
-			Text: infs[0].Output.Text,
-		}
+
+		return dto
 	}
 
+	dto.Inferences = [2]*InferenceDTO{
+		&InferenceDTO{
+			Input: &InputPromptDTO{
+				Text: infs[0].Input.Text,
+			},
+			Output: &ModelOutputDTO{
+				Text: infs[0].Output.Text,
+			},
+			InputTokens:  infs[0].InputTokens,
+			OutputTokens: infs[0].OutputTokens,
+			Model:        infs[0].Model,
+		},
+		nil,
+	}
 	return dto
+}
+
+func toJsonRawMessage(m map[string]any) (json.RawMessage, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(b), nil
+}
+
+func fromJsonRawMessage(m json.RawMessage) (map[string]any, error) {
+	final := make(map[string]any)
+	if err := json.Unmarshal(m, &final); err != nil {
+		return nil, err
+	}
+
+	return final, nil
 }

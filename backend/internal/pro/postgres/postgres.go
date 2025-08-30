@@ -146,7 +146,7 @@ func (m *PostgresMessageRepo) CreateMessage(
 		SessionID:         meta.SessionID,
 		UserID:            meta.UserID,
 		Role:              toDbMessageRole[role],
-		Model:             toDbLargeLanguageModel[meta.Model],
+		Model:             toDbLargeLanguageModel(meta.Model),
 		Turn:              meta.Turn,
 		TotalInputTokens:  toPgtypeInt4(meta.TotalInputTokens),
 		TotalOutputTokens: toPgtypeInt4(meta.TotalOutputTokens),
@@ -465,7 +465,20 @@ func tokenizeQuery(query string) (string, error) {
 	return tokenized, nil
 }
 
-var toDbLargeLanguageModel = map[dom.LargeLanguageModel]db.LargeLanguageModel{
+func toDbLargeLanguageModel(llm dom.LargeLanguageModel) db.NullLargeLanguageModel {
+	if llm == "" {
+		return db.NullLargeLanguageModel{
+			Valid: false,
+		}
+	}
+
+	return db.NullLargeLanguageModel{
+		Valid:              true,
+		LargeLanguageModel: toDbLargeLanguageModelMap[llm],
+	}
+}
+
+var toDbLargeLanguageModelMap = map[dom.LargeLanguageModel]db.LargeLanguageModel{
 	dom.GeminiV2p5Flash:     db.LargeLanguageModelGemini25Flash,
 	dom.GeminiV2p5FlashLite: db.LargeLanguageModelGemini25FlashLite,
 }
@@ -529,7 +542,7 @@ func fromDbMessage(row db.Message) dom.Message {
 		ID:                row.ID,
 		SessionID:         row.SessionID,
 		UserID:            row.UserID,
-		Model:             fromDbLargeLanguageModel[row.Model],
+		Model:             fromDbLargeLanguageModel[row.Model.LargeLanguageModel],
 		Turn:              row.Turn,
 		TotalInputTokens:  fromPgtypeInt4(row.TotalInputTokens),
 		TotalOutputTokens: fromPgtypeInt4(row.TotalOutputTokens),
