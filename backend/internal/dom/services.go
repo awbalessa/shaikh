@@ -220,17 +220,6 @@ type Interaction struct {
 	TurnNumber int32         `json:"turn_number"`
 }
 
-type SyncPayload struct {
-	UserID      uuid.UUID    `json:"user_id"`
-	SessionID   uuid.UUID    `json:"session_id"`
-	Interaction *Interaction `json:"interaction"`
-}
-
-type SyncerState struct {
-	Buffer    []PubMsg  `json:"buffer"`
-	LastFlush time.Time `json:"last_flush"`
-}
-
 type ContextWindow struct {
 	UserMemories     []Memory      `json:"memories"`
 	PreviousSessions []Session     `json:"previous_sessions"`
@@ -256,23 +245,23 @@ func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
 	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }
 
-type Subscriber interface {
+type Worker interface {
 	Consumer() PubSubConsumer
 	Start(ctx context.Context) error
-	Process(ctx context.Context, msg PubMsg) error
+	Process(ctx context.Context, msg *PubMsg) error
 }
 
-type SubscriberGroup struct {
-	Subscribers []Subscriber
+type WorkerGroup struct {
+	Workers []Worker
 }
 
-func (g *SubscriberGroup) Add(s Subscriber) {
-	g.Subscribers = append(g.Subscribers, s)
+func (g *WorkerGroup) Add(s Worker) {
+	g.Workers = append(g.Workers, s)
 }
 
-func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
-	for _, s := range g.Subscribers {
-		go func(s Subscriber) {
+func (g *WorkerGroup) StartAll(ctx context.Context, cancel context.CancelFunc) {
+	for _, s := range g.Workers {
+		go func(s Worker) {
 			if err := s.Start(ctx); err != nil {
 				cancel()
 			}
@@ -281,7 +270,7 @@ func (g *SubscriberGroup) StartAll(ctx context.Context, cancel context.CancelFun
 }
 
 func BuildCaller() *AgentProfile {
-	fnSearch := BuildFunctionSearch()
+	fnSearch := BuildFnSearch()
 
 	resSchema := WithDocs(
 		nil,
@@ -341,7 +330,7 @@ You must:
 	}
 }
 
-func BuildFunctionSearch() *LLMFunctionDecl {
+func BuildFnSearch() *LLMFunctionDecl {
 	filterCts := WithDocs(
 		Ptr("Optional Content Types Filter"),
 		Ptr("Optional filter for content types. Use this filter only when the user's intent explicitly matches one or more of the available filter options. Otherwise, leave this filter empty to allow a broader result set."),
@@ -651,5 +640,68 @@ func HumanizeFrom(now, t time.Time) string {
 		return fmt.Sprintf("%d months ago", int(d.Hours()/(24*30)))
 	default:
 		return fmt.Sprintf("%d years ago", int(d.Hours()/(24*365)))
+	}
+}
+
+type Err struct {
+	Error   error
+	IsFatal bool
+}
+
+func Fatal(err error) *Err {
+	if err == nil {
+		return nil
+	}
+	return &Err{Error: err, IsFatal: true}
+}
+
+func NonFatal(err error) *Err {
+	if err == nil {
+		return nil
+	}
+	return &Err{Error: err, IsFatal: false}
+}
+
+func BuildSummarizer() *AgentProfile {
+	resSchema := WithDocs(
+		Ptr("Response Schema"),
+		Ptr("The structured session summary to persist for continuity between conversations."),
+		&LLMSchema{
+			Type:     SchemaObject,
+			Required: []string{"summary"},
+			Properties: map[string]*LLMSchema{
+				"summary": WithDocs(
+					Ptr("Session Summary"),
+					Ptr("Concise structured summary capturing goals, decisions, open questions, style guidance, and next steps."),
+					&LLMSchema{Type: SchemaString},
+				),
+			},
+		},
+	)
+
+	system := &LLMContent{
+		Role: LLMUserRole,
+		Parts: []*LLMPart{{
+			Text: `You are a session summarization agent. Your job is to read the last session's messages and produce a compact, structured summary that maximizes continuity into future sessions.
+
+			Guidelines:
+			- Always capture user goals, key decisions, unresolved questions, and any stylistic/tone guidance.
+			- Be concise: short declarative sentences, bullet-like structure, no fluff.
+			- Do not repeat the full conversation; only include what is needed for context continuity.
+			- Highlight next steps if the user has pending actions.
+			- Write the summary as if it will be retrieved by another agent to bootstrap the next session.`,
+		}},
+	}
+
+	return &AgentProfile{
+		Model: string(GeminiV2p5Flash),
+		Config: &LLMGenConfig{
+			SystemInstructions: system,
+			Temperature:        0,
+			CandidateCount:     1,
+			Tools:              nil,
+			ResponseMimeType:   "application/json",
+			ResponseSchema:     resSchema,
+		},
 	}
 }

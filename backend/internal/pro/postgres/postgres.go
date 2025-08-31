@@ -116,8 +116,7 @@ func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
 }
 
 type PostgresMessageRepo struct {
-	q   db.Querier
-	log *slog.Logger
+	q db.Querier
 }
 
 func (m *PostgresMessageRepo) CreateMessage(
@@ -165,8 +164,103 @@ func (m *PostgresMessageRepo) GetMessagesBySessionIDOrdered(
 	return final, nil
 }
 
+type PostgresSessionRepo struct {
+	q db.Querier
+}
+
+func NewPostgresSessionRepo(q db.Querier) *PostgresSessionRepo {
+	return &PostgresSessionRepo{q: q}
+}
+
+func (s *PostgresSessionRepo) CreateSession(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) (dom.Session, error) {
+	row, err := s.q.CreateSession(ctx, db.CreateSessionParams{
+		ID:     id,
+		UserID: userID,
+	})
+	if err != nil {
+		return dom.Session{}, err
+	}
+
+	return dom.Session{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		LastAccessed: row.UpdatedAt,
+		EndedAt:      &row.EndedAt,
+		MaxTurn:      &row.MaxTurn.Int32,
+		Summary:      &row.Summary.String,
+	}, nil
+}
+
+func (s *PostgresSessionRepo) GetSessionsByUserID(
+	ctx context.Context,
+	userID uuid.UUID,
+	numberOfSessions int32,
+) ([]dom.Session, error) {
+	rows, err := s.q.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
+		UserID:           userID,
+		NumberOfSessions: int64(numberOfSessions),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	final := make([]dom.Session, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, dom.Session{
+			ID:           r.ID,
+			UserID:       r.UserID,
+			LastAccessed: r.UpdatedAt,
+			EndedAt:      &r.EndedAt,
+			MaxTurn:      &r.MaxTurn.Int32,
+			Summary:      &r.Summary.String,
+		})
+	}
+
+	return final, nil
+}
+
+func (s *PostgresSessionRepo) UpdateSessionByID(
+	ctx context.Context,
+	se dom.Session,
+) (dom.Session, error) {
+	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
+		UpdatedAt: se.LastAccessed,
+		EndedAt:   *se.EndedAt,
+		MaxTurn:   toPgtypeInt4(se.MaxTurn),
+		Summary:   toPgtypeText(se.Summary),
+		ID:        se.ID,
+	})
+	if err != nil {
+		return dom.Session{}, err
+	}
+
+	return dom.Session{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		LastAccessed: row.UpdatedAt,
+		EndedAt:      &row.EndedAt,
+		MaxTurn:      &row.MaxTurn.Int32,
+		Summary:      &row.Summary.String,
+	}, nil
+}
+
 type PostgresSearcher struct {
 	q db.Querier
+}
+
+func (s *PostgresSessionRepo) GetMaxTurnByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (int32, error) {
+	turn, err := s.q.GetMaxTurnByID(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return turn.Int32, nil
 }
 
 func NewPostgresSearcher(q db.Querier) *PostgresSearcher {

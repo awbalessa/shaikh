@@ -68,6 +68,12 @@ type Cache interface {
 }
 
 type LLM interface {
+	Generate(
+		ctx context.Context,
+		model string,
+		window []*LLMContent,
+		cfg *LLMGenConfig,
+	) (*LLMContent, error)
 	Stream(
 		ctx context.Context,
 		model string,
@@ -75,7 +81,6 @@ type LLM interface {
 		cfg *LLMGenConfig,
 		yield func(*LLMPart, error) bool,
 	) *LLMGenResult
-
 	CountTokens(
 		ctx context.Context,
 		model string,
@@ -93,8 +98,13 @@ type Agent interface {
 		ctx context.Context,
 		name AgentName,
 		win []*LLMContent,
+	) (string, error)
+	Stream(
+		ctx context.Context,
+		name AgentName,
+		win []*LLMContent,
 	) iter.Seq2[*LLMPart, error]
-	GenerateWithYield(
+	StreamWithYield(
 		ctx context.Context,
 		name AgentName,
 		win []*LLMContent,
@@ -113,7 +123,11 @@ type AgentStruct struct {
 	LLM    LLM
 }
 
-func (a *AgentStruct) Generate(
+// func BuildAgentStruct(llm LLM) *AgentStruct {
+
+// }
+
+func (a *AgentStruct) Stream(
 	ctx context.Context,
 	name AgentName,
 	win []*LLMContent,
@@ -129,7 +143,7 @@ func (a *AgentStruct) Generate(
 	})
 }
 
-func (a *AgentStruct) GenerateWithYield(
+func (a *AgentStruct) StreamWithYield(
 	ctx context.Context,
 	name AgentName,
 	win []*LLMContent,
@@ -241,11 +255,27 @@ type MemoryRepo interface {
 }
 
 type SessionRepo interface {
+	CreateSession(
+		ctx context.Context,
+		id, userID uuid.UUID,
+	) (Session, error)
+	GetSessionByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) (Session, error)
 	GetSessionsByUserID(
 		ctx context.Context,
 		userID uuid.UUID,
 		numberOfSessions int32,
 	) ([]Session, error)
+	UpdateSessionByID(
+		ctx context.Context,
+		se Session,
+	) (Session, error)
+	GetMaxTurnByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) (int32, error)
 }
 
 type MessageRepo interface {

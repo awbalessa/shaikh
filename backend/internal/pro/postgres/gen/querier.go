@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -18,6 +19,7 @@ type Querier interface {
 	GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error)
 	GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error)
 	GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error)
+	GetMaxTurnByID(ctx context.Context, id uuid.UUID) (pgtype.Int4, error)
 	GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUserIDParams) ([]Memory, error)
 	GetMemoryByID(ctx context.Context, id int32) (Memory, error)
 	GetMessageByID(ctx context.Context, id int32) (Message, error)
@@ -31,6 +33,7 @@ type Querier interface {
 	LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error)
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)
 	UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error)
+	UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error)
 }
 
 var _ Querier = (*Queries)(nil)

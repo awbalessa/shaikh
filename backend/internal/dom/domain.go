@@ -575,6 +575,8 @@ type Session struct {
 	ID           uuid.UUID
 	UserID       uuid.UUID
 	LastAccessed time.Time
+	EndedAt      *time.Time
+	MaxTurn      *int32
 	Summary      *string
 }
 
@@ -759,8 +761,9 @@ func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
 type AgentName string
 
 const (
-	Caller    AgentName = "Caller"
-	Generator AgentName = "Generator"
+	Caller     AgentName = "Caller"
+	Generator  AgentName = "Generator"
+	Summarizer AgentName = "Summarizer"
 )
 
 type AgentProfile struct {

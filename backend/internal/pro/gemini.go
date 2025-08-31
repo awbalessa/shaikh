@@ -24,7 +24,6 @@ const (
 	geminiDialContextKeepAlive  time.Duration = 30 * time.Second
 	geminiTLSHandshakeTimeout   time.Duration = 10 * time.Second
 	geminiTemperatureZero       float32       = 0
-	geminiResponseMimeJSON      string        = "application/json"
 )
 
 type GeminiLLM struct {
@@ -72,6 +71,28 @@ func NewGeminiLLM(
 	}, nil
 }
 
+func (g *GeminiLLM) Generate(
+	ctx context.Context,
+	model string,
+	window []*dom.LLMContent,
+	cfg *dom.LLMGenConfig,
+) (*dom.LLMContent, error) {
+	gWindow := toGenaiContents(window)
+	gCfg := toGenaiConfig(cfg)
+
+	resp, err := g.Cli.Models.GenerateContent(
+		ctx,
+		model,
+		gWindow,
+		gCfg,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return fromGenaiContent(resp.Candidates[0].Content), nil
+}
+
 func (g *GeminiLLM) Stream(
 	ctx context.Context,
 	model string,
@@ -88,7 +109,7 @@ func (g *GeminiLLM) Stream(
 	var finishMessage string
 	var finishReason dom.FinishReason
 
-	stream := g.Cli.Models.GenerateContentStream(ctx, string(model), gWindow, gCfg)
+	stream := g.Cli.Models.GenerateContentStream(ctx, model, gWindow, gCfg)
 	for resp, err := range stream {
 		if err != nil {
 			yield(nil, err)
@@ -263,4 +284,45 @@ func toGenaiSchema(s *dom.LLMSchema) *genai.Schema {
 		Minimum:     s.Minimum,
 		Maximum:     s.Maximum,
 	}
+}
+
+func fromGenaiContent(c *genai.Content) *dom.LLMContent {
+	if c == nil {
+		return nil
+	}
+	parts := []*dom.LLMPart{}
+	for _, p := range c.Parts {
+		switch {
+		case p.Text != "":
+			parts = append(parts, &dom.LLMPart{Text: p.Text})
+
+		case p.FunctionCall != nil:
+			parts = append(parts, &dom.LLMPart{
+				FunctionCall: &dom.LLMFunctionCall{
+					Name: p.FunctionCall.Name,
+					Args: p.FunctionCall.Args,
+				},
+			})
+
+		case p.FunctionResponse != nil:
+			parts = append(parts, &dom.LLMPart{
+				FunctionResponse: &dom.LLMFunctionResponse{
+					Name:    p.FunctionResponse.Name,
+					Content: p.FunctionResponse.Response,
+				},
+			})
+		}
+	}
+	return &dom.LLMContent{
+		Role:  dom.LLMRole(c.Role),
+		Parts: parts,
+	}
+}
+
+func fromGenaiContents(cs []*genai.Content) []*dom.LLMContent {
+	out := make([]*dom.LLMContent, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, fromGenaiContent(c))
+	}
+	return out
 }

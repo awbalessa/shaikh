@@ -778,6 +778,7 @@ type Session struct {
 	CreatedAt time.Time   `db:"created_at"`
 	UpdatedAt time.Time   `db:"updated_at"`
 	EndedAt   time.Time   `db:"ended_at"`
+	MaxTurn   pgtype.Int4 `db:"max_turn"`
 	Summary   pgtype.Text `db:"summary"`
 }
 

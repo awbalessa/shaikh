@@ -140,7 +140,7 @@ func (a *AskSvc) ask(
 	}
 
 	results = append(results,
-		a.Agent.GenerateWithYield(ctx, dom.Caller, win, syield),
+		a.Agent.StreamWithYield(ctx, dom.Caller, win, syield),
 	)
 
 	if fnResp != nil {
@@ -158,7 +158,7 @@ func (a *AskSvc) ask(
 		})
 
 		results = append(results,
-			a.Agent.GenerateWithYield(ctx, dom.Generator, win, syield),
+			a.Agent.StreamWithYield(ctx, dom.Generator, win, syield),
 		)
 
 		infs = [2]*dom.Inference{
@@ -498,7 +498,7 @@ func (c *ContextManager) sendContextUpdate(
 	userID, sessionID uuid.UUID,
 	interaction *dom.Interaction,
 ) error {
-	load := &dom.SyncPayload{
+	load := &SyncPayload{
 		UserID:      userID,
 		SessionID:   sessionID,
 		Interaction: interaction,
@@ -516,7 +516,7 @@ func (c *ContextManager) sendContextUpdate(
 		return err
 	}
 
-	if ack.Stream != dom.ContextStream {
+	if ack.Stream != ContextStream {
 		return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
 	}
 

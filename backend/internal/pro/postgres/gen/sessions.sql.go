@@ -7,14 +7,16 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id)
 VALUES ($1, $2)
-RETURNING id, user_id, created_at, updated_at, ended_at, summary
+RETURNING id, user_id, created_at, updated_at, ended_at, max_turn, summary
 `
 
 type CreateSessionParams struct {
@@ -31,13 +33,26 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EndedAt,
+		&i.MaxTurn,
 		&i.Summary,
 	)
 	return i, err
 }
 
+const getMaxTurnByID = `-- name: GetMaxTurnByID :one
+SELECT max_turn FROM sessions
+WHERE id = $1
+`
+
+func (q *Queries) GetMaxTurnByID(ctx context.Context, id uuid.UUID) (pgtype.Int4, error) {
+	row := q.db.QueryRow(ctx, getMaxTurnByID, id)
+	var max_turn pgtype.Int4
+	err := row.Scan(&max_turn)
+	return max_turn, err
+}
+
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, user_id, created_at, updated_at, ended_at, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, ended_at, max_turn, summary FROM sessions
 WHERE id = $1
 `
 
@@ -50,13 +65,14 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.EndedAt,
+		&i.MaxTurn,
 		&i.Summary,
 	)
 	return i, err
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, user_id, created_at, updated_at, ended_at, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, ended_at, max_turn, summary FROM sessions
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2
@@ -82,6 +98,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.EndedAt,
+			&i.MaxTurn,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -92,4 +109,40 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSessionByID = `-- name: UpdateSessionByID :one
+UPDATE sessions
+SET updated_at = $1, ended_at = $2, max_turn = $3, summary = $4
+WHERE id = $5
+RETURNING id, user_id, created_at, updated_at, ended_at, max_turn, summary
+`
+
+type UpdateSessionByIDParams struct {
+	UpdatedAt time.Time   `db:"updated_at"`
+	EndedAt   time.Time   `db:"ended_at"`
+	MaxTurn   pgtype.Int4 `db:"max_turn"`
+	Summary   pgtype.Text `db:"summary"`
+	ID        uuid.UUID   `db:"id"`
+}
+
+func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error) {
+	row := q.db.QueryRow(ctx, updateSessionByID,
+		arg.UpdatedAt,
+		arg.EndedAt,
+		arg.MaxTurn,
+		arg.Summary,
+		arg.ID,
+	)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EndedAt,
+		&i.MaxTurn,
+		&i.Summary,
+	)
+	return i, err
 }
