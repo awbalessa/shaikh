@@ -21,7 +21,12 @@ type AskSvc struct {
 	Logger     *slog.Logger
 }
 
-func BuildAskSvc(ag dom.Agent, fns dom.LLMFunctions, ctx *ContextManager, se *SearchSvc) *AskSvc {
+func BuildAskSvc(
+	ag dom.Agent,
+	fns dom.LLMFunctions,
+	ctx *ContextManager,
+	se *SearchSvc,
+) *AskSvc {
 	log := slog.Default().With(
 		"service", "ask",
 	)
@@ -234,18 +239,48 @@ type ContextManager struct {
 	Logger *slog.Logger
 }
 
-func BuildContextManager(ca dom.Cache, ctx dom.ContextRepo, pub dom.Publisher, log *slog.Logger) *ContextManager {
+const (
+	ContextStream            string        = "CONTEXT"
+	ContextStreamSubject     string        = "context."
+	ContextStreamSubjectStar string        = "context.*"
+	ContextStreamMaxAge      time.Duration = 24 * time.Hour
+)
+
+func BuildContextManager(
+	ctx context.Context,
+	ca dom.Cache,
+	ctxrepo dom.ContextRepo,
+	pub dom.Publisher,
+	ps dom.PubSub,
+	log *slog.Logger,
+) (*ContextManager, error) {
 	log = log.With(
 		"component", "ContextManager",
 	)
 
+	cfg := dom.PubSubStreamConfig{
+		Name:      ContextStream,
+		Subjects:  []string{ContextStreamSubjectStar},
+		Retention: dom.WorkQueue,
+		Storage:   dom.FileStorage,
+		MaxAge:    ContextStreamMaxAge,
+	}
+
+	if err := ps.CreateStream(ctx, cfg); err != nil {
+		return nil, err
+	}
+
 	return &ContextManager{
 		Cache:       ca,
-		ContextRepo: ctx,
+		ContextRepo: ctxrepo,
 		Publisher:   pub,
 		Logger:      log,
-	}
+	}, nil
 }
+
+const (
+	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
+)
 
 func (c *ContextManager) GetContext(ctx context.Context) (*dom.ContextCache, error) {
 	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -451,7 +486,7 @@ func (c *ContextManager) setContextCache(
 
 	key := dom.CreateContextCacheKey(userID, sessionID)
 
-	if err = c.Cache.Set(ctx, key, bytes, dom.ContextCacheTTL6Hrs); err != nil {
+	if err = c.Cache.Set(ctx, key, bytes, ContextCacheTTL6Hrs); err != nil {
 		return err
 	}
 

@@ -226,6 +226,11 @@ type SyncPayload struct {
 	Interaction *Interaction `json:"interaction"`
 }
 
+type SyncerState struct {
+	Buffer    []PubMsg  `json:"buffer"`
+	LastFlush time.Time `json:"last_flush"`
+}
+
 type ContextWindow struct {
 	UserMemories     []Memory      `json:"memories"`
 	PreviousSessions []Session     `json:"previous_sessions"`
@@ -241,10 +246,6 @@ type ContextCache struct {
 	Window    *ContextWindow `json:"context_window"`
 }
 
-const (
-	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
-)
-
 type ContextRepo struct {
 	MemoryRepo  MemoryRepo
 	SessionRepo SessionRepo
@@ -254,12 +255,6 @@ type ContextRepo struct {
 func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
 	return fmt.Sprintf("user:%s:session:%s:context", userID.String(), sessionID.String())
 }
-
-const (
-	ContextStream            string = "CONTEXT"
-	ContextStreamSubject     string = "context."
-	ContextStreamSubjectStar string = "context.*"
-)
 
 type Subscriber interface {
 	Consumer() PubSubConsumer

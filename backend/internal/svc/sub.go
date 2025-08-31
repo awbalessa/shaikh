@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
+	"github.com/google/uuid"
 )
 
 const (
@@ -15,27 +16,45 @@ const (
 	SyncerSubject     string        = dom.ContextStreamSubject + "sync"
 	SyncIdleTime      time.Duration = 2 * time.Minute
 	SyncMaxBatchSize  int           = 5
+	SyncerAckWait     time.Duration = 1 * time.Minute
+	SyncerCacheTTL
 )
 
 type SyncSvc struct {
 	Cons       dom.PubSubConsumer
-	LastFlush  time.Time
-	Buffer     []dom.PubMsg
+	Cache      dom.Cache
+	CacheKey string
 	UnitOfWork dom.UnitOfWork
 	Logger     *slog.Logger
 }
 
-func BuildSyncSvc(cons dom.PubSubConsumer, uow dom.UnitOfWork) *SyncSvc {
+func BuildSyncSvc(
+	ctx context.Context,
+	ps dom.PubSub,
+	ca dom.Cache,
+	uow dom.UnitOfWork,
+) (*SyncSvc, error) {
 	log := slog.Default().With(
 		"service", "sync",
 	)
+
+	cons, err := ps.CreateConsumer(ctx, dom.ContextStream, dom.PubSubConsumerConfig{
+		Name:           SyncerDurableName,
+		Durable:        true,
+		AckWait:        SyncerAckWait,
+		FilterSubjects: []string{SyncerSubject},
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	return &SyncSvc{
 		Cons:       cons,
-		LastFlush:  time.Time{},
-		Buffer:     []dom.PubMsg{},
+		Cache:      ca,
+		CacheKey: CreateSyncerKey(),
 		UnitOfWork: uow,
 		Logger:     log,
-	}
+	}, nil
 }
 
 func (s *SyncSvc) Start(ctx context.Context) error {
@@ -68,6 +87,19 @@ func (s *SyncSvc) Process(ctx context.Context, msg dom.PubMsg) error {
 	}
 
 	return nil
+}
+
+func CreateSyncerKey() string {
+	return fmt.Sprintf("%s-%s", SyncerDurableName, uuid.New())
+}
+
+func (s *SyncSvc) setState(ctx context.Context, state dom.SyncerState) error {
+	bytes, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+
+	if err := s.Cache.Set(ctx, s.CacheKey, bytes, )
 }
 
 func (s *SyncSvc) flush(ctx context.Context) error {
