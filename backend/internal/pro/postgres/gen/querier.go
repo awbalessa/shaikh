@@ -15,6 +15,7 @@ type Querier interface {
 	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteMemoryByUserIDKey(ctx context.Context, arg DeleteMemoryByUserIDKeyParams) error
 	GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error)
 	GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error)
 	GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)
 	UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error)
 	UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error)
+	UpsertMemory(ctx context.Context, arg UpsertMemoryParams) (Memory, error)
 }
 
 var _ Querier = (*Queries)(nil)

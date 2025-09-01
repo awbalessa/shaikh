@@ -11,7 +11,7 @@ WHERE id = @id;
 UPDATE users
 SET total_messages = total_messages + @total_messages,
     total_messages_memorized = total_messages_memorized + @total_messages_memorized,
-    updated_at = @updated_at
+    updated_at = NOW()
 WHERE id = @id
 RETURNING *;
 

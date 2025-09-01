@@ -24,6 +24,9 @@ ALTER TABLE public.memories ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 );
 
 ALTER TABLE ONLY public.memories
+    ADD CONSTRAINT user_id_unique_key_unique UNIQUE (user_id, unique_key);
+
+ALTER TABLE ONLY public.memories
     ADD CONSTRAINT memories_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 CREATE INDEX idx_memories_user_id ON public.memories USING btree (user_id);

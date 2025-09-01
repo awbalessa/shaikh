@@ -150,22 +150,20 @@ func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error)
 
 const updateSessionByID = `-- name: UpdateSessionByID :one
 UPDATE sessions
-SET updated_at = $1, ended_at = $2, max_turn = $3, summary = $4
-WHERE id = $5
+SET updated_at = NOW(), ended_at = $1, max_turn = $2, summary = $3
+WHERE id = $4
 RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary
 `
 
 type UpdateSessionByIDParams struct {
-	UpdatedAt time.Time   `db:"updated_at"`
-	EndedAt   time.Time   `db:"ended_at"`
-	MaxTurn   int32       `db:"max_turn"`
-	Summary   pgtype.Text `db:"summary"`
-	ID        uuid.UUID   `db:"id"`
+	EndedAt time.Time   `db:"ended_at"`
+	MaxTurn int32       `db:"max_turn"`
+	Summary pgtype.Text `db:"summary"`
+	ID      uuid.UUID   `db:"id"`
 }
 
 func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error) {
 	row := q.db.QueryRow(ctx, updateSessionByID,
-		arg.UpdatedAt,
 		arg.EndedAt,
 		arg.MaxTurn,
 		arg.Summary,

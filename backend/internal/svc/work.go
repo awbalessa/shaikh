@@ -621,13 +621,80 @@ func (m *Memorizer) IdleProcess(ctx context.Context) error {
 	return nil
 }
 
+type MemorizerMemory struct {
+	UniqueKey  string   `json:"unique_key"`
+	Content    string   `json:"content"`
+	Confidence float32  `json:"confidence"`
+	SourceMsg  string   `json:"source_msg"`
+	Tags       []string `json:"tags,omitempty"`
+}
+
+type MemorizerResponse struct {
+	Memories   []MemorizerMemory `json:"memories"`
+	DeleteKeys []string          `json:"delete_keys"`
+}
+
 func (m *Memorizer) memorize(
 	ctx context.Context,
 	user dom.User,
 ) error {
-	_, err := m.MessageRepo.GetUserMessagesByUserID(ctx, user.ID, 100)
+	mems, err := m.MemoryRepo.GetMemoriesByUserID(ctx, user.ID, 50)
 	if err != nil {
 		return err
+	}
+
+	memwin, err := dom.MemoriesToLLMContent(mems)
+	if err != nil {
+		return err
+	}
+
+	msgs, err := m.MessageRepo.GetUserMessagesByUserID(ctx, user.ID, 100)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	msgwin, err := dom.MessagesToLLMContent(msgs)
+	if err != nil {
+		return err
+	}
+
+	full := append(memwin, msgwin...)
+
+	res, err := m.Agent.Generate(ctx, dom.Memorizer, full)
+	if err != nil {
+		return err
+	}
+	if res.Bytes == nil {
+		return fmt.Errorf("empty memorizer result")
+	}
+
+	var mr MemorizerResponse
+	if err := json.Unmarshal(res.Bytes, &mr); err != nil {
+		return err
+	}
+
+	for _, key := range mr.DeleteKeys {
+		if err := m.MemoryRepo.DeleteMemoryByUserIDKey(ctx, user.ID, key); err != nil {
+			return err
+		}
+	}
+
+	for _, mem := range mr.Memories {
+		if mem.Confidence > 0.75 {
+			_, err := m.MemoryRepo.UpsertMemory(ctx, dom.Memory{
+				UserID:     user.ID,
+				SourceMsg:  mem.SourceMsg,
+				Confidence: mem.Confidence,
+				UniqueKey:  mem.UniqueKey,
+				Content:    mem.Content,
+			})
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

@@ -12,18 +12,27 @@ import (
 )
 
 const createMemory = `-- name: CreateMemory :one
-INSERT INTO memories (user_id, memory)
-VALUES ($1, $2)
+INSERT INTO memories (user_id, source_message, confidence, unique_key, memory)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory
 `
 
 type CreateMemoryParams struct {
-	UserID uuid.UUID `db:"user_id"`
-	Memory string    `db:"memory"`
+	UserID        uuid.UUID `db:"user_id"`
+	SourceMessage string    `db:"source_message"`
+	Confidence    float32   `db:"confidence"`
+	UniqueKey     string    `db:"unique_key"`
+	Memory        string    `db:"memory"`
 }
 
 func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Memory, error) {
-	row := q.db.QueryRow(ctx, createMemory, arg.UserID, arg.Memory)
+	row := q.db.QueryRow(ctx, createMemory,
+		arg.UserID,
+		arg.SourceMessage,
+		arg.Confidence,
+		arg.UniqueKey,
+		arg.Memory,
+	)
 	var i Memory
 	err := row.Scan(
 		&i.ID,
@@ -36,6 +45,21 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Mem
 		&i.Memory,
 	)
 	return i, err
+}
+
+const deleteMemoryByUserIDKey = `-- name: DeleteMemoryByUserIDKey :exec
+DELETE FROM memories
+WHERE user_id = $1 AND unique_key = $2
+`
+
+type DeleteMemoryByUserIDKeyParams struct {
+	UserID uuid.UUID `db:"user_id"`
+	Key    string    `db:"key"`
+}
+
+func (q *Queries) DeleteMemoryByUserIDKey(ctx context.Context, arg DeleteMemoryByUserIDKeyParams) error {
+	_, err := q.db.Exec(ctx, deleteMemoryByUserIDKey, arg.UserID, arg.Key)
+	return err
 }
 
 const getMemoriesByUserID = `-- name: GetMemoriesByUserID :many
@@ -103,7 +127,7 @@ func (q *Queries) GetMemoryByID(ctx context.Context, id int32) (Memory, error) {
 const updateMemoryByID = `-- name: UpdateMemoryByID :one
 UPDATE memories
 SET memory = $1,
-    updated_at = now()
+    updated_at = NOW()
 WHERE id = $2
 RETURNING id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory
 `
@@ -115,6 +139,47 @@ type UpdateMemoryByIDParams struct {
 
 func (q *Queries) UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error) {
 	row := q.db.QueryRow(ctx, updateMemoryByID, arg.Memory, arg.ID)
+	var i Memory
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SourceMessage,
+		&i.Confidence,
+		&i.UniqueKey,
+		&i.Memory,
+	)
+	return i, err
+}
+
+const upsertMemory = `-- name: UpsertMemory :one
+INSERT INTO memories (user_id, source_message, confidence, unique_key, memory)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id, unique_key) DO UPDATE
+SET source_message = EXCLUDED.source_message,
+    confidence = EXCLUDED.confidence,
+    memory = EXCLUDED.memory,
+    updated_at = NOW()
+RETURNING id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory
+`
+
+type UpsertMemoryParams struct {
+	UserID        uuid.UUID `db:"user_id"`
+	SourceMessage string    `db:"source_message"`
+	Confidence    float32   `db:"confidence"`
+	UniqueKey     string    `db:"unique_key"`
+	Memory        string    `db:"memory"`
+}
+
+func (q *Queries) UpsertMemory(ctx context.Context, arg UpsertMemoryParams) (Memory, error) {
+	row := q.db.QueryRow(ctx, upsertMemory,
+		arg.UserID,
+		arg.SourceMessage,
+		arg.Confidence,
+		arg.UniqueKey,
+		arg.Memory,
+	)
 	var i Memory
 	err := row.Scan(
 		&i.ID,

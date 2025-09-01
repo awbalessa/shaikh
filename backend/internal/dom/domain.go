@@ -2,6 +2,7 @@ package dom
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -778,6 +779,7 @@ const (
 	Caller     AgentName = "Caller"
 	Generator  AgentName = "Generator"
 	Summarizer AgentName = "Summarizer"
+	Memorizer  AgentName = "Memorizer"
 )
 
 type AgentProfile struct {
@@ -892,4 +894,25 @@ func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
 	}
 
 	return win, nil
+}
+
+func MemoriesToLLMContent(mems []Memory) ([]*LLMContent, error) {
+	final := make([]*LLMContent, 0, len(mems))
+	for _, m := range mems {
+		text := fmt.Sprintf(
+			"Memory\n- Unique Key: %s\n- Confidence: %.2f\n- Content: %s\n- Source Msg: %s\n",
+			m.UniqueKey,
+			m.Confidence,
+			m.Content,
+			m.SourceMsg,
+		)
+
+		final = append(final, &LLMContent{
+			Role: LLMUserRole,
+			Parts: []*LLMPart{
+				{Text: text},
+			},
+		})
+	}
+	return final, nil
 }

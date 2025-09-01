@@ -227,11 +227,10 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 	se dom.Session,
 ) (dom.Session, error) {
 	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
-		UpdatedAt: se.LastAccessed,
-		EndedAt:   *se.EndedAt,
-		MaxTurn:   se.MaxTurn,
-		Summary:   toPgtypeText(se.Summary),
-		ID:        se.ID,
+		EndedAt: *se.EndedAt,
+		MaxTurn: se.MaxTurn,
+		Summary: toPgtypeText(se.Summary),
+		ID:      se.ID,
 	})
 	if err != nil {
 		return dom.Session{}, err

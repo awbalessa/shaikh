@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -60,25 +59,19 @@ const incrementUserMessagesByID = `-- name: IncrementUserMessagesByID :one
 UPDATE users
 SET total_messages = total_messages + $1,
     total_messages_memorized = total_messages_memorized + $2,
-    updated_at = $3
-WHERE id = $4
+    updated_at = NOW()
+WHERE id = $3
 RETURNING id, email, created_at, updated_at, total_messages, total_messages_memorized
 `
 
 type IncrementUserMessagesByIDParams struct {
 	TotalMessages          int32     `db:"total_messages"`
 	TotalMessagesMemorized int32     `db:"total_messages_memorized"`
-	UpdatedAt              time.Time `db:"updated_at"`
 	ID                     uuid.UUID `db:"id"`
 }
 
 func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error) {
-	row := q.db.QueryRow(ctx, incrementUserMessagesByID,
-		arg.TotalMessages,
-		arg.TotalMessagesMemorized,
-		arg.UpdatedAt,
-		arg.ID,
-	)
+	row := q.db.QueryRow(ctx, incrementUserMessagesByID, arg.TotalMessages, arg.TotalMessagesMemorized, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,

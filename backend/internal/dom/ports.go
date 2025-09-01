@@ -275,11 +275,20 @@ type MemoryRepo interface {
 		ctx context.Context,
 		me Memory,
 	) (Memory, error)
+	UpsertMemory(
+		ctx context.Context,
+		me Memory,
+	) (Memory, error)
 	GetMemoriesByUserID(
 		ctx context.Context,
 		userID uuid.UUID,
 		numberOfMemories int32,
 	) ([]Memory, error)
+	DeleteMemoryByUserIDKey(
+		ctx context.Context,
+		userID uuid.UUID,
+		key string,
+	) error
 }
 
 type SessionRepo interface {

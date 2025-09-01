@@ -714,18 +714,18 @@ func BuildMemorizer() *AgentProfile {
 	memItem := ObjectWith(map[string]*LLMSchema{
 		"unique_key": WithDocs(
 			Ptr("Unique Key"),
-			Ptr("Stable kebab-case key (3–64 chars), e.g. 'pref-tafsir-ibn-kathir', 'goal-memorize-juz-amma', 'tone-gentle-reminders'."),
+			Ptr("Stable kebab-case key (3–64 chars). Reuse existing keys if updating."),
 			&LLMSchema{Type: SchemaString},
 		),
 		"content": WithDocs(
 			Ptr("Memory Content"),
-			Ptr("One durable fact/preference/constraint (≤200 chars). No secrets/credentials. Avoid short-lived info unless clearly recurring."),
+			Ptr("One durable fact/preference/constraint (≤200 chars). No secrets/credentials."),
 			&LLMSchema{Type: SchemaString},
 		),
 		"confidence": WithDocs(
 			Ptr("Confidence"),
-			Ptr("Float 0.0–1.0 derived only from provided messages. Include items only if ≥0.60."),
-			&LLMSchema{Type: SchemaNumber},
+			Ptr("Float 0.0–1.0 from the provided messages only. Must be ≥ 0.75 to include."),
+			&LLMSchema{Type: SchemaNumber, Minimum: Ptr[float64](0.0), Maximum: Ptr[float64](1.0)},
 		),
 		"source_msg": WithDocs(
 			Ptr("Source Message (Concise)"),
@@ -734,43 +734,56 @@ func BuildMemorizer() *AgentProfile {
 		),
 		"tags": WithDocs(
 			Ptr("Tags"),
-			Ptr("Optional tags, e.g. ['tajweed','memorization','translation','madhhab','schedule','pronunciation','language','tone']. 0–5 items."),
+			Ptr("Optional tags like ['tajweed','memorization','translation','schedule','tone']. 0–5 items."),
 			ArrayOf(&LLMSchema{Type: SchemaString}, nil, Ptr(int64(5))),
 		),
 	}, "unique_key", "content", "confidence", "source_msg")
 
 	resSchema := WithDocs(
 		Ptr("Response Schema"),
-		Ptr("Return an object with 'memories': an array of durable items. Use an empty array when nothing qualifies."),
+		Ptr("Return upserts in `memories` and any removals in `delete_keys`. Use empty arrays if nothing changes."),
 		ObjectWith(map[string]*LLMSchema{
-			"memories": ArrayOf(memItem, Ptr(int64(0)), Ptr(int64(7))),
-		}, "memories"),
+			"memories":    ArrayOf(memItem, Ptr(int64(0)), Ptr(int64(7))),
+			"delete_keys": ArrayOf(WithDocs(Ptr("Unique Key"), Ptr("Existing key to delete."), &LLMSchema{Type: SchemaString}), Ptr(int64(0)), Ptr(int64(10))),
+		}, "memories", "delete_keys"),
 	)
 
 	system := &LLMContent{
 		Role: LLMUserRole,
 		Parts: []*LLMPart{{
 			Text: `You are "Shaikh", an AI Qur’an expert helping learners make Qur’an study more accessible.
-Extract only long-term, reusable learner information from recent messages—facts that improve future guidance on recitation, memorization, understanding, and practice.
+You will receive:
+1) A list of the user's EXISTING memories (key + content)
+2) A window of RECENT messages
+
+Your task: produce ONLY durable, reusable items that help future guidance on recitation, memorization, understanding, and practice.
+
+When an existing memory is still correct → do nothing.
+When it needs refinement → RETURN an updated item with the SAME unique_key.
+When it is clearly wrong/obsolete → put its key in delete_keys.
+When you find a NEW durable memory → return it with a NEW unique_key.
 
 DOMAIN FOCUS
-- Preferences: scholars (e.g., Al Tabari), reciters, pace (e.g., 10 ayat/day), reminders (time/day), learning style (audio-first, visual notes), tone (gentle/direct).
-- Constraints: time windows, device limits (mobile-only), accessibility needs, Arabic level, target surahs/juz, tajweed focus areas.
-- Durable context: ongoing projects (e.g., "memorizing Juz ‘Amma"), consistent questions/themes, stable school/madhhab considerations if the user states them.
-- Language/orthography: preferred script (Uthmani/IndoPak), transliteration usage, preferred language for explanations.
+- Preferences: scholars/tafsir, reciters, pace (e.g., 10 ayat/day), reminders (time/day), learning style (audio-first/visual), tone (gentle/direct).
+- Constraints: time windows, device limits, accessibility needs, Arabic level, target surahs/juz, tajweed focus areas.
+- Durable context: ongoing projects (e.g., "memorizing Juz ‘Amma"), consistent questions/themes, stable madhhab considerations (if user states them).
+- Language/orthography: preferred script (Uthmani/IndoPak), transliteration usage, preferred explanation language.
 
 STRICT RULES
-- Include ONLY durable facts likely to remain valid for weeks/months.
-- Omit ephemeral items (one-off scheduling, temporary states) unless clearly recurring.
-- Never store secrets/credentials or unrelated personal identifiers.
-- Base every item on explicit text in the window; no speculation. If uncertain, omit.
-- Deduplicate: merge repeats into one concise "content".
-- Include only items with confidence ≥ 0.60.
-- 1–7 items is typical; return {"memories": []} if nothing qualifies.
+- Include ONLY items likely valid for weeks/months (durable facts/preferences/constraints).
+- Omit ephemeral one-offs unless clearly recurring.
+- No secrets/credentials/identifiers.
+- Base every item on explicit text in the given messages. No speculation.
+- Deduplicate: one concise "content" per concept.
+- Include items only with confidence ≥ 0.75.
+- 0–7 items is normal. Return {"memories": [], "delete_keys": []} if nothing qualifies.
 
-OUTPUT
-- JSON object exactly matching the provided schema: {"memories":[ ... ]}.
-- If no durable memories: {"memories": []}.`,
+UNIQUE KEYS
+- Kebab-case, 3–64 chars. Stable for the same concept (e.g., "goal-memorize-juz-amma", "pref-tafsir-ibn-kathir", "tone-gentle").
+
+OUTPUT (IMPORTANT)
+- JSON object exactly: {"memories":[...], "delete_keys":[...]}
+- Do not include explanations outside JSON.`,
 		}},
 	}
 
