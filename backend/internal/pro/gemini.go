@@ -76,7 +76,8 @@ func (g *GeminiLLM) Generate(
 	model string,
 	window []*dom.LLMContent,
 	cfg *dom.LLMGenConfig,
-) (*dom.LLMContent, error) {
+	format dom.LLMResponseSchema,
+) (*dom.LLMContentResult, error) {
 	gWindow := toGenaiContents(window)
 	gCfg := toGenaiConfig(cfg)
 
@@ -90,7 +91,19 @@ func (g *GeminiLLM) Generate(
 		return nil, err
 	}
 
-	return fromGenaiContent(resp.Candidates[0].Content), nil
+	var returned = &dom.LLMContentResult{}
+	if format == dom.ResponseJson {
+		data, err := resp.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		returned.Bytes = data
+	} else {
+		text := resp.Text()
+		returned.Text = &text
+	}
+
+	return returned, nil
 }
 
 func (g *GeminiLLM) Stream(

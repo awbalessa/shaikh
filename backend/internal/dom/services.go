@@ -700,7 +700,7 @@ func BuildSummarizer() *AgentProfile {
 			Temperature:        0,
 			CandidateCount:     1,
 			Tools:              nil,
-			ResponseMimeType:   "application/json",
+			ResponseMimeType:   ResponseJson,
 			ResponseSchema:     resSchema,
 		},
 	}

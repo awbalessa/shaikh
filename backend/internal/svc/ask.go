@@ -394,11 +394,11 @@ func (c *ContextManager) getDbContext(
 			}
 		case dom.FunctionRole:
 			has2infs = true
-			call, err := fromJsonRawMessage(meta.FunctionCall)
+			call, err := dom.FromJsonRawMessage(meta.FunctionCall)
 			if err != nil {
 				return nil, err
 			}
-			resp, err := fromJsonRawMessage(meta.FunctionResponse)
+			resp, err := dom.FromJsonRawMessage(meta.FunctionResponse)
 			if err != nil {
 				return nil, err
 			}
@@ -521,21 +521,4 @@ func (c *ContextManager) sendContextUpdate(
 	}
 
 	return nil
-}
-
-func toJsonRawMessage(m map[string]any) (json.RawMessage, error) {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
-	}
-	return json.RawMessage(b), nil
-}
-
-func fromJsonRawMessage(m json.RawMessage) (map[string]any, error) {
-	final := make(map[string]any)
-	if err := json.Unmarshal(m, &final); err != nil {
-		return nil, err
-	}
-
-	return final, nil
 }

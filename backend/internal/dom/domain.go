@@ -703,7 +703,7 @@ type LLMGenConfig struct {
 	Temperature        float32
 	CandidateCount     int32
 	Tools              []*LLMFunctionDecl
-	ResponseMimeType   string
+	ResponseMimeType   LLMResponseSchema
 	ResponseSchema     *LLMSchema
 }
 
@@ -711,6 +711,13 @@ type LLMCountConfig struct {
 	System *LLMContent
 	Tools  []*LLMFunctionDecl
 }
+
+type LLMResponseSchema string
+
+const (
+	ResponseJson LLMResponseSchema = "application/json"
+	ResponseText LLMResponseSchema = "text/plain"
+)
 
 func Ptr[T any](v T) *T { return &v }
 
@@ -816,4 +823,66 @@ const (
 var AgentToModel = map[AgentName]LargeLanguageModel{
 	Caller:    GeminiV2p5Flash,
 	Generator: GeminiV2p5FlashLite,
+}
+
+func ToJsonRawMessage(m map[string]any) (json.RawMessage, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(b), nil
+}
+
+func FromJsonRawMessage(m json.RawMessage) (map[string]any, error) {
+	final := make(map[string]any)
+	if err := json.Unmarshal(m, &final); err != nil {
+		return nil, err
+	}
+
+	return final, nil
+}
+
+func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
+	var win []*LLMContent
+	for _, m := range msgs {
+		role := m.Role()
+		meta := m.Meta()
+		switch role {
+		case UserRole:
+			win = append(win, &LLMContent{
+				Role:  LLMUserRole,
+				Parts: []*LLMPart{{Text: *meta.Content}},
+			})
+		case FunctionRole:
+			call, err := FromJsonRawMessage(meta.FunctionCall)
+			if err != nil {
+				return nil, err
+			}
+			fnres, err := FromJsonRawMessage(meta.FunctionResponse)
+			if err != nil {
+				return nil, err
+			}
+			win = append(win, &LLMContent{
+				Role: LLMModelRole,
+				Parts: []*LLMPart{{FunctionCall: &LLMFunctionCall{
+					Name: *meta.FunctionName,
+					Args: call,
+				}}},
+			})
+			win = append(win, &LLMContent{
+				Role: LLMUserRole,
+				Parts: []*LLMPart{{FunctionResponse: &LLMFunctionResponse{
+					Name:    *meta.FunctionName,
+					Content: fnres,
+				}}},
+			})
+		case ModelRole:
+			win = append(win, &LLMContent{
+				Role:  LLMModelRole,
+				Parts: []*LLMPart{{Text: *meta.Content}},
+			})
+		}
+	}
+
+	return win, nil
 }

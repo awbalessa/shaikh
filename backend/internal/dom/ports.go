@@ -67,13 +67,19 @@ type Cache interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 }
 
+type LLMContentResult struct {
+	Text  *string
+	Bytes []byte
+}
+
 type LLM interface {
 	Generate(
 		ctx context.Context,
 		model string,
 		window []*LLMContent,
 		cfg *LLMGenConfig,
-	) (*LLMContent, error)
+		format LLMResponseSchema,
+	) (*LLMContentResult, error)
 	Stream(
 		ctx context.Context,
 		model string,
@@ -98,7 +104,7 @@ type Agent interface {
 		ctx context.Context,
 		name AgentName,
 		win []*LLMContent,
-	) (string, error)
+	) (*LLMContentResult, error)
 	Stream(
 		ctx context.Context,
 		name AgentName,
@@ -126,6 +132,24 @@ type AgentStruct struct {
 // func BuildAgentStruct(llm LLM) *AgentStruct {
 
 // }
+
+func (a *AgentStruct) Generate(
+	ctx context.Context,
+	name AgentName,
+	win []*LLMContent,
+) (*LLMContentResult, error) {
+	prof, ok := a.Agents[name]
+	if !ok {
+		return nil, ErrAgentDoesNotExist
+	}
+
+	resp, err := a.LLM.Generate(ctx, prof.Model, win, prof.Config, prof.Config.ResponseMimeType)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
 
 func (a *AgentStruct) Stream(
 	ctx context.Context,
