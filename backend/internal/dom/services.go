@@ -666,30 +666,35 @@ func BuildSummarizer() *AgentProfile {
 	resSchema := WithDocs(
 		Ptr("Response Schema"),
 		Ptr("The structured session summary to persist for continuity between conversations."),
-		&LLMSchema{
-			Type:     SchemaObject,
-			Required: []string{"summary"},
-			Properties: map[string]*LLMSchema{
-				"summary": WithDocs(
-					Ptr("Session Summary"),
-					Ptr("Concise structured summary capturing goals, decisions, open questions, style guidance, and next steps."),
-					&LLMSchema{Type: SchemaString},
-				),
-			},
-		},
+		ObjectWith(map[string]*LLMSchema{
+			"summary": WithDocs(
+				Ptr("Session Summary"),
+				Ptr("Concise, structured summary capturing goals, questions, stylistic guidance, and next steps."),
+				&LLMSchema{Type: SchemaString},
+			),
+		}, "summary"),
 	)
 
 	system := &LLMContent{
 		Role: LLMUserRole,
 		Parts: []*LLMPart{{
-			Text: `You are a session summarization agent. Your job is to read the last session's messages and produce a compact, structured summary that maximizes continuity into future sessions.
+			Text: `You are "Shaikh", an AI Qur’an expert helping learners make Qur’an study accessible.
+Your task: summarize the most recent session into a compact, structured form that maximizes continuity for the next conversation.
 
-			Guidelines:
-			- Always capture user goals, key decisions, unresolved questions, and any stylistic/tone guidance.
-			- Be concise: short declarative sentences, bullet-like structure, no fluff.
-			- Do not repeat the full conversation; only include what is needed for context continuity.
-			- Highlight next steps if the user has pending actions.
-			- Write the summary as if it will be retrieved by another agent to bootstrap the next session.`,
+DOMAIN FOCUS
+- Capture learning goals (e.g., "memorize Surah Al-Mulk"), references to scholars/tafsir, tajweed concerns, or ongoing projects.
+- Record unresolved questions the learner asked about Qur’anic meaning, rulings, or memorization strategy.
+- Note stylistic/tone preferences (e.g., prefers gentle encouragement, concise explanations, step-by-step tafsir).
+- Highlight next steps (e.g., "revise last 10 ayat tomorrow", "review tajweed rule of ikhfa").
+
+GUIDELINES
+- Be concise: bullet-like sentences, no fluff.
+- Do NOT repeat the entire conversation; only what matters for continuity.
+- Frame the summary as durable context for the *next session*.
+
+OUTPUT
+- JSON object matching schema with a single "summary" string.
+- If nothing substantial, still produce a compact but faithful summary.`,
 		}},
 	}
 
@@ -697,9 +702,84 @@ func BuildSummarizer() *AgentProfile {
 		Model: string(GeminiV2p5Flash),
 		Config: &LLMGenConfig{
 			SystemInstructions: system,
-			Temperature:        0,
+			Temperature:        0.0,
 			CandidateCount:     1,
-			Tools:              nil,
+			ResponseMimeType:   ResponseJson,
+			ResponseSchema:     resSchema,
+		},
+	}
+}
+
+func BuildMemorizer() *AgentProfile {
+	memItem := ObjectWith(map[string]*LLMSchema{
+		"unique_key": WithDocs(
+			Ptr("Unique Key"),
+			Ptr("Stable kebab-case key (3–64 chars), e.g. 'pref-tafsir-ibn-kathir', 'goal-memorize-juz-amma', 'tone-gentle-reminders'."),
+			&LLMSchema{Type: SchemaString},
+		),
+		"content": WithDocs(
+			Ptr("Memory Content"),
+			Ptr("One durable fact/preference/constraint (≤200 chars). No secrets/credentials. Avoid short-lived info unless clearly recurring."),
+			&LLMSchema{Type: SchemaString},
+		),
+		"confidence": WithDocs(
+			Ptr("Confidence"),
+			Ptr("Float 0.0–1.0 derived only from provided messages. Include items only if ≥0.60."),
+			&LLMSchema{Type: SchemaNumber},
+		),
+		"source_msg": WithDocs(
+			Ptr("Source Message (Concise)"),
+			Ptr("Short quote/paraphrase (≤160 chars) from the window that supports this memory."),
+			&LLMSchema{Type: SchemaString},
+		),
+		"tags": WithDocs(
+			Ptr("Tags"),
+			Ptr("Optional tags, e.g. ['tajweed','memorization','translation','madhhab','schedule','pronunciation','language','tone']. 0–5 items."),
+			ArrayOf(&LLMSchema{Type: SchemaString}, nil, Ptr(int64(5))),
+		),
+	}, "unique_key", "content", "confidence", "source_msg")
+
+	resSchema := WithDocs(
+		Ptr("Response Schema"),
+		Ptr("Return an object with 'memories': an array of durable items. Use an empty array when nothing qualifies."),
+		ObjectWith(map[string]*LLMSchema{
+			"memories": ArrayOf(memItem, Ptr(int64(0)), Ptr(int64(7))),
+		}, "memories"),
+	)
+
+	system := &LLMContent{
+		Role: LLMUserRole,
+		Parts: []*LLMPart{{
+			Text: `You are "Shaikh", an AI Qur’an expert helping learners make Qur’an study more accessible.
+Extract only long-term, reusable learner information from recent messages—facts that improve future guidance on recitation, memorization, understanding, and practice.
+
+DOMAIN FOCUS
+- Preferences: scholars (e.g., Al Tabari), reciters, pace (e.g., 10 ayat/day), reminders (time/day), learning style (audio-first, visual notes), tone (gentle/direct).
+- Constraints: time windows, device limits (mobile-only), accessibility needs, Arabic level, target surahs/juz, tajweed focus areas.
+- Durable context: ongoing projects (e.g., "memorizing Juz ‘Amma"), consistent questions/themes, stable school/madhhab considerations if the user states them.
+- Language/orthography: preferred script (Uthmani/IndoPak), transliteration usage, preferred language for explanations.
+
+STRICT RULES
+- Include ONLY durable facts likely to remain valid for weeks/months.
+- Omit ephemeral items (one-off scheduling, temporary states) unless clearly recurring.
+- Never store secrets/credentials or unrelated personal identifiers.
+- Base every item on explicit text in the window; no speculation. If uncertain, omit.
+- Deduplicate: merge repeats into one concise "content".
+- Include only items with confidence ≥ 0.60.
+- 1–7 items is typical; return {"memories": []} if nothing qualifies.
+
+OUTPUT
+- JSON object exactly matching the provided schema: {"memories":[ ... ]}.
+- If no durable memories: {"memories": []}.`,
+		}},
+	}
+
+	return &AgentProfile{
+		Model: string(GeminiV2p5Flash),
+		Config: &LLMGenConfig{
+			SystemInstructions: system,
+			Temperature:        0.1,
+			CandidateCount:     1,
 			ResponseMimeType:   ResponseJson,
 			ResponseSchema:     resSchema,
 		},
