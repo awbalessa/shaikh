@@ -14,7 +14,7 @@ import (
 const createMemory = `-- name: CreateMemory :one
 INSERT INTO memories (user_id, memory)
 VALUES ($1, $2)
-RETURNING id, user_id, created_at, updated_at, memory
+RETURNING id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory
 `
 
 type CreateMemoryParams struct {
@@ -30,13 +30,16 @@ func (q *Queries) CreateMemory(ctx context.Context, arg CreateMemoryParams) (Mem
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceMessage,
+		&i.Confidence,
+		&i.UniqueKey,
 		&i.Memory,
 	)
 	return i, err
 }
 
 const getMemoriesByUserID = `-- name: GetMemoriesByUserID :many
-SELECT id, user_id, created_at, updated_at, memory FROM memories
+SELECT id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory FROM memories
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2
@@ -61,6 +64,9 @@ func (q *Queries) GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUser
 			&i.UserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourceMessage,
+			&i.Confidence,
+			&i.UniqueKey,
 			&i.Memory,
 		); err != nil {
 			return nil, err
@@ -74,7 +80,7 @@ func (q *Queries) GetMemoriesByUserID(ctx context.Context, arg GetMemoriesByUser
 }
 
 const getMemoryByID = `-- name: GetMemoryByID :one
-SELECT id, user_id, created_at, updated_at, memory FROM memories
+SELECT id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory FROM memories
 WHERE id = $1
 `
 
@@ -86,6 +92,9 @@ func (q *Queries) GetMemoryByID(ctx context.Context, id int32) (Memory, error) {
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceMessage,
+		&i.Confidence,
+		&i.UniqueKey,
 		&i.Memory,
 	)
 	return i, err
@@ -96,7 +105,7 @@ UPDATE memories
 SET memory = $1,
     updated_at = now()
 WHERE id = $2
-RETURNING id, user_id, created_at, updated_at, memory
+RETURNING id, user_id, created_at, updated_at, source_message, confidence, unique_key, memory
 `
 
 type UpdateMemoryByIDParams struct {
@@ -112,6 +121,9 @@ func (q *Queries) UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDPara
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceMessage,
+		&i.Confidence,
+		&i.UniqueKey,
 		&i.Memory,
 	)
 	return i, err

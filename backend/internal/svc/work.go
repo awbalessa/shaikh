@@ -15,8 +15,8 @@ const (
 	SyncerDurableName   string        = "syncer"
 	SyncerSubject       string        = ContextStreamSubject + "sync"
 	SyncerCommitSubject string        = SyncerSubject + ".commit"
-	SyncerAckWait       time.Duration = 4 * time.Minute
 	SyncMaxIdleTime     time.Duration = 2 * time.Minute
+	SyncerAckWait       time.Duration = 4 * time.Minute
 	SyncMaxBatchSize    int           = 5
 )
 
@@ -26,12 +26,18 @@ type SyncPayload struct {
 	Interaction *dom.Interaction `json:"interaction"`
 }
 
+type SyncCommitPayload struct {
+	UserID    uuid.UUID `json:"user_id"`
+	SessionID uuid.UUID `json:"session_id"`
+}
+
 type Syncer struct {
-	Cons       dom.PubSubConsumer
-	Publisher  dom.Publisher
-	UnitOfWork dom.UnitOfWork
-	Logger     *slog.Logger
-	Buffer     []dom.PubMsg
+	Cons        dom.PubSubConsumer
+	Publisher   dom.Publisher
+	UnitOfWork  dom.UnitOfWork
+	SessionRepo dom.SessionRepo
+	Logger      *slog.Logger
+	Buffer      []dom.PubMsg
 }
 
 func BuildSyncer(
@@ -39,6 +45,7 @@ func BuildSyncer(
 	ps dom.PubSub,
 	pub dom.Publisher,
 	uow dom.UnitOfWork,
+	sr dom.SessionRepo,
 ) (*Syncer, error) {
 	log := slog.Default().With(
 		"worker", "syncer",
@@ -55,11 +62,12 @@ func BuildSyncer(
 	}
 
 	return &Syncer{
-		Cons:       cons,
-		Publisher:  pub,
-		UnitOfWork: uow,
-		Logger:     log,
-		Buffer:     []dom.PubMsg{},
+		Cons:        cons,
+		Publisher:   pub,
+		UnitOfWork:  uow,
+		SessionRepo: sr,
+		Logger:      log,
+		Buffer:      []dom.PubMsg{},
 	}, nil
 }
 
@@ -140,8 +148,7 @@ func (s *Syncer) flush(ctx context.Context) error {
 	defer tx.Rollback(ctx)
 
 	type agg struct {
-		MaxTurn   int32
-		DeltaMsgs int32
+		MaxTurn int32
 	}
 	byUS := map[[2]uuid.UUID]*agg{}
 
@@ -167,7 +174,6 @@ func (s *Syncer) flush(ctx context.Context) error {
 		if t > a.MaxTurn {
 			a.MaxTurn = t
 		}
-		a.DeltaMsgs++
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -183,10 +189,16 @@ func (s *Syncer) flush(ctx context.Context) error {
 	s.Buffer = s.Buffer[:0]
 
 	for k, a := range byUS {
+		_, err := s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
+			ID:      k[1],
+			MaxTurn: &a.MaxTurn,
+		})
+		if err != nil {
+			return err
+		}
 		evt := SyncCommitPayload{
-			UserID: k[0], SessionID: k[1],
-			MaxTurn:   a.MaxTurn,
-			DeltaMsgs: a.DeltaMsgs,
+			UserID:    k[0],
+			SessionID: k[1],
 		}
 
 		b, err := json.Marshal(evt)
@@ -293,35 +305,19 @@ func (s *Syncer) sync(
 	return nil
 }
 
-type sessionState struct {
-	userID             uuid.UUID
-	lastTurnSeen       int32
-	lastTurnSummarized int32
-	pendingMsgs        int32
-	lastActivity       time.Time
-}
-
-type SyncCommitPayload struct {
-	UserID    uuid.UUID `json:"user_id"`
-	SessionID uuid.UUID `json:"session_id"`
-	MaxTurn   int32     `json:"max_turn"`
-	DeltaMsgs int32     `json:"delta_msgs"`
-}
-
 type Summarizer struct {
 	Cons        dom.PubSubConsumer
 	Agent       dom.Agent
 	SessionRepo dom.SessionRepo
 	MessageRepo dom.MessageRepo
 	Logger      *slog.Logger
-	Sessions    map[uuid.UUID]*sessionState
 }
 
 const (
-	SummarizerDurableName  string        = "summarizer"
-	SummarizerMaxIdleTime  time.Duration = 5 * time.Minute
-	SummarizerMaxBatchSize int           = 5
-	SummarizerMinTurns     int           = 10
+	SummarizerDurableName string        = "summarizer"
+	SummarizerMaxIdleTime time.Duration = 5 * time.Minute
+	SummarizerAckWait     time.Duration = 7 * time.Minute
+	SummarizerMinTurns    int           = 10
 )
 
 func BuildSummarizer(
@@ -329,29 +325,31 @@ func BuildSummarizer(
 	ps dom.PubSub,
 	ag dom.Agent,
 	sr dom.SessionRepo,
+	mr dom.MessageRepo,
 ) (*Summarizer, error) {
-	log := slog.Default().With(
-		"worker", "summarizer",
-	)
+	log := slog.Default().With("worker", "summarizer")
 
 	cons, err := ps.CreateConsumer(ctx, ContextStream, dom.PubSubConsumerConfig{
 		Name:           SummarizerDurableName,
 		Durable:        true,
+		AckWait:        SummarizerAckWait,
 		FilterSubjects: []string{SyncerCommitSubject},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	sesh := make(map[uuid.UUID]*sessionState)
-
 	return &Summarizer{
 		Cons:        cons,
 		Agent:       ag,
 		SessionRepo: sr,
+		MessageRepo: mr,
 		Logger:      log,
-		Sessions:    sesh,
 	}, nil
+}
+
+func (s *Summarizer) Consumer() dom.PubSubConsumer {
+	return s.Cons
 }
 
 func (s *Summarizer) Start(ctx context.Context) error {
@@ -387,66 +385,43 @@ func (s *Summarizer) Start(ctx context.Context) error {
 func (s *Summarizer) Process(ctx context.Context, msg dom.PubMsg) error {
 	var load SyncCommitPayload
 	if err := json.Unmarshal(msg.Data(), &load); err != nil {
-		msg.Term()
+		_ = msg.Term()
 		return err
 	}
 
-	st, err := s.getState(ctx, load.SessionID, load.UserID, load.MaxTurn)
+	sess, err := s.SessionRepo.GetSessionByID(ctx, load.SessionID)
 	if err != nil {
 		return err
 	}
 
-	st.pendingMsgs += load.DeltaMsgs
-	st.lastTurnSeen = load.MaxTurn
-	st.lastActivity = time.Now()
-	deltaTurns := st.lastTurnSeen - st.lastTurnSummarized
-	if deltaTurns > int32(SummarizerMinTurns) {
-		if err := s.summarize(ctx, load.SessionID); err != nil {
+	delta := *sess.MaxTurn - *sess.MaxTurnSummarized
+	if delta > int32(SummarizerMinTurns) {
+		if err := msg.InProgress(); err != nil {
 			return err
 		}
-		st.lastTurnSummarized = st.lastTurnSeen
-		st.pendingMsgs = 0
+		if err := s.summarize(ctx, sess); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return msg.Ack()
 }
 
 func (s *Summarizer) IdleProcess(ctx context.Context) error {
-	for sid, st := range s.Sessions {
-		if st.lastTurnSeen > st.lastTurnSummarized && time.Since(st.lastActivity) >= SummarizerMaxIdleTime {
-			if err := s.summarize(ctx, sid); err != nil {
+	sessions, err := s.SessionRepo.ListWithBacklog(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, sess := range sessions {
+		if now.Sub(sess.LastAccessed) >= SummarizerMaxIdleTime {
+			if err := s.summarize(ctx, sess); err != nil {
 				return err
 			}
-
-			st.lastTurnSummarized = st.lastTurnSeen
-			st.pendingMsgs = 0
 		}
 	}
-
 	return nil
-}
-
-func (s *Summarizer) getState(
-	ctx context.Context,
-	sessionID, userID uuid.UUID,
-	lastSeen int32,
-) (*sessionState, error) {
-	st := s.Sessions[sessionID]
-	if st != nil {
-		return st, nil
-	}
-
-	last, err := s.SessionRepo.GetMaxTurnByID(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	st = &sessionState{
-		userID:             userID,
-		lastTurnSeen:       lastSeen,
-		lastTurnSummarized: last,
-	}
-	s.Sessions[sessionID] = st
-	return st, nil
 }
 
 type SummarizerResponse struct {
@@ -455,11 +430,14 @@ type SummarizerResponse struct {
 
 func (s *Summarizer) summarize(
 	ctx context.Context,
-	sessionID uuid.UUID,
+	sess dom.Session,
 ) error {
-	msgs, err := s.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sessionID)
+	msgs, err := s.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sess.ID)
 	if err != nil {
 		return err
+	}
+	if len(msgs) == 0 {
+		return nil
 	}
 
 	lastTurn := msgs[len(msgs)-1].Meta().Turn
@@ -473,9 +451,8 @@ func (s *Summarizer) summarize(
 	if err != nil {
 		return err
 	}
-
 	if res.Bytes == nil {
-		return err
+		return fmt.Errorf("empty summarizer result")
 	}
 
 	var resp SummarizerResponse
@@ -484,17 +461,18 @@ func (s *Summarizer) summarize(
 	}
 
 	_, err = s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
-		ID:           sessionID,
-		LastAccessed: time.Now(),
-		MaxTurn:      &lastTurn,
-		Summary:      &resp.Summary,
+		ID:                sess.ID,
+		LastAccessed:      time.Now(),
+		MaxTurn:           &lastTurn,
+		MaxTurnSummarized: &lastTurn,
+		Summary:           &resp.Summary,
 	})
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
+
+const (
+	MemorizerDurableName string = "memorizer"
+)
 
 type Memorizer struct {
 	Cons        dom.PubSubConsumer
@@ -504,4 +482,90 @@ type Memorizer struct {
 	Logger      *slog.Logger
 }
 
-func BuildMemorizer()
+func BuildMemorizer(
+	ctx context.Context,
+	ps dom.PubSub,
+	ag dom.Agent,
+	mr dom.MessageRepo,
+	memr dom.MemoryRepo,
+) (*Memorizer, error) {
+	log := slog.Default().With(
+		"worker", "memorizer",
+	)
+
+	cons, err := ps.CreateConsumer(ctx, ContextStream, dom.PubSubConsumerConfig{
+		Name:           MemorizerDurableName,
+		Durable:        true,
+		FilterSubjects: []string{SyncerCommitSubject},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &Memorizer{
+		Cons:        cons,
+		Agent:       ag,
+		MemoryRepo:  memr,
+		MessageRepo: mr,
+		Logger:      log,
+	}, nil
+}
+
+func (m *Memorizer) Consumer() dom.PubSubConsumer {
+	return m.Cons
+}
+
+func (m *Memorizer) Start(ctx context.Context) error {
+	msgs, err := m.Cons.Messages(ctx)
+	if err != nil {
+		return fmt.Errorf("memorizer failed: %w", err)
+	}
+
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case <-ticker.C:
+			if err := s.IdleProcess(ctx); err != nil {
+				return fmt.Errorf("summarizer failed: %w", err)
+			}
+
+		case m, ok := <-msgs:
+			if !ok {
+				return nil
+			}
+			if err := s.Process(ctx, m); err != nil {
+				return fmt.Errorf("summarizer failed: %w", err)
+			}
+		}
+	}
+}
+
+func (m *Memorizer) Process(ctx context.Context, msg dom.PubMsg) error {
+	var load SyncCommitPayload
+	if err := json.Unmarshal(msg.Data(), &load); err != nil {
+		_ = msg.Term()
+		return err
+	}
+
+	sess, err := s.SessionRepo.GetSessionByID(ctx, load.SessionID)
+	if err != nil {
+		return err
+	}
+
+	delta := *sess.MaxTurn - *sess.MaxTurnSummarized
+	if delta > int32(SummarizerMinTurns) {
+		if err := msg.InProgress(); err != nil {
+			return err
+		}
+		if err := s.summarize(ctx, sess); err != nil {
+			return err
+		}
+	}
+
+	return msg.Ack()
+}

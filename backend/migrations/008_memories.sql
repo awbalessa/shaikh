@@ -5,6 +5,9 @@ CREATE TABLE public.memories (
     user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    source_message text NOT NULL,
+    confidence REAL NOT NULL,
+    unique_key TEXT NOT NULL,
     memory text NOT NULL
 );
 

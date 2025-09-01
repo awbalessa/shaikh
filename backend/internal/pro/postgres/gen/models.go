@@ -707,11 +707,14 @@ func (ns NullRagSurah) Value() (driver.Value, error) {
 }
 
 type Memory struct {
-	ID        int32     `db:"id"`
-	UserID    uuid.UUID `db:"user_id"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
-	Memory    string    `db:"memory"`
+	ID            int32     `db:"id"`
+	UserID        uuid.UUID `db:"user_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	SourceMessage string    `db:"source_message"`
+	Confidence    float32   `db:"confidence"`
+	UniqueKey     string    `db:"unique_key"`
+	Memory        string    `db:"memory"`
 }
 
 type Message struct {
@@ -773,13 +776,14 @@ type RagDocument struct {
 }
 
 type Session struct {
-	ID        uuid.UUID   `db:"id"`
-	UserID    uuid.UUID   `db:"user_id"`
-	CreatedAt time.Time   `db:"created_at"`
-	UpdatedAt time.Time   `db:"updated_at"`
-	EndedAt   time.Time   `db:"ended_at"`
-	MaxTurn   pgtype.Int4 `db:"max_turn"`
-	Summary   pgtype.Text `db:"summary"`
+	ID                uuid.UUID   `db:"id"`
+	UserID            uuid.UUID   `db:"user_id"`
+	CreatedAt         time.Time   `db:"created_at"`
+	UpdatedAt         time.Time   `db:"updated_at"`
+	EndedAt           time.Time   `db:"ended_at"`
+	MaxTurn           pgtype.Int4 `db:"max_turn"`
+	MaxTurnSummarized pgtype.Int4 `db:"max_turn_summarized"`
+	Summary           pgtype.Text `db:"summary"`
 }
 
 type User struct {

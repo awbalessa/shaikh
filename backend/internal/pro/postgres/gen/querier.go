@@ -31,6 +31,7 @@ type Querier interface {
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error)
 	LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error)
+	ListWithBacklog(ctx context.Context) ([]Session, error)
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)
 	UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error)
 	UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error)

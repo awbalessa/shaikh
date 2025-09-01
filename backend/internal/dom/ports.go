@@ -271,6 +271,10 @@ type PubSubConsumer interface {
 }
 
 type MemoryRepo interface {
+	CreateMemory(
+		ctx context.Context,
+		me Memory,
+	) (Memory, error)
 	GetMemoriesByUserID(
 		ctx context.Context,
 		userID uuid.UUID,
@@ -300,6 +304,9 @@ type SessionRepo interface {
 		ctx context.Context,
 		id uuid.UUID,
 	) (int32, error)
+	ListWithBacklog(
+		ctx context.Context,
+	) ([]Session, error)
 }
 
 type MessageRepo interface {

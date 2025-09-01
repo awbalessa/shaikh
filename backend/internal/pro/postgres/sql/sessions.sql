@@ -22,3 +22,7 @@ RETURNING *;
 -- name: GetMaxTurnByID :one
 SELECT max_turn FROM sessions
 WHERE id = @id;
+
+-- name: ListWithBacklog :many
+SELECT * FROM sessions
+WHERE max_turn > max_turn_summarized;

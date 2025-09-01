@@ -572,12 +572,13 @@ type User struct {
 }
 
 type Session struct {
-	ID           uuid.UUID
-	UserID       uuid.UUID
-	LastAccessed time.Time
-	EndedAt      *time.Time
-	MaxTurn      *int32
-	Summary      *string
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	LastAccessed      time.Time
+	EndedAt           *time.Time
+	MaxTurn           *int32
+	MaxTurnSummarized *int32
+	Summary           *string
 }
 
 type MsgMeta struct {
@@ -626,10 +627,13 @@ func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
 func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type Memory struct {
-	ID        int32
-	UserID    uuid.UUID
-	UpdatedAt time.Time
-	Content   string
+	ID         int32
+	UserID     uuid.UUID
+	UpdatedAt  time.Time
+	SourceMsg  string
+	Confidence float32
+	UniqueKey  string
+	Content    string
 }
 
 type LLMRole string
