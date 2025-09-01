@@ -567,17 +567,20 @@ type Chunk struct {
 }
 
 type User struct {
-	ID    uuid.UUID
-	Email string
+	ID                     uuid.UUID
+	Email                  string
+	UpdatedAt              time.Time
+	TotalMessages          int32
+	TotalMessagesMemorized int32
 }
 
 type Session struct {
 	ID                uuid.UUID
 	UserID            uuid.UUID
 	LastAccessed      time.Time
+	MaxTurn           int32
+	MaxTurnSummarized int32
 	EndedAt           *time.Time
-	MaxTurn           *int32
-	MaxTurnSummarized *int32
 	Summary           *string
 }
 

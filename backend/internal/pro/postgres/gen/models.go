@@ -780,15 +780,17 @@ type Session struct {
 	UserID            uuid.UUID   `db:"user_id"`
 	CreatedAt         time.Time   `db:"created_at"`
 	UpdatedAt         time.Time   `db:"updated_at"`
+	MaxTurn           int32       `db:"max_turn"`
+	MaxTurnSummarized int32       `db:"max_turn_summarized"`
 	EndedAt           time.Time   `db:"ended_at"`
-	MaxTurn           pgtype.Int4 `db:"max_turn"`
-	MaxTurnSummarized pgtype.Int4 `db:"max_turn_summarized"`
 	Summary           pgtype.Text `db:"summary"`
 }
 
 type User struct {
-	ID        uuid.UUID `db:"id"`
-	Email     string    `db:"email"`
-	CreatedAt time.Time `db:"created_at"`
-	UpdatedAt time.Time `db:"updated_at"`
+	ID                     uuid.UUID `db:"id"`
+	Email                  string    `db:"email"`
+	CreatedAt              time.Time `db:"created_at"`
+	UpdatedAt              time.Time `db:"updated_at"`
+	TotalMessages          int32     `db:"total_messages"`
+	TotalMessagesMemorized int32     `db:"total_messages_memorized"`
 }

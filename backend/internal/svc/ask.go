@@ -510,7 +510,7 @@ func (c *ContextManager) sendContextUpdate(
 	}
 
 	ack, err := c.Publisher.Publish(ctx, SyncerSubject, data, &dom.PubOptions{
-		MsgID: fmt.Sprintf("%s:%s:%d", userID, sessionID, interaction.TurnNumber),
+		MsgID: fmt.Sprintf("sync:%s:%s:%d", userID, sessionID, interaction.TurnNumber),
 	})
 	if err != nil {
 		return err

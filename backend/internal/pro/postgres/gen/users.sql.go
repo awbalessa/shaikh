@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +15,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, email)
 VALUES ($1, $2)
-RETURNING id, email, created_at, updated_at
+RETURNING id, email, created_at, updated_at, total_messages, total_messages_memorized
 `
 
 type CreateUserParams struct {
@@ -30,12 +31,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TotalMessages,
+		&i.TotalMessagesMemorized,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, created_at, updated_at FROM users
+SELECT id, email, created_at, updated_at, total_messages, total_messages_memorized FROM users
 WHERE id = $1
 `
 
@@ -47,6 +50,75 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TotalMessages,
+		&i.TotalMessagesMemorized,
 	)
 	return i, err
+}
+
+const incrementUserMessagesByID = `-- name: IncrementUserMessagesByID :one
+UPDATE users
+SET total_messages = total_messages + $1,
+    total_messages_memorized = total_messages_memorized + $2,
+    updated_at = $3
+WHERE id = $4
+RETURNING id, email, created_at, updated_at, total_messages, total_messages_memorized
+`
+
+type IncrementUserMessagesByIDParams struct {
+	TotalMessages          int32     `db:"total_messages"`
+	TotalMessagesMemorized int32     `db:"total_messages_memorized"`
+	UpdatedAt              time.Time `db:"updated_at"`
+	ID                     uuid.UUID `db:"id"`
+}
+
+func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error) {
+	row := q.db.QueryRow(ctx, incrementUserMessagesByID,
+		arg.TotalMessages,
+		arg.TotalMessagesMemorized,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TotalMessages,
+		&i.TotalMessagesMemorized,
+	)
+	return i, err
+}
+
+const listWithBacklog = `-- name: ListWithBacklog :many
+SELECT id, email, created_at, updated_at, total_messages, total_messages_memorized FROM users
+WHERE total_messages > total_messages_memorized
+`
+
+func (q *Queries) ListWithBacklog(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listWithBacklog)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TotalMessages,
+			&i.TotalMessagesMemorized,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

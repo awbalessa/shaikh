@@ -189,7 +189,7 @@ func (s *PostgresSessionRepo) CreateSession(
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
 		EndedAt:      &row.EndedAt,
-		MaxTurn:      &row.MaxTurn.Int32,
+		MaxTurn:      row.MaxTurn,
 		Summary:      &row.Summary.String,
 	}, nil
 }
@@ -214,7 +214,7 @@ func (s *PostgresSessionRepo) GetSessionsByUserID(
 			UserID:       r.UserID,
 			LastAccessed: r.UpdatedAt,
 			EndedAt:      &r.EndedAt,
-			MaxTurn:      &r.MaxTurn.Int32,
+			MaxTurn:      r.MaxTurn,
 			Summary:      &r.Summary.String,
 		})
 	}
@@ -229,7 +229,7 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
 		UpdatedAt: se.LastAccessed,
 		EndedAt:   *se.EndedAt,
-		MaxTurn:   toPgtypeInt4(se.MaxTurn),
+		MaxTurn:   se.MaxTurn,
 		Summary:   toPgtypeText(se.Summary),
 		ID:        se.ID,
 	})
@@ -242,7 +242,7 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
 		EndedAt:      &row.EndedAt,
-		MaxTurn:      &row.MaxTurn.Int32,
+		MaxTurn:      row.MaxTurn,
 		Summary:      &row.Summary.String,
 	}, nil
 }
@@ -260,7 +260,7 @@ func (s *PostgresSessionRepo) GetMaxTurnByID(
 		return 0, err
 	}
 
-	return turn.Int32, nil
+	return turn, nil
 }
 
 func NewPostgresSearcher(q db.Querier) *PostgresSearcher {

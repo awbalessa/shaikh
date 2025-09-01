@@ -16,7 +16,7 @@ import (
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id)
 VALUES ($1, $2)
-RETURNING id, user_id, created_at, updated_at, ended_at, max_turn, max_turn_summarized, summary
+RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary
 `
 
 type CreateSessionParams struct {
@@ -32,9 +32,9 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.EndedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
+		&i.EndedAt,
 		&i.Summary,
 	)
 	return i, err
@@ -45,15 +45,15 @@ SELECT max_turn FROM sessions
 WHERE id = $1
 `
 
-func (q *Queries) GetMaxTurnByID(ctx context.Context, id uuid.UUID) (pgtype.Int4, error) {
+func (q *Queries) GetMaxTurnByID(ctx context.Context, id uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, getMaxTurnByID, id)
-	var max_turn pgtype.Int4
+	var max_turn int32
 	err := row.Scan(&max_turn)
 	return max_turn, err
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, user_id, created_at, updated_at, ended_at, max_turn, max_turn_summarized, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
 WHERE id = $1
 `
 
@@ -65,16 +65,16 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.EndedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
+		&i.EndedAt,
 		&i.Summary,
 	)
 	return i, err
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, user_id, created_at, updated_at, ended_at, max_turn, max_turn_summarized, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2
@@ -99,9 +99,9 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 			&i.UserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.EndedAt,
 			&i.MaxTurn,
 			&i.MaxTurnSummarized,
+			&i.EndedAt,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -114,13 +114,13 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 	return items, nil
 }
 
-const listWithBacklog = `-- name: ListWithBacklog :many
-SELECT id, user_id, created_at, updated_at, ended_at, max_turn, max_turn_summarized, summary FROM sessions
+const listWithSummaryBacklog = `-- name: ListWithSummaryBacklog :many
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
 WHERE max_turn > max_turn_summarized
 `
 
-func (q *Queries) ListWithBacklog(ctx context.Context) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listWithBacklog)
+func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error) {
+	rows, err := q.db.Query(ctx, listWithSummaryBacklog)
 	if err != nil {
 		return nil, err
 	}
@@ -133,9 +133,9 @@ func (q *Queries) ListWithBacklog(ctx context.Context) ([]Session, error) {
 			&i.UserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.EndedAt,
 			&i.MaxTurn,
 			&i.MaxTurnSummarized,
+			&i.EndedAt,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -152,13 +152,13 @@ const updateSessionByID = `-- name: UpdateSessionByID :one
 UPDATE sessions
 SET updated_at = $1, ended_at = $2, max_turn = $3, summary = $4
 WHERE id = $5
-RETURNING id, user_id, created_at, updated_at, ended_at, max_turn, max_turn_summarized, summary
+RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary
 `
 
 type UpdateSessionByIDParams struct {
 	UpdatedAt time.Time   `db:"updated_at"`
 	EndedAt   time.Time   `db:"ended_at"`
-	MaxTurn   pgtype.Int4 `db:"max_turn"`
+	MaxTurn   int32       `db:"max_turn"`
 	Summary   pgtype.Text `db:"summary"`
 	ID        uuid.UUID   `db:"id"`
 }
@@ -177,9 +177,9 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		&i.UserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.EndedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
+		&i.EndedAt,
 		&i.Summary,
 	)
 	return i, err

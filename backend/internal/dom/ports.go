@@ -318,6 +318,31 @@ type MessageRepo interface {
 		ctx context.Context,
 		sessionID uuid.UUID,
 	) ([]Message, error)
+	GetUserMessagesByUserID(
+		ctx context.Context,
+		userID uuid.UUID,
+		numberOfMessages int32,
+	) ([]Message, error)
+}
+
+type UserRepo interface {
+	CreateUser(
+		ctx context.Context,
+		user User,
+	) (User, error)
+	GetUserByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) (User, error)
+	IncrementUserMessagesByID(
+		ctx context.Context,
+		id uuid.UUID,
+		delta int32,
+		deltaMemorized int32,
+	) (User, error)
+	ListWithBacklog(
+		ctx context.Context,
+	) ([]User, error)
 }
 
 type Tx interface {

@@ -5,9 +5,9 @@ CREATE TABLE public.sessions (
     user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    max_turn integer NOT NULL DEFAULT 0,
+    max_turn_summarized integer NOT NULL DEFAULT 0,
     ended_at timestamp with time zone,
-    max_turn integer,
-    max_turn_summarized integer,
     summary text
 );
 

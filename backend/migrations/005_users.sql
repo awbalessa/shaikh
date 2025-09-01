@@ -4,7 +4,9 @@ CREATE TABLE public.users (
     id uuid NOT NULL,
     email text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    total_messages integer NOT NULL DEFAULT 0,
+    total_messages_memorized integer NOT NULL DEFAULT 0
 );
 
 ALTER TABLE ONLY public.users

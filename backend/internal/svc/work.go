@@ -16,7 +16,8 @@ const (
 	SyncerSubject       string        = ContextStreamSubject + "sync"
 	SyncerCommitSubject string        = SyncerSubject + ".commit"
 	SyncMaxIdleTime     time.Duration = 2 * time.Minute
-	SyncerAckWait       time.Duration = 4 * time.Minute
+	AckWaitOffset       time.Duration = 2 * time.Minute
+	SyncerAckWait       time.Duration = SyncMaxIdleTime + AckWaitOffset
 	SyncMaxBatchSize    int           = 5
 )
 
@@ -36,6 +37,7 @@ type Syncer struct {
 	Publisher   dom.Publisher
 	UnitOfWork  dom.UnitOfWork
 	SessionRepo dom.SessionRepo
+	UserRepo    dom.UserRepo
 	Logger      *slog.Logger
 	Buffer      []dom.PubMsg
 }
@@ -46,6 +48,7 @@ func BuildSyncer(
 	pub dom.Publisher,
 	uow dom.UnitOfWork,
 	sr dom.SessionRepo,
+	ur dom.UserRepo,
 ) (*Syncer, error) {
 	log := slog.Default().With(
 		"worker", "syncer",
@@ -66,6 +69,7 @@ func BuildSyncer(
 		Publisher:   pub,
 		UnitOfWork:  uow,
 		SessionRepo: sr,
+		UserRepo:    ur,
 		Logger:      log,
 		Buffer:      []dom.PubMsg{},
 	}, nil
@@ -147,10 +151,15 @@ func (s *Syncer) flush(ctx context.Context) error {
 	}
 	defer tx.Rollback(ctx)
 
-	type agg struct {
+	type sessAgg struct {
 		MaxTurn int32
 	}
-	byUS := map[[2]uuid.UUID]*agg{}
+	type userAgg struct {
+		DeltaMsgs int32
+	}
+
+	bySession := map[uuid.UUID]*sessAgg{}
+	byUser := map[uuid.UUID]*userAgg{}
 
 	loads := make([]SyncPayload, len(s.Buffer))
 	for i, m := range s.Buffer {
@@ -158,21 +167,24 @@ func (s *Syncer) flush(ctx context.Context) error {
 			m.Term()
 			return err
 		}
-
 		if err := s.sync(ctx, tx, loads[i]); err != nil {
 			return err
 		}
 
-		key := [2]uuid.UUID{loads[i].UserID, loads[i].SessionID}
-		a := byUS[key]
-		if a == nil {
-			a = &agg{}
-			byUS[key] = a
+		if sa, ok := bySession[loads[i].SessionID]; ok {
+			if loads[i].Interaction.TurnNumber > sa.MaxTurn {
+				sa.MaxTurn = loads[i].Interaction.TurnNumber
+			}
+		} else {
+			bySession[loads[i].SessionID] = &sessAgg{
+				MaxTurn: loads[i].Interaction.TurnNumber,
+			}
 		}
 
-		t := int32(loads[i].Interaction.TurnNumber)
-		if t > a.MaxTurn {
-			a.MaxTurn = t
+		if ua, ok := byUser[loads[i].UserID]; ok {
+			ua.DeltaMsgs++
+		} else {
+			byUser[loads[i].UserID] = &userAgg{DeltaMsgs: 1}
 		}
 	}
 
@@ -185,36 +197,53 @@ func (s *Syncer) flush(ctx context.Context) error {
 			return err
 		}
 	}
-
 	s.Buffer = s.Buffer[:0]
 
-	for k, a := range byUS {
-		_, err := s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
-			ID:      k[1],
-			MaxTurn: &a.MaxTurn,
-		})
-		if err != nil {
+	for sid, sa := range bySession {
+		if _, err := s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
+			ID:      sid,
+			MaxTurn: sa.MaxTurn,
+		}); err != nil {
 			return err
 		}
-		evt := SyncCommitPayload{
-			UserID:    k[0],
-			SessionID: k[1],
-		}
+	}
 
+	for uid, ua := range byUser {
+		if _, err := s.UserRepo.IncrementUserMessagesByID(ctx, uid, ua.DeltaMsgs, 0); err != nil {
+			return err
+		}
+	}
+
+	for sid := range bySession {
+		evt := SyncCommitPayload{
+			UserID:    findUserForSession(loads, sid),
+			SessionID: sid,
+		}
 		b, err := json.Marshal(evt)
 		if err != nil {
 			return err
 		}
-
 		ack, err := s.Publisher.Publish(ctx, SyncerCommitSubject, b, &dom.PubOptions{
-			MsgID: fmt.Sprintf("commit:%s:%s:%d", k[0], k[1], a.MaxTurn),
+			MsgID: fmt.Sprintf("sync.commit:%s:%s:%d", evt.UserID, evt.SessionID, bySession[evt.SessionID].MaxTurn),
 		})
-
+		if err != nil {
+			return err
+		}
 		if ack.Stream != ContextStream {
 			return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
 		}
 	}
+
 	return nil
+}
+
+func findUserForSession(loads []SyncPayload, sid uuid.UUID) uuid.UUID {
+	for _, l := range loads {
+		if l.SessionID == sid {
+			return l.UserID
+		}
+	}
+	return uuid.Nil
 }
 
 func (s *Syncer) sync(
@@ -316,8 +345,8 @@ type Summarizer struct {
 const (
 	SummarizerDurableName string        = "summarizer"
 	SummarizerMaxIdleTime time.Duration = 5 * time.Minute
-	SummarizerAckWait     time.Duration = 7 * time.Minute
-	SummarizerMinTurns    int           = 10
+	SummarizerAckWait     time.Duration = SummarizerMaxIdleTime + AckWaitOffset
+	SummarizerMinTurns    int32         = 10
 )
 
 func BuildSummarizer(
@@ -394,7 +423,7 @@ func (s *Summarizer) Process(ctx context.Context, msg dom.PubMsg) error {
 		return err
 	}
 
-	delta := *sess.MaxTurn - *sess.MaxTurnSummarized
+	delta := sess.MaxTurn - sess.MaxTurnSummarized
 	if delta > int32(SummarizerMinTurns) {
 		if err := msg.InProgress(); err != nil {
 			return err
@@ -463,15 +492,19 @@ func (s *Summarizer) summarize(
 	_, err = s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
 		ID:                sess.ID,
 		LastAccessed:      time.Now(),
-		MaxTurn:           &lastTurn,
-		MaxTurnSummarized: &lastTurn,
+		MaxTurn:           lastTurn,
+		MaxTurnSummarized: lastTurn,
 		Summary:           &resp.Summary,
 	})
 	return err
 }
 
 const (
-	MemorizerDurableName string = "memorizer"
+	MemorizerDurableName string        = "memorizer"
+	MemorizerMinMsgs     int32         = 50
+	MemorizerMinMsgsIdle int32         = 10
+	MemorizerMaxIdleTime time.Duration = 30 * time.Minute
+	MemorizerAckWait     time.Duration = MemorizerMaxIdleTime + AckWaitOffset
 )
 
 type Memorizer struct {
@@ -479,6 +512,7 @@ type Memorizer struct {
 	Agent       dom.Agent
 	MemoryRepo  dom.MemoryRepo
 	MessageRepo dom.MessageRepo
+	UserRepo    dom.UserRepo
 	Logger      *slog.Logger
 }
 
@@ -530,16 +564,16 @@ func (m *Memorizer) Start(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-ticker.C:
-			if err := s.IdleProcess(ctx); err != nil {
-				return fmt.Errorf("summarizer failed: %w", err)
+			if err := m.IdleProcess(ctx); err != nil {
+				return fmt.Errorf("memorizer failed: %w", err)
 			}
 
-		case m, ok := <-msgs:
+		case msg, ok := <-msgs:
 			if !ok {
 				return nil
 			}
-			if err := s.Process(ctx, m); err != nil {
-				return fmt.Errorf("summarizer failed: %w", err)
+			if err := m.Process(ctx, msg); err != nil {
+				return fmt.Errorf("memorizer failed: %w", err)
 			}
 		}
 	}
@@ -552,20 +586,49 @@ func (m *Memorizer) Process(ctx context.Context, msg dom.PubMsg) error {
 		return err
 	}
 
-	sess, err := s.SessionRepo.GetSessionByID(ctx, load.SessionID)
+	user, err := m.UserRepo.GetUserByID(ctx, load.UserID)
 	if err != nil {
 		return err
 	}
 
-	delta := *sess.MaxTurn - *sess.MaxTurnSummarized
-	if delta > int32(SummarizerMinTurns) {
+	delta := user.TotalMessages - user.TotalMessagesMemorized
+	if delta > MemorizerMinMsgs {
 		if err := msg.InProgress(); err != nil {
 			return err
 		}
-		if err := s.summarize(ctx, sess); err != nil {
+		if err := m.memorize(ctx, user); err != nil {
 			return err
 		}
 	}
 
 	return msg.Ack()
+}
+
+func (m *Memorizer) IdleProcess(ctx context.Context) error {
+	users, err := m.UserRepo.ListWithBacklog(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, u := range users {
+		if now.Sub(u.UpdatedAt) >= MemorizerMaxIdleTime {
+			if err := m.memorize(ctx, u); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Memorizer) memorize(
+	ctx context.Context,
+	user dom.User,
+) error {
+	_, err := m.MessageRepo.GetUserMessagesByUserID(ctx, user.ID, 100)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
