@@ -339,3 +339,11 @@ func fromGenaiContents(cs []*genai.Content) []*dom.LLMContent {
 	}
 	return out
 }
+
+func (g *GeminiLLM) Ping(ctx context.Context, timeout time.Duration) error {
+	return dom.ErrNotPingable
+}
+
+func (g *GeminiLLM) Name() string {
+	return "LLM"
+}

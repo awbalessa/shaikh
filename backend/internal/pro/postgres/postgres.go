@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"os"
 
-	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	db "github.com/awbalessa/shaikh/backend/internal/pro/postgres/gen"
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
@@ -33,10 +33,10 @@ type Postgres struct {
 	Pool *pgxpool.Pool
 }
 
-func NewPostgres(ctx context.Context, log *slog.Logger, env *config.Env) (*Postgres, error) {
+func NewPostgres(ctx context.Context, log *slog.Logger) (*Postgres, error) {
 	connStr := fmt.Sprintf(
 		"%s?%s&%s&%s&%s&%s&%s&%s&%s",
-		env.PostgresUrl,
+		os.Getenv("POSTGRES_URL"),
 		postgresSSLMode,
 		postgresMaxConns,
 		postgresMinConns,
@@ -77,6 +77,18 @@ func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) erro
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (p *Postgres) Name() string {
+	return "db"
+}
+
+func (p *Postgres) Ping(ctx context.Context) error {
+	if err := p.Pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres ping failed: %w", err)
+	}
+
+	return nil
 }
 
 type PostgresTx struct {

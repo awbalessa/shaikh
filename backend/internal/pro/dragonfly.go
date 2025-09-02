@@ -2,9 +2,10 @@ package pro
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -23,9 +24,9 @@ type DragonflyCache struct {
 	Fly *redis.Client
 }
 
-func NewDragonflyCache(env *config.Env) *DragonflyCache {
+func NewDragonflyCache() *DragonflyCache {
 	fly := redis.NewClient(&redis.Options{
-		Addr:                  env.DragonFlyAddress,
+		Addr:                  os.Getenv("DRAGONFLY_ADDR"),
 		ContextTimeoutEnabled: true,
 		DialTimeout:           flyDialTimout,
 		PoolTimeout:           flyPoolTimeout,
@@ -128,4 +129,21 @@ func (f *DragonflyCache) Exists(
 
 	exists := n > 0
 	return exists, nil
+}
+
+func (f *DragonflyCache) Ping(ctx context.Context) error {
+	res, err := f.Fly.Ping(ctx).Result()
+	if err != nil {
+		return fmt.Errorf("dragonfly ping failed: %w", err)
+	}
+
+	if res != "PONG" {
+		return fmt.Errorf("dragonfly ping unexpected response: %s", res)
+	}
+
+	return nil
+}
+
+func (f *DragonflyCache) Name() string {
+	return "cache"
 }

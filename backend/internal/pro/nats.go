@@ -43,6 +43,22 @@ func NewNats(name string) (*Nats, error) {
 	}, nil
 }
 
+func (n *Nats) Ping(ctx context.Context) error {
+	if !n.Conn.IsConnected() {
+		return fmt.Errorf("nats ping failed: not connected")
+	}
+
+	if err := n.Conn.FlushWithContext(ctx); err != nil {
+		return fmt.Errorf("nats ping failed: %w", err)
+	}
+
+	return nil
+}
+
+func (n *Nats) Name() string {
+	return "pubsub"
+}
+
 func NewJS(nats *Nats) (jetstream.JetStream, error) {
 	js, err := jetstream.New(nats.Conn)
 	if err != nil {

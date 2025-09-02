@@ -363,3 +363,12 @@ type Tx interface {
 type UnitOfWork interface {
 	Begin(ctx context.Context) (Tx, error)
 }
+
+var (
+	ErrNotPingable = errors.New("provider not pingable")
+)
+
+type Provider interface {
+	Name() string
+	Ping(ctx context.Context) error
+}

@@ -9,12 +9,12 @@ import (
 )
 
 func main() {
+	os.Setenv("SERVICE_NAME", "shaikh-api")
 	_, cancel := context.WithCancel(
 		context.Background(),
 	)
 
-	env, err := config.LoadEnv()
-	if err != nil {
+	if err := config.LoadEnv(); err != nil {
 		cancel()
 		slog.With(
 			"err", err,
@@ -23,6 +23,6 @@ func main() {
 	}
 
 	slog.SetDefault(
-		config.NewLogger(env.Platform),
+		config.NewLogger(os.Getenv("PLATFORM")),
 	)
 }

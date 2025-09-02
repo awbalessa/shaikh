@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/hashicorp/go-retryablehttp"
 )
@@ -37,7 +37,7 @@ type VoyageEmbedderReranker struct {
 	apiKey string
 }
 
-func NewVoyageEmbedderReranker(env *config.Env, maxRetries int, timeout time.Duration) *VoyageEmbedderReranker {
+func NewVoyageEmbedderReranker(maxRetries int, timeout time.Duration) *VoyageEmbedderReranker {
 	client := &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -60,7 +60,7 @@ func NewVoyageEmbedderReranker(env *config.Env, maxRetries int, timeout time.Dur
 
 	return &VoyageEmbedderReranker{
 		Cli:    retryClient,
-		apiKey: env.VoyageAPIKey,
+		apiKey: os.Getenv("VOYAGE_API_KEY"),
 	}
 }
 
@@ -233,4 +233,12 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	}
 
 	return ranks, nil
+}
+
+func (v *VoyageEmbedderReranker) Ping(ctx context.Context, timeout time.Duration) error {
+	return dom.ErrNotPingable
+}
+
+func (v *VoyageEmbedderReranker) Name() string {
+	return "ERM"
 }
