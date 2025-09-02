@@ -732,11 +732,6 @@ func BuildMemorizer() *AgentProfile {
 			Ptr("Short quote/paraphrase (≤160 chars) from the window that supports this memory."),
 			&LLMSchema{Type: SchemaString},
 		),
-		"tags": WithDocs(
-			Ptr("Tags"),
-			Ptr("Optional tags like ['tajweed','memorization','translation','schedule','tone']. 0–5 items."),
-			ArrayOf(&LLMSchema{Type: SchemaString}, nil, Ptr(int64(5))),
-		),
 	}, "unique_key", "content", "confidence", "source_msg")
 
 	resSchema := WithDocs(

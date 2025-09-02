@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/svc"
@@ -46,5 +48,63 @@ func readyzHandler(hs *svc.HealthReadinessSvc) http.HandlerFunc {
 			TS:     time.Now().UTC().Format(time.RFC3339),
 			DurMS:  time.Since(start).Milliseconds(),
 		})
+	}
+}
+
+func askHandler(ask *svc.AskSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var load struct {
+			Prompt string `json:"prompt"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&load); err != nil || strings.TrimSpace(load.Prompt) == "" {
+			http.Error(w, "invalid body: need {\"prompt\": \"...\"}", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		stream := ask.Ask(r.Context(), load.Prompt)
+
+		io.WriteString(w, "event: ready\n")
+		io.WriteString(w, "data: {}\n\n")
+		flusher.Flush()
+
+		for token, err := range stream {
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+
+			if err != nil {
+				payload, _ := json.Marshal(map[string]string{"error": err.Error()})
+				io.WriteString(w, "event: error\n")
+				io.WriteString(w, "data: ")
+				w.Write(payload)
+				io.WriteString(w, "\n\n")
+				flusher.Flush()
+				return
+			}
+
+			payload, _ := json.Marshal(map[string]string{"token": token})
+			io.WriteString(w, "event: token\n")
+			io.WriteString(w, "data: ")
+			w.Write(payload)
+			io.WriteString(w, "\n\n")
+			flusher.Flush()
+		}
+
+		io.WriteString(w, "event: done\n")
+		io.WriteString(w, "data: {}\n\n")
+		flusher.Flush()
 	}
 }

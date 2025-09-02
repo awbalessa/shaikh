@@ -622,11 +622,10 @@ func (m *Memorizer) IdleProcess(ctx context.Context) error {
 }
 
 type MemorizerMemory struct {
-	UniqueKey  string   `json:"unique_key"`
-	Content    string   `json:"content"`
-	Confidence float32  `json:"confidence"`
-	SourceMsg  string   `json:"source_msg"`
-	Tags       []string `json:"tags,omitempty"`
+	UniqueKey  string  `json:"unique_key"`
+	Content    string  `json:"content"`
+	Confidence float32 `json:"confidence"`
+	SourceMsg  string  `json:"source_msg"`
 }
 
 type MemorizerResponse struct {

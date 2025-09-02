@@ -14,6 +14,7 @@ import (
 
 type Deps struct {
 	Health *svc.HealthReadinessSvc
+	Ask    *svc.AskSvc
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -36,6 +37,14 @@ func NewRouter(d Deps) http.Handler {
 func RegisterSystemRoutes(r chi.Router, d Deps) {
 	r.Get("/healthz", healthzHandler())
 	r.Get("/readyz", readyzHandler(d.Health))
+}
+
+func RegisterAppRoutes(r chi.Router, d Deps) {
+	r.Route("/v1/sessions/{sessionID}", func(sr chi.Router) {
+		sr.Use(UserAuthMiddleware)
+		sr.Use(SessionAuthMiddleware)
+		sr.Post("/ask", askHandler(d.Ask))
+	})
 }
 
 func NewLogger() (*slog.Logger, *httplog.Options) {

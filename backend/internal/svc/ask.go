@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/api"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -70,8 +71,8 @@ func (a *AskSvc) Ask(
 			return
 		}
 
-		turn := cc.Window.Turns + 1
 		infs := a.ask(ctx, prompt, win, yield)
+		turn := cc.Window.Turns + 1
 		inter := dom.Interaction{
 			Inferences: infs,
 			TurnNumber: turn,
@@ -284,8 +285,14 @@ const (
 )
 
 func (c *ContextManager) GetContext(ctx context.Context) (*dom.ContextCache, error) {
-	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-	sessionID := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	userID, err := api.UserIDFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sessionID, err := api.SessionIDFromCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	log := c.Logger.With(
 		"method", "GetContext",
