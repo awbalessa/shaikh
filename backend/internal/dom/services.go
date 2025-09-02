@@ -221,10 +221,10 @@ type Interaction struct {
 }
 
 type ContextWindow struct {
-	UserMemories     []Memory      `json:"memories"`
-	PreviousSessions []Session     `json:"previous_sessions"`
-	History          []Interaction `json:"history"`
-	Turns            int32         `json:"turns"`
+	UserMemories     []*Memory      `json:"memories"`
+	PreviousSessions []*Session     `json:"previous_sessions"`
+	History          []*Interaction `json:"history"`
+	Turns            int32          `json:"turns"`
 }
 
 type ContextCache struct {
@@ -233,12 +233,6 @@ type ContextCache struct {
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	Window    *ContextWindow `json:"context_window"`
-}
-
-type ContextRepo struct {
-	MemoryRepo  MemoryRepo
-	SessionRepo SessionRepo
-	MessageRepo MessageRepo
 }
 
 func CreateContextCacheKey(userID, sessionID uuid.UUID) string {

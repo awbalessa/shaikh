@@ -7,7 +7,7 @@ CREATE TABLE public.sessions (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     max_turn integer NOT NULL DEFAULT 0,
     max_turn_summarized integer NOT NULL DEFAULT 0,
-    ended_at timestamp with time zone,
+    archived_at timestamp with time zone,
     summary text
 );
 

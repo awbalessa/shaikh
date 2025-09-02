@@ -13,12 +13,15 @@ import (
 )
 
 type Deps struct {
-	Health   *svc.HealthReadinessSvc
-	Ask      *svc.AskSvc
-	JWTValid *JWTValidator
+	HealthSvc  *svc.HealthReadinessSvc
+	UserSvc    *svc.UserSvc
+	SessionSvc *svc.SessionSvc
+	AskSvc     *svc.AskSvc
+	JWTIssuer  *svc.JWTIssuer
+	JWTValid   *JWTValidator
 }
 
-func NewRouter(d Deps) http.Handler {
+func CreateRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -31,6 +34,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	RegisterSystemRoutes(r, d)
+	RegisterAuthRoutes(r, d)
 	RegisterAppRoutes(r, d)
 
 	return r
@@ -38,15 +42,26 @@ func NewRouter(d Deps) http.Handler {
 
 func RegisterSystemRoutes(r chi.Router, d Deps) {
 	r.Get("/healthz", healthzHandler())
-	r.Get("/readyz", readyzHandler(d.Health))
+	r.Get("/readyz", readyzHandler(d.HealthSvc))
+}
+
+func RegisterAuthRoutes(r chi.Router, d Deps) {
+	r.Post("/register", registerHandler(d.UserSvc))
+	r.Post("/login", loginHandler(d.UserSvc, d.JWTIssuer))
 }
 
 func RegisterAppRoutes(r chi.Router, d Deps) {
-	// r.Get("/register")
-	r.Route("/v1/sessions/{sessionID}", func(sr chi.Router) {
-		sr.Use(d.JWTValid.Middleware)
-		sr.Use(SessionAuthMiddleware)
-		sr.Post("/ask", askHandler(d.Ask))
+	r.Route("/v1", func(v1 chi.Router) {
+		v1.Use(d.JWTValid.Middleware)
+
+		v1.Post("/sessions", createSessionHandler(d.SessionSvc))
+
+		v1.Route("/sessions/{sessionID}", func(sr chi.Router) {
+			sr.Use(SessionAuthMiddleware)
+			sr.Patch("/", updateSessionHandler(d.SessionSvc))
+			sr.Delete("/", deleteSessionHandler(d.SessionSvc))
+			sr.Post("/ask", askHandler(d.AskSvc))
+		})
 	})
 }
 

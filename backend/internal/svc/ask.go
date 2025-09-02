@@ -75,14 +75,14 @@ func (a *AskSvc) Ask(
 
 		infs := a.ask(ctx, prompt, win, yield)
 		turn := cc.Window.Turns + 1
-		inter := dom.Interaction{
+		inter := &dom.Interaction{
 			Inferences: infs,
 			TurnNumber: turn,
 		}
 
 		cc.Window.History = append(cc.Window.History, inter)
 
-		if err = a.CtxManager.SetContext(ctx, cc, &inter); err != nil {
+		if err = a.CtxManager.SetContext(ctx, cc, inter); err != nil {
 			log.With(
 				"err", err,
 			).ErrorContext(ctx, "failed to set context")
@@ -235,7 +235,9 @@ func (a *AskSvc) handleFn(
 
 type ContextManager struct {
 	dom.Cache
-	dom.ContextRepo
+	dom.MemoryRepo
+	dom.SessionRepo
+	dom.MessageRepo
 	dom.Publisher
 	Logger *slog.Logger
 }
@@ -250,7 +252,9 @@ const (
 func BuildContextManager(
 	ctx context.Context,
 	ca dom.Cache,
-	ctxrepo dom.ContextRepo,
+	mr dom.MessageRepo,
+	memr dom.MemoryRepo,
+	sr dom.SessionRepo,
 	pub dom.Publisher,
 	ps dom.PubSub,
 	log *slog.Logger,
@@ -273,7 +277,9 @@ func BuildContextManager(
 
 	return &ContextManager{
 		Cache:       ca,
-		ContextRepo: ctxrepo,
+		SessionRepo: sr,
+		MemoryRepo:  memr,
+		MessageRepo: mr,
 		Publisher:   pub,
 		Logger:      log,
 	}, nil
@@ -346,8 +352,8 @@ func (c *ContextManager) getDbContext(
 	g, ctx := errgroup.WithContext(ctx)
 
 	var (
-		memories []dom.Memory
-		sessions []dom.Session
+		memories []*dom.Memory
+		sessions []*dom.Session
 		messages []dom.Message
 	)
 
@@ -383,7 +389,7 @@ func (c *ContextManager) getDbContext(
 	}
 
 	var (
-		interactions []dom.Interaction
+		interactions []*dom.Interaction
 		inf1         dom.Inference = dom.Inference{}
 		inf2         dom.Inference = dom.Inference{}
 		has2infs     bool          = false
@@ -436,7 +442,7 @@ func (c *ContextManager) getDbContext(
 			}
 
 			has2infs = false
-			interactions = append(interactions, dom.Interaction{
+			interactions = append(interactions, &dom.Interaction{
 				Inferences: [2]*dom.Inference{&inf1, &inf2},
 				TurnNumber: meta.Turn,
 			})

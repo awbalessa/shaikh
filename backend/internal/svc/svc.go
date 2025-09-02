@@ -3,6 +3,7 @@ package svc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -137,4 +138,30 @@ func (s *UserSvc) Login(
 	}
 
 	return user, nil
+}
+
+type SessionSvc struct {
+	SessionRepo dom.SessionRepo
+}
+
+func (s *SessionSvc) Create(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) (*dom.Session, error) {
+	return s.SessionRepo.CreateSession(ctx, id, userID)
+}
+
+func (s *SessionSvc) Delete(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) error {
+	ok, err := s.SessionRepo.BelongsToUser(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("forbidden resource")
+	}
+
+	return s.SessionRepo.DeleteSessionByID(ctx, id)
 }

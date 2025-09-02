@@ -176,6 +176,27 @@ func (m *PostgresMessageRepo) GetMessagesBySessionIDOrdered(
 	return final, nil
 }
 
+func (m *PostgresMessageRepo) GetUserMessagesByUserID(
+	ctx context.Context,
+	userID uuid.UUID,
+	numberOfMessages int32,
+) ([]dom.Message, error) {
+	rows, err := m.q.GetUserMessagesByUserID(ctx, db.GetUserMessagesByUserIDParams{
+		UserID:           userID,
+		NumberOfMessages: int64(numberOfMessages),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	final := make([]dom.Message, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, fromDbMessage(r))
+	}
+
+	return final, nil
+}
+
 type PostgresSessionRepo struct {
 	q db.Querier
 }
@@ -200,7 +221,7 @@ func (s *PostgresSessionRepo) CreateSession(
 		ID:           row.ID,
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
-		EndedAt:      &row.EndedAt,
+		ArchivedAt:   &row.ArchivedAt,
 		MaxTurn:      row.MaxTurn,
 		Summary:      &row.Summary.String,
 	}, nil
@@ -225,7 +246,7 @@ func (s *PostgresSessionRepo) GetSessionsByUserID(
 			ID:           r.ID,
 			UserID:       r.UserID,
 			LastAccessed: r.UpdatedAt,
-			EndedAt:      &r.EndedAt,
+			ArchivedAt:   &r.ArchivedAt,
 			MaxTurn:      r.MaxTurn,
 			Summary:      &r.Summary.String,
 		})
@@ -239,10 +260,10 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 	se dom.Session,
 ) (dom.Session, error) {
 	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
-		EndedAt: *se.EndedAt,
-		MaxTurn: se.MaxTurn,
-		Summary: toPgtypeText(se.Summary),
-		ID:      se.ID,
+		ArchivedAt: *se.ArchivedAt,
+		MaxTurn:    se.MaxTurn,
+		Summary:    toPgtypeText(se.Summary),
+		ID:         se.ID,
 	})
 	if err != nil {
 		return dom.Session{}, err
@@ -252,7 +273,7 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 		ID:           row.ID,
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
-		EndedAt:      &row.EndedAt,
+		ArchivedAt:   &row.ArchivedAt,
 		MaxTurn:      row.MaxTurn,
 		Summary:      &row.Summary.String,
 	}, nil

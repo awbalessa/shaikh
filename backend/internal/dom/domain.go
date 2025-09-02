@@ -582,7 +582,7 @@ type Session struct {
 	LastAccessed      time.Time
 	MaxTurn           int32
 	MaxTurnSummarized int32
-	EndedAt           *time.Time
+	ArchivedAt        *time.Time
 	Summary           *string
 }
 
@@ -897,7 +897,7 @@ func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
 	return win, nil
 }
 
-func MemoriesToLLMContent(mems []Memory) ([]*LLMContent, error) {
+func MemoriesToLLMContent(mems []*Memory) ([]*LLMContent, error) {
 	final := make([]*LLMContent, 0, len(mems))
 	for _, m := range mems {
 		text := fmt.Sprintf(

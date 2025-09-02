@@ -782,7 +782,7 @@ type Session struct {
 	UpdatedAt         time.Time   `db:"updated_at"`
 	MaxTurn           int32       `db:"max_turn"`
 	MaxTurnSummarized int32       `db:"max_turn_summarized"`
-	EndedAt           time.Time   `db:"ended_at"`
+	ArchivedAt        time.Time   `db:"archived_at"`
 	Summary           pgtype.Text `db:"summary"`
 }
 

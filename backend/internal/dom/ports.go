@@ -273,17 +273,25 @@ type PubSubConsumer interface {
 type MemoryRepo interface {
 	CreateMemory(
 		ctx context.Context,
-		me Memory,
+		userID uuid.UUID,
+		sourceMsg string,
+		confidence float32,
+		unique_key string,
+		content string,
 	) (Memory, error)
 	UpsertMemory(
 		ctx context.Context,
-		me Memory,
-	) (Memory, error)
+		userID uuid.UUID,
+		sourceMsg string,
+		confidence float32,
+		unique_key string,
+		content string,
+	) (*Memory, error)
 	GetMemoriesByUserID(
 		ctx context.Context,
 		userID uuid.UUID,
 		numberOfMemories int32,
-	) ([]Memory, error)
+	) ([]*Memory, error)
 	DeleteMemoryByUserIDKey(
 		ctx context.Context,
 		userID uuid.UUID,
@@ -295,27 +303,39 @@ type SessionRepo interface {
 	CreateSession(
 		ctx context.Context,
 		id, userID uuid.UUID,
-	) (Session, error)
+	) (*Session, error)
 	GetSessionByID(
 		ctx context.Context,
 		id uuid.UUID,
-	) (Session, error)
+	) (*Session, error)
 	GetSessionsByUserID(
 		ctx context.Context,
 		userID uuid.UUID,
 		numberOfSessions int32,
-	) ([]Session, error)
+	) ([]*Session, error)
 	UpdateSessionByID(
 		ctx context.Context,
-		se Session,
-	) (Session, error)
+		id uuid.UUID,
+		maxTurn int32,
+		maxTurnSummarized *int32,
+		summary *string,
+		archived_at *time.Time,
+	) (*Session, error)
 	GetMaxTurnByID(
 		ctx context.Context,
 		id uuid.UUID,
 	) (int32, error)
 	ListWithBacklog(
 		ctx context.Context,
-	) ([]Session, error)
+	) ([]*Session, error)
+	BelongsToUser(
+		ctx context.Context,
+		id, userID uuid.UUID,
+	) (bool, error)
+	DeleteSessionByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) error
 }
 
 type MessageRepo interface {
@@ -356,7 +376,7 @@ type UserRepo interface {
 	) (*User, error)
 	ListWithBacklog(
 		ctx context.Context,
-	) ([]User, error)
+	) ([]*User, error)
 }
 
 type Tx interface {

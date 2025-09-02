@@ -16,7 +16,7 @@ import (
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id)
 VALUES ($1, $2)
-RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary
+RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary
 `
 
 type CreateSessionParams struct {
@@ -34,7 +34,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.UpdatedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
-		&i.EndedAt,
+		&i.ArchivedAt,
 		&i.Summary,
 	)
 	return i, err
@@ -53,7 +53,7 @@ func (q *Queries) GetMaxTurnByID(ctx context.Context, id uuid.UUID) (int32, erro
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary FROM sessions
 WHERE id = $1
 `
 
@@ -67,14 +67,14 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.UpdatedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
-		&i.EndedAt,
+		&i.ArchivedAt,
 		&i.Summary,
 	)
 	return i, err
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary FROM sessions
 WHERE user_id = $1
 ORDER BY updated_at DESC
 LIMIT $2
@@ -101,7 +101,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 			&i.UpdatedAt,
 			&i.MaxTurn,
 			&i.MaxTurnSummarized,
-			&i.EndedAt,
+			&i.ArchivedAt,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -115,7 +115,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 }
 
 const listWithSummaryBacklog = `-- name: ListWithSummaryBacklog :many
-SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary FROM sessions
+SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary FROM sessions
 WHERE max_turn > max_turn_summarized
 `
 
@@ -135,7 +135,7 @@ func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error)
 			&i.UpdatedAt,
 			&i.MaxTurn,
 			&i.MaxTurnSummarized,
-			&i.EndedAt,
+			&i.ArchivedAt,
 			&i.Summary,
 		); err != nil {
 			return nil, err
@@ -150,21 +150,21 @@ func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error)
 
 const updateSessionByID = `-- name: UpdateSessionByID :one
 UPDATE sessions
-SET updated_at = NOW(), ended_at = $1, max_turn = $2, summary = $3
+SET updated_at = NOW(), archived_at = $1, max_turn = $2, summary = $3
 WHERE id = $4
-RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, ended_at, summary
+RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary
 `
 
 type UpdateSessionByIDParams struct {
-	EndedAt time.Time   `db:"ended_at"`
-	MaxTurn int32       `db:"max_turn"`
-	Summary pgtype.Text `db:"summary"`
-	ID      uuid.UUID   `db:"id"`
+	ArchivedAt time.Time   `db:"archived_at"`
+	MaxTurn    int32       `db:"max_turn"`
+	Summary    pgtype.Text `db:"summary"`
+	ID         uuid.UUID   `db:"id"`
 }
 
 func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error) {
 	row := q.db.QueryRow(ctx, updateSessionByID,
-		arg.EndedAt,
+		arg.ArchivedAt,
 		arg.MaxTurn,
 		arg.Summary,
 		arg.ID,
@@ -177,7 +177,7 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		&i.UpdatedAt,
 		&i.MaxTurn,
 		&i.MaxTurnSummarized,
-		&i.EndedAt,
+		&i.ArchivedAt,
 		&i.Summary,
 	)
 	return i, err

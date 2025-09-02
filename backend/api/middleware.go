@@ -61,7 +61,7 @@ func SessionAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sid := chi.URLParam(r, "sessionID")
 		if sid == "" {
-			http.Error(w, "missing session id", http.StatusUnauthorized)
+			http.Error(w, "missing session id", http.StatusBadRequest)
 			return
 		}
 		sessionID, err := uuid.Parse(sid)

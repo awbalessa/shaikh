@@ -200,10 +200,7 @@ func (s *Syncer) flush(ctx context.Context) error {
 	s.Buffer = s.Buffer[:0]
 
 	for sid, sa := range bySession {
-		if _, err := s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
-			ID:      sid,
-			MaxTurn: sa.MaxTurn,
-		}); err != nil {
+		if _, err := s.SessionRepo.UpdateSessionByID(ctx, sid, sa.MaxTurn, nil, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -459,7 +456,7 @@ type SummarizerResponse struct {
 
 func (s *Summarizer) summarize(
 	ctx context.Context,
-	sess dom.Session,
+	sess *dom.Session,
 ) error {
 	msgs, err := s.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sess.ID)
 	if err != nil {
@@ -489,13 +486,14 @@ func (s *Summarizer) summarize(
 		return err
 	}
 
-	_, err = s.SessionRepo.UpdateSessionByID(ctx, dom.Session{
-		ID:                sess.ID,
-		LastAccessed:      time.Now(),
-		MaxTurn:           lastTurn,
-		MaxTurnSummarized: lastTurn,
-		Summary:           &resp.Summary,
-	})
+	_, err = s.SessionRepo.UpdateSessionByID(
+		ctx,
+		sess.ID,
+		lastTurn,
+		&lastTurn,
+		&resp.Summary,
+		nil,
+	)
 	return err
 }
 
@@ -635,7 +633,7 @@ type MemorizerResponse struct {
 
 func (m *Memorizer) memorize(
 	ctx context.Context,
-	user dom.User,
+	user *dom.User,
 ) error {
 	mems, err := m.MemoryRepo.GetMemoriesByUserID(ctx, user.ID, 50)
 	if err != nil {
@@ -683,13 +681,14 @@ func (m *Memorizer) memorize(
 
 	for _, mem := range mr.Memories {
 		if mem.Confidence > 0.75 {
-			_, err := m.MemoryRepo.UpsertMemory(ctx, dom.Memory{
-				UserID:     user.ID,
-				SourceMsg:  mem.SourceMsg,
-				Confidence: mem.Confidence,
-				UniqueKey:  mem.UniqueKey,
-				Content:    mem.Content,
-			})
+			_, err := m.MemoryRepo.UpsertMemory(
+				ctx,
+				user.ID,
+				mem.SourceMsg,
+				mem.Confidence,
+				mem.UniqueKey,
+				mem.Content,
+			)
 			if err != nil {
 				return err
 			}

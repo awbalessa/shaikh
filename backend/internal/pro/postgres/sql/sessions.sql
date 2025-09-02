@@ -15,7 +15,7 @@ LIMIT @number_of_sessions;
 
 -- name: UpdateSessionByID :one
 UPDATE sessions
-SET updated_at = NOW(), ended_at = @ended_at, max_turn = @max_turn, summary = @summary
+SET updated_at = NOW(), archived_at = @archived_at, max_turn = @max_turn, summary = @summary
 WHERE id = @id
 RETURNING *;
 

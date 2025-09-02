@@ -62,7 +62,7 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
@@ -119,6 +119,7 @@ func registerHandler(u *svc.UserSvc) http.HandlerFunc {
 			http.Error(w, "bad body", http.StatusBadRequest)
 			return
 		}
+		body.Email = strings.ToLower(strings.TrimSpace(body.Email))
 
 		user, err := u.Register(r.Context(), body.Email, body.Password)
 		if err != nil {
@@ -166,5 +167,23 @@ func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
 				"email": u.Email,
 			},
 		})
+	}
+}
+
+func createSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+	}
+}
+
+func updateSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+	}
+}
+
+func deleteSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
 	}
 }
