@@ -108,3 +108,63 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 		flusher.Flush()
 	}
 }
+
+func registerHandler(u *svc.UserSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+
+		user, err := u.Register(r.Context(), body.Email, body.Password)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":    user.ID,
+			"email": user.Email,
+		})
+	}
+}
+
+func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+
+		u, err := user.Login(r.Context(), body.Email, body.Password)
+		if err != nil {
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+
+		token, err := tok.Sign(u.ID)
+		if err != nil {
+			http.Error(w, "cannot issue token", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": token,
+			"token_type":   "Bearer",
+			"expires_in":   int(tok.TTL.Seconds()),
+			"user": map[string]any{
+				"id":    u.ID,
+				"email": u.Email,
+			},
+		})
+	}
+}

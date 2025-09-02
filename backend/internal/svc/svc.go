@@ -3,11 +3,45 @@ package svc
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
+
+type JWTIssuer struct {
+	Secret   []byte
+	Issuer   string
+	Audience string
+	TTL      time.Duration
+}
+
+func NewJWTIssuer(audience string, ttl time.Duration) *JWTIssuer {
+	return &JWTIssuer{
+		Secret:   []byte(os.Getenv("JWT_SECRET")),
+		Issuer:   "shaikh-api",
+		Audience: audience,
+		TTL:      ttl,
+	}
+}
+
+func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"iss": j.Issuer,
+		"aud": j.Audience,
+		"sub": userID.String(),
+		"iat": now.Unix(),
+		"nbf": now.Unix(),
+		"exp": now.Add(j.TTL).UTC(),
+	}
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return t.SignedString(j.Secret)
+}
 
 type HealthReadinessSvc struct {
 	Providers []dom.Provider
@@ -65,4 +99,42 @@ func (s *HealthReadinessSvc) CheckReadiness(ctx context.Context) (bool, []CheckR
 	}
 
 	return ready, results
+}
+
+type UserSvc struct {
+	UserRepo dom.UserRepo
+}
+
+func (s *UserSvc) Register(
+	ctx context.Context,
+	email string,
+	password string,
+) (*dom.User, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.UserRepo.CreateUser(ctx, uuid.New(), email, string(hash))
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *UserSvc) Login(
+	ctx context.Context,
+	email, password string,
+) (*dom.User, error) {
+	user, err := s.UserRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }

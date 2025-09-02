@@ -28,6 +28,7 @@ type Querier interface {
 	GetMessagesBySessionIdOrdered(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error)
 	IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error)

@@ -13,8 +13,9 @@ import (
 )
 
 type Deps struct {
-	Health *svc.HealthReadinessSvc
-	Ask    *svc.AskSvc
+	Health   *svc.HealthReadinessSvc
+	Ask      *svc.AskSvc
+	JWTValid *JWTValidator
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -30,6 +31,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	RegisterSystemRoutes(r, d)
+	RegisterAppRoutes(r, d)
 
 	return r
 }
@@ -40,8 +42,9 @@ func RegisterSystemRoutes(r chi.Router, d Deps) {
 }
 
 func RegisterAppRoutes(r chi.Router, d Deps) {
+	// r.Get("/register")
 	r.Route("/v1/sessions/{sessionID}", func(sr chi.Router) {
-		sr.Use(UserAuthMiddleware)
+		sr.Use(d.JWTValid.Middleware)
 		sr.Use(SessionAuthMiddleware)
 		sr.Post("/ask", askHandler(d.Ask))
 	})

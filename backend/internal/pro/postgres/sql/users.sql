@@ -1,11 +1,15 @@
 -- name: CreateUser :one
-INSERT INTO users (id, email)
-VALUES (@id, @email)
+INSERT INTO users (id, email, password_hash)
+VALUES (@id, @email, @password_hash)
 RETURNING *;
 
 -- name: GetUserByID :one
 SELECT * FROM users
 WHERE id = @id;
+
+-- name: GetUserByEmail :one
+SELECT * FROM users
+WHERE email = @email;
 
 -- name: IncrementUserMessagesByID :one
 UPDATE users

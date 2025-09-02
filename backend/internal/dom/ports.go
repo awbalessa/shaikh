@@ -337,18 +337,23 @@ type MessageRepo interface {
 type UserRepo interface {
 	CreateUser(
 		ctx context.Context,
-		user User,
-	) (User, error)
+		id uuid.UUID,
+		email, hash string,
+	) (*User, error)
 	GetUserByID(
 		ctx context.Context,
 		id uuid.UUID,
-	) (User, error)
+	) (*User, error)
+	GetUserByEmail(
+		ctx context.Context,
+		email string,
+	) (*User, error)
 	IncrementUserMessagesByID(
 		ctx context.Context,
 		id uuid.UUID,
 		delta int32,
 		deltaMemorized int32,
-	) (User, error)
+	) (*User, error)
 	ListWithBacklog(
 		ctx context.Context,
 	) ([]User, error)

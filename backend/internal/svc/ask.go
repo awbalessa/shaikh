@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/api"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -55,6 +54,9 @@ func (a *AskSvc) Ask(
 			yield("", fmt.Errorf("failed to get context: %w", err))
 			return
 		}
+		if cc.Window == nil {
+			cc.Window = &dom.ContextWindow{}
+		}
 
 		log := a.Logger.With(
 			"user_id", cc.UserID,
@@ -67,7 +69,7 @@ func (a *AskSvc) Ask(
 
 		win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, cc.Window, time.Now())
 		if err != nil {
-			yield("", err)
+			yield("", fmt.Errorf("failed to build context window: %w", err))
 			return
 		}
 
@@ -78,16 +80,13 @@ func (a *AskSvc) Ask(
 			TurnNumber: turn,
 		}
 
-		if cc.Window == nil {
-			cc.Window = &dom.ContextWindow{}
-		}
 		cc.Window.History = append(cc.Window.History, inter)
 
 		if err = a.CtxManager.SetContext(ctx, cc, &inter); err != nil {
 			log.With(
 				"err", err,
 			).ErrorContext(ctx, "failed to set context")
-			yield("", err)
+			yield("", fmt.Errorf("failed to set context: %w", err))
 			return
 		}
 
@@ -285,11 +284,11 @@ const (
 )
 
 func (c *ContextManager) GetContext(ctx context.Context) (*dom.ContextCache, error) {
-	userID, err := api.UserIDFromCtx(ctx)
+	userID, err := UserIDFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	sessionID, err := api.SessionIDFromCtx(ctx)
+	sessionID, err := SessionIDFromCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -647,4 +646,29 @@ func (f *FnSearch) Call(
 	return map[string]any{
 		"results": serialized,
 	}, nil
+}
+
+type CtxKey string
+
+const (
+	CtxUserIDKey    CtxKey = "userID"
+	CtxSessionIDKey CtxKey = "sessionID"
+)
+
+func UserIDFromCtx(ctx context.Context) (uuid.UUID, error) {
+	v := ctx.Value(CtxUserIDKey)
+	id, ok := v.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("missing or invalid userID in context")
+	}
+	return id, nil
+}
+
+func SessionIDFromCtx(ctx context.Context) (uuid.UUID, error) {
+	v := ctx.Value(CtxSessionIDKey)
+	id, ok := v.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("missing or invalid sessionID in context")
+	}
+	return id, nil
 }

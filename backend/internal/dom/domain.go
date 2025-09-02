@@ -570,6 +570,7 @@ type Chunk struct {
 type User struct {
 	ID                     uuid.UUID
 	Email                  string
+	PasswordHash           string
 	UpdatedAt              time.Time
 	TotalMessages          int32
 	TotalMessagesMemorized int32
