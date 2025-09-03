@@ -13,12 +13,13 @@ import (
 
 const (
 	SyncerDurableName   string        = "syncer"
-	SyncerSubject       string        = ContextStreamSubject + "sync"
-	SyncerCommitSubject string        = SyncerSubject + ".commit"
+	SyncerSubject       string        = ContextStreamSubject + "." + "sync"
+	SyncerCommitSubject string        = SyncerSubject + "." + "commit"
 	SyncMaxIdleTime     time.Duration = 2 * time.Minute
 	AckWaitOffset       time.Duration = 2 * time.Minute
 	SyncerAckWait       time.Duration = SyncMaxIdleTime + AckWaitOffset
 	SyncMaxBatchSize    int           = 5
+	SyncerPingSubject                 = "ping.syncer"
 )
 
 type SyncPayload struct {
@@ -39,13 +40,12 @@ type Syncer struct {
 	SessionRepo dom.SessionRepo
 	UserRepo    dom.UserRepo
 	Logger      *slog.Logger
-	Buffer      []dom.PubMsg
+	Buffer      []dom.DurablePubMsg
 }
 
 func BuildSyncer(
 	ctx context.Context,
 	ps dom.PubSub,
-	pub dom.Publisher,
 	uow dom.UnitOfWork,
 	sr dom.SessionRepo,
 	ur dom.UserRepo,
@@ -64,6 +64,18 @@ func BuildSyncer(
 		return nil, err
 	}
 
+	pub := ps.Publisher()
+
+	if err := ps.Subscriber().Subscribe(SyncerPingSubject, func(msg dom.PubMsg) {
+		if msg.Reply != "" {
+			resp := []byte(`{"status": "ok"}`)
+			pub.Publish(msg.Reply, resp)
+		}
+
+	}); err != nil {
+		return nil, err
+	}
+
 	return &Syncer{
 		Cons:        cons,
 		Publisher:   pub,
@@ -71,7 +83,7 @@ func BuildSyncer(
 		SessionRepo: sr,
 		UserRepo:    ur,
 		Logger:      log,
-		Buffer:      []dom.PubMsg{},
+		Buffer:      []dom.DurablePubMsg{},
 	}, nil
 }
 
@@ -119,7 +131,7 @@ func (s *Syncer) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Syncer) Process(ctx context.Context, msg dom.PubMsg) error {
+func (s *Syncer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 	s.Buffer = append(s.Buffer, msg)
 	if len(s.Buffer) >= SyncMaxBatchSize {
 		if err := s.flush(ctx); err != nil {
@@ -220,7 +232,7 @@ func (s *Syncer) flush(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		ack, err := s.Publisher.Publish(ctx, SyncerCommitSubject, b, &dom.PubOptions{
+		ack, err := s.Publisher.DurablePublish(ctx, SyncerCommitSubject, b, &dom.DurablePubOptions{
 			MsgID: fmt.Sprintf("sync.commit:%s:%s:%d", evt.UserID, evt.SessionID, bySession[evt.SessionID].MaxTurn),
 		})
 		if err != nil {
@@ -344,6 +356,7 @@ const (
 	SummarizerMaxIdleTime time.Duration = 5 * time.Minute
 	SummarizerAckWait     time.Duration = SummarizerMaxIdleTime + AckWaitOffset
 	SummarizerMinTurns    int32         = 10
+	SummarizerPingSubject               = "ping.summarizer"
 )
 
 func BuildSummarizer(
@@ -362,6 +375,16 @@ func BuildSummarizer(
 		FilterSubjects: []string{SyncerCommitSubject},
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	if err := ps.Subscriber().Subscribe(SummarizerPingSubject, func(msg dom.PubMsg) {
+		if msg.Reply != "" {
+			resp := []byte(`{"status": "ok"}`)
+			ps.Publisher().Publish(msg.Reply, resp)
+		}
+
+	}); err != nil {
 		return nil, err
 	}
 
@@ -408,7 +431,7 @@ func (s *Summarizer) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Summarizer) Process(ctx context.Context, msg dom.PubMsg) error {
+func (s *Summarizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 	var load SyncCommitPayload
 	if err := json.Unmarshal(msg.Data(), &load); err != nil {
 		_ = msg.Term()
@@ -503,6 +526,7 @@ const (
 	MemorizerMinMsgsIdle int32         = 10
 	MemorizerMaxIdleTime time.Duration = 30 * time.Minute
 	MemorizerAckWait     time.Duration = MemorizerMaxIdleTime + AckWaitOffset
+	MemorizerPingSubject string        = "ping.memorizer"
 )
 
 type Memorizer struct {
@@ -531,6 +555,16 @@ func BuildMemorizer(
 		FilterSubjects: []string{SyncerCommitSubject},
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	if err := ps.Subscriber().Subscribe(MemorizerPingSubject, func(msg dom.PubMsg) {
+		if msg.Reply != "" {
+			resp := []byte(`{"status": "ok"}`)
+			ps.Publisher().Publish(msg.Reply, resp)
+		}
+
+	}); err != nil {
 		return nil, err
 	}
 
@@ -577,7 +611,7 @@ func (m *Memorizer) Start(ctx context.Context) error {
 	}
 }
 
-func (m *Memorizer) Process(ctx context.Context, msg dom.PubMsg) error {
+func (m *Memorizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 	var load SyncCommitPayload
 	if err := json.Unmarshal(msg.Data(), &load); err != nil {
 		_ = msg.Term()
@@ -693,6 +727,43 @@ func (m *Memorizer) memorize(
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+type WorkerProbe struct {
+	name string
+	subj string
+	pub  dom.Publisher
+}
+
+func NewWorkerProbe(worker string, subject string, ps dom.PubSub) *WorkerProbe {
+	return &WorkerProbe{
+		name: worker,
+		subj: subject,
+		pub:  ps.Publisher(),
+	}
+}
+
+func (p *WorkerProbe) Name() string {
+	return p.name
+}
+
+func (p *WorkerProbe) Ping(ctx context.Context) error {
+	msg, err := p.pub.Request(ctx, p.subj, nil)
+	if err != nil {
+		return err
+	}
+	var resp struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(msg.Data, &resp); err != nil {
+		return err
+	}
+
+	if resp.Status != "ok" {
+		return fmt.Errorf("worker %s down", p.name)
 	}
 
 	return nil

@@ -82,6 +82,13 @@ var toJsStorage = map[dom.PubSubStorageType]jetstream.StorageType{
 	dom.FileStorage: jetstream.FileStorage,
 }
 
+func (n *NatsPubSub) CreatePublisher() dom.Publisher {
+	return &NatsPublisher{
+		Conn: n.Conn,
+		Js:   n.Js,
+	}
+}
+
 func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfig) error {
 	_, err := n.Js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:       cfg.Name,
@@ -128,13 +135,13 @@ func (m *NatsPubMsg) InProgress() error {
 	return m.Msg.InProgress()
 }
 
-func (m *NatsPubMsg) Metadata() (dom.PubMsgMetadata, error) {
+func (m *NatsPubMsg) Metadata() (dom.DurablePubMsgMetadata, error) {
 	meta, err := m.Msg.Metadata()
 	if err != nil {
-		return dom.PubMsgMetadata{}, err
+		return dom.DurablePubMsgMetadata{}, err
 	}
 
-	return dom.PubMsgMetadata{
+	return dom.DurablePubMsgMetadata{
 		Stream:       meta.Stream,
 		Consumer:     meta.Consumer,
 		NumDelivered: meta.NumDelivered,
@@ -146,13 +153,13 @@ type NatsPubSubConsumer struct {
 	Cons jetstream.Consumer
 }
 
-func toNatsMsg(msg jetstream.Msg) dom.PubMsg {
+func toNatsMsg(msg jetstream.Msg) dom.DurablePubMsg {
 	return &NatsPubMsg{
 		Msg: msg,
 	}
 }
 
-func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.PubMsg, error) {
+func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.DurablePubMsg, error) {
 	msgs, err := c.Cons.Fetch(batch)
 	if err != nil {
 		return nil, err
@@ -162,7 +169,7 @@ func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.PubMsg, error) {
 		return nil, msgs.Error()
 	}
 
-	var final []dom.PubMsg
+	var final []dom.DurablePubMsg
 	for m := range msgs.Messages() {
 		final = append(final, toNatsMsg(m))
 	}
@@ -170,13 +177,13 @@ func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.PubMsg, error) {
 	return final, nil
 }
 
-func (c *NatsPubSubConsumer) Messages(ctx context.Context) (<-chan dom.PubMsg, error) {
+func (c *NatsPubSubConsumer) Messages(ctx context.Context) (<-chan dom.DurablePubMsg, error) {
 	msgs, err := c.Cons.Messages()
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(chan dom.PubMsg)
+	out := make(chan dom.DurablePubMsg)
 
 	go func() {
 		defer close(out)
@@ -249,20 +256,37 @@ func (n *NatsPubSub) CreateConsumer(
 }
 
 type NatsPublisher struct {
-	Js  jetstream.JetStream
-	Log *slog.Logger
+	Conn *nats.Conn
+	Js   jetstream.JetStream
 }
 
-func NewNatsPublisher(js jetstream.JetStream, log *slog.Logger) *NatsPublisher {
-	return &NatsPublisher{Js: js, Log: log}
+func (c *NatsPublisher) Publish(subject string, data []byte) error {
+	return c.Conn.Publish(subject, data)
 }
 
-func (c *NatsPublisher) Publish(
+func (c *NatsPublisher) Request(ctx context.Context, subject string, data []byte) (*dom.PubMsg, error) {
+	msg, err := c.Conn.RequestWithContext(ctx, subject, data)
+	if err != nil {
+		return nil, err
+	}
+
+	if msg == nil {
+		return nil, fmt.Errorf("nats: nil reply for subject %s", subject)
+	}
+
+	return &dom.PubMsg{
+		Subject: msg.Subject,
+		Reply:   msg.Reply,
+		Data:    msg.Data,
+	}, nil
+}
+
+func (c *NatsPublisher) DurablePublish(
 	ctx context.Context,
 	subject string,
 	data []byte,
-	opts dom.PubOptions,
-) (*dom.PubAck, error) {
+	opts *dom.DurablePubOptions,
+) (*dom.DurablePubAck, error) {
 	ack, err := c.Js.Publish(ctx, subject, data,
 		jetstream.WithMsgID(opts.MsgID),
 	)
@@ -274,7 +298,7 @@ func (c *NatsPublisher) Publish(
 		return nil, fmt.Errorf("unexpected publish ack: %+v", ack)
 	}
 
-	return &dom.PubAck{
+	return &dom.DurablePubAck{
 		Stream: ack.Stream,
 		Seq:    ack.Sequence,
 	}, nil

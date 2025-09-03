@@ -129,10 +129,6 @@ type AgentStruct struct {
 	LLM    LLM
 }
 
-// func BuildAgentStruct(llm LLM) *AgentStruct {
-
-// }
-
 func (a *AgentStruct) Generate(
 	ctx context.Context,
 	name AgentName,
@@ -182,30 +178,36 @@ func (a *AgentStruct) StreamWithYield(
 	return a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
 }
 
-type PubOptions struct {
+type PubMsg struct {
+	Subject string
+	Reply   string
+	Data    []byte
+}
+
+type DurablePubOptions struct {
 	MsgID string
 }
 
-type PubAck struct {
+type DurablePubAck struct {
 	Stream string
 	Seq    uint64
 }
 
-type PubMsgMetadata struct {
+type DurablePubMsgMetadata struct {
 	Stream       string
 	Consumer     string
 	NumDelivered uint64
 	Timestamp    time.Time
 }
 
-type PubMsg interface {
+type DurablePubMsg interface {
 	Data() []byte
 	Subject() string
 	Ack() error
 	Nak() error
 	Term() error
 	InProgress() error
-	Metadata() (PubMsgMetadata, error)
+	Metadata() (DurablePubMsgMetadata, error)
 }
 
 type PubSubRetentionPolicy int
@@ -232,12 +234,20 @@ type PubSubStreamConfig struct {
 }
 
 type PubSub interface {
+	Publisher() Publisher
+	Subscriber() Subscriber
 	CreateStream(ctx context.Context, cfg PubSubStreamConfig) error
 	CreateConsumer(ctx context.Context, stream string, cfg PubSubConsumerConfig) (PubSubConsumer, error)
 }
 
+type Subscriber interface {
+	Subscribe(subject string, handler func(msg PubMsg)) error
+}
+
 type Publisher interface {
-	Publish(ctx context.Context, subject string, data []byte, opts *PubOptions) (*PubAck, error)
+	Publish(subject string, data []byte) error
+	Request(ctx context.Context, subject string, data []byte) (*PubMsg, error)
+	DurablePublish(ctx context.Context, subject string, data []byte, opts *DurablePubOptions) (*DurablePubAck, error)
 }
 
 type PubSubDeliverPolicy int
@@ -266,8 +276,8 @@ type PubSubConsumerConfig struct {
 }
 
 type PubSubConsumer interface {
-	Fetch(batch int) ([]PubMsg, error)
-	Messages(ctx context.Context) (<-chan PubMsg, error)
+	Fetch(batch int) ([]DurablePubMsg, error)
+	Messages(ctx context.Context) (<-chan DurablePubMsg, error)
 }
 
 type MemoryRepo interface {
@@ -393,7 +403,7 @@ var (
 	ErrNotPingable = errors.New("provider not pingable")
 )
 
-type Provider interface {
+type Probe interface {
 	Name() string
 	Ping(ctx context.Context) error
 }

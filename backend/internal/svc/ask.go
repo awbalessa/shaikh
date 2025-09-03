@@ -245,7 +245,7 @@ type ContextManager struct {
 
 const (
 	ContextStream            string        = "CONTEXT"
-	ContextStreamSubject     string        = "context."
+	ContextStreamSubject     string        = "context"
 	ContextStreamSubjectStar string        = "context.*"
 	ContextStreamMaxAge      time.Duration = 24 * time.Hour
 )
@@ -514,7 +514,7 @@ func (c *ContextManager) sendContextUpdate(
 		return err
 	}
 
-	ack, err := c.Publisher.Publish(ctx, SyncerSubject, data, &dom.PubOptions{
+	ack, err := c.Publisher.DurablePublish(ctx, SyncerSubject, data, &dom.DurablePubOptions{
 		MsgID: fmt.Sprintf("sync:%s:%s:%d", userID, sessionID, interaction.TurnNumber),
 	})
 	if err != nil {

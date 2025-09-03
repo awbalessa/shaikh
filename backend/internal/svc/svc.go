@@ -45,23 +45,23 @@ func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
 }
 
 type HealthReadinessSvc struct {
-	Providers []dom.Provider
+	Probes []dom.Probe
 }
 
 type CheckResult struct {
 	Name   string `json:"name"`
-	Status string `json:"status"` // ok | down | skipped
+	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
 }
 
 func (s *HealthReadinessSvc) CheckReadiness(ctx context.Context) (bool, []CheckResult) {
-	results := make([]CheckResult, len(s.Providers))
+	results := make([]CheckResult, len(s.Probes))
 
 	var wg sync.WaitGroup
-	wg.Add(len(s.Providers))
+	wg.Add(len(s.Probes))
 
-	for i, p := range s.Providers {
-		i, p := i, p // capture
+	for i, p := range s.Probes {
+		i, p := i, p
 		go func() {
 			defer wg.Done()
 
