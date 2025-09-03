@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/google/uuid"
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
@@ -716,27 +717,27 @@ type Memory struct {
 }
 
 type Message struct {
-	ID                int32                  `db:"id"`
-	SessionID         uuid.UUID              `db:"session_id"`
-	UserID            uuid.UUID              `db:"user_id"`
-	CreatedAt         time.Time              `db:"created_at"`
-	Role              MessagesRole           `db:"role"`
-	Turn              int32                  `db:"turn"`
-	Model             NullLargeLanguageModel `db:"model"`
-	TotalInputTokens  *int32                 `db:"total_input_tokens"`
-	TotalOutputTokens *int32                 `db:"total_output_tokens"`
-	Content           *string                `db:"content"`
-	FunctionName      *string                `db:"function_name"`
-	FunctionCall      []byte                 `db:"function_call"`
-	FunctionResponse  []byte                 `db:"function_response"`
+	ID                int32                   `db:"id"`
+	SessionID         uuid.UUID               `db:"session_id"`
+	UserID            uuid.UUID               `db:"user_id"`
+	CreatedAt         time.Time               `db:"created_at"`
+	Role              dom.MessageRole         `db:"role"`
+	Turn              int32                   `db:"turn"`
+	Model             *dom.LargeLanguageModel `db:"model"`
+	TotalInputTokens  *int32                  `db:"total_input_tokens"`
+	TotalOutputTokens *int32                  `db:"total_output_tokens"`
+	Content           *string                 `db:"content"`
+	FunctionName      *string                 `db:"function_name"`
+	FunctionCall      []byte                  `db:"function_call"`
+	FunctionResponse  []byte                  `db:"function_response"`
 }
 
 type RagAyat struct {
-	Surah     RagSurah `db:"surah"`
-	Ayah      RagAyah  `db:"ayah"`
-	Ar        string   `db:"ar"`
-	ArUthmani string   `db:"ar_uthmani"`
-	En        string   `db:"en"`
+	Surah     dom.SurahNumber `db:"surah"`
+	Ayah      dom.AyahNumber  `db:"ayah"`
+	Ar        string          `db:"ar"`
+	ArUthmani string          `db:"ar_uthmani"`
+	En        string          `db:"en"`
 }
 
 type RagChunk struct {
@@ -745,8 +746,8 @@ type RagChunk struct {
 	CreatedAt           time.Time          `db:"created_at"`
 	UpdatedAt           time.Time          `db:"updated_at"`
 	Granularity         RagGranularity     `db:"granularity"`
-	ContentType         RagContentType     `db:"content_type"`
-	Source              RagSource          `db:"source"`
+	ContentType         dom.ContentType    `db:"content_type"`
+	Source              dom.Source         `db:"source"`
 	RawChunk            string             `db:"raw_chunk"`
 	TokenizedChunk      string             `db:"tokenized_chunk"`
 	ChunkTitle          string             `db:"chunk_title"`
@@ -756,21 +757,21 @@ type RagChunk struct {
 	Labels              []int16            `db:"labels"`
 	Embedding           pgvector_go.Vector `db:"embedding"`
 	ParentID            *int32             `db:"parent_id"`
-	Surah               NullRagSurah       `db:"surah"`
-	Ayah                NullRagAyah        `db:"ayah"`
+	Surah               *dom.SurahNumber   `db:"surah"`
+	Ayah                *dom.AyahNumber    `db:"ayah"`
 }
 
 type RagDocument struct {
-	ID            int32          `db:"id"`
-	CreatedAt     time.Time      `db:"created_at"`
-	UpdatedAt     time.Time      `db:"updated_at"`
-	Granularity   RagGranularity `db:"granularity"`
-	ContentType   RagContentType `db:"content_type"`
-	Source        RagSource      `db:"source"`
-	ContextHeader string         `db:"context_header"`
-	Document      string         `db:"document"`
-	Surah         NullRagSurah   `db:"surah"`
-	Ayah          NullRagAyah    `db:"ayah"`
+	ID            int32            `db:"id"`
+	CreatedAt     time.Time        `db:"created_at"`
+	UpdatedAt     time.Time        `db:"updated_at"`
+	Granularity   RagGranularity   `db:"granularity"`
+	ContentType   dom.ContentType  `db:"content_type"`
+	Source        dom.Source       `db:"source"`
+	ContextHeader string           `db:"context_header"`
+	Document      string           `db:"document"`
+	Surah         *dom.SurahNumber `db:"surah"`
+	Ayah          *dom.AyahNumber  `db:"ayah"`
 }
 
 type Session struct {

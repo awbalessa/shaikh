@@ -2,12 +2,12 @@ version: "2"
 sql:
   - engine: "postgresql"
     schema: "migrations"
-    queries: "internal/pro/postgres/sql"
+    queries: "internal/pro/db/sql"
     database:
       uri: ${POSTGRES_URL}
     gen:
       go:
-        out: "internal/pro/postgres/gen"
+        out: "internal/pro/db/gen"
         package: "db"
         sql_package: "pgx/v5"
         emit_pointers_for_null_types: true
@@ -44,3 +44,73 @@ sql:
             go_type:
               import: "encoding/json"
               type: "RawMessage"
+
+          - db_type: "rag.ayah"
+            nullable: true
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "AyahNumber"
+              pointer: true
+
+          - db_type: "rag.surah"
+            nullable: true
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "SurahNumber"
+              pointer: true
+
+          - db_type: "rag.ayah"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "AyahNumber"
+
+          - db_type: "rag.surah"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "SurahNumber"
+
+          - db_type: "rag.content_type"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "ContentType"
+
+          - db_type: "rag.source"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "Source"
+
+          - db_type: "messages_role"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "MessageRole"
+
+          - db_type: "large_language_model"
+            nullable: false
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "LargeLanguageModel"
+
+          - db_type: "large_language_model"
+            nullable: true
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "LargeLanguageModel"
+              pointer: true
+
+          - db_type: "public.messages_role"
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "MessageRole"
+
+          - db_type: "public.large_language_model"
+            nullable: false
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "LargeLanguageModel"
+
+          - db_type: "public.large_language_model"
+            nullable: true
+            go_type:
+              import: "github.com/awbalessa/shaikh/backend/internal/dom"
+              type: "LargeLanguageModel"
+              pointer: true

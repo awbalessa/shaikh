@@ -14,22 +14,13 @@ import (
 )
 
 const (
-	voyageBaseURL              string        = "https://api.voyageai.com/v1"
-	voyageTimeoutTenSeconds    time.Duration = 10 * time.Second
-	voyageMaxRetriesThree      int           = 3
-	voyageMaxIdleConns         int           = 100
-	voyageMaxIdleConnsPerHost  int           = 10
-	voyageIdleConnTimeout      time.Duration = 90 * time.Second
-	voyageDialContextTimeout   time.Duration = 5 * time.Second
-	voyageDialContextKeepAlive time.Duration = 30 * time.Second
-	voyageTLSHandshakeTimeout  time.Duration = 10 * time.Second
-	voyageEmbedV3p5            string        = "voyage-3.5"
-	inputTypeQuery             string        = "query"
-	inputTypeDocument          string        = "document"
-	outputDimension1024        int32         = 1024
-	outputDimensionTypeFloat   string        = "float"
-	voyageRerankV2             string        = "rerank-2"
-	voyageRerankV2p5Lite       string        = "rerank-2.5-lite"
+	voyageBaseURL            string = "https://api.voyageai.com/v1"
+	voyageEmbedV3p5          string = "voyage-3.5"
+	inputTypeQuery           string = "query"
+	outputDimension1024      int32  = 1024
+	outputDimensionTypeFloat string = "float"
+	voyageRerankV2           string = "rerank-2"
+	voyageRerankV2p5Lite     string = "rerank-2.5-lite"
 )
 
 type VoyageEmbedderReranker struct {
@@ -37,24 +28,24 @@ type VoyageEmbedderReranker struct {
 	apiKey string
 }
 
-func NewVoyageEmbedderReranker(maxRetries int, timeout time.Duration) *VoyageEmbedderReranker {
+func NewVoyageEmbedderReranker() *VoyageEmbedderReranker {
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
-				Timeout:   voyageDialContextTimeout,
-				KeepAlive: voyageDialContextKeepAlive,
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			MaxIdleConns:        voyageMaxIdleConns,
-			MaxIdleConnsPerHost: voyageMaxIdleConnsPerHost,
-			IdleConnTimeout:     voyageIdleConnTimeout,
-			TLSHandshakeTimeout: voyageTLSHandshakeTimeout,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
 
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient = client
-	retryClient.RetryMax = maxRetries
+	retryClient.RetryMax = 3
 	retryClient.CheckRetry = retryablehttp.ErrorPropagatedRetryPolicy
 	retryClient.Backoff = retryablehttp.DefaultBackoff
 

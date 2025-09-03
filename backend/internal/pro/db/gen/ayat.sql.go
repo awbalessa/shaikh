@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 )
 
 const getAyatByKeys = `-- name: GetAyatByKeys :many
@@ -16,8 +18,8 @@ WHERE surah = $1
 `
 
 type GetAyatByKeysParams struct {
-	Surah RagSurah  `db:"surah"`
-	Ayat  []RagAyah `db:"ayat"`
+	Surah dom.SurahNumber  `db:"surah"`
+	Ayat  []dom.AyahNumber `db:"ayat"`
 }
 
 func (q *Queries) GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error) {

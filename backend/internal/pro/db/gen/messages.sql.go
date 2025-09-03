@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/google/uuid"
 )
 
@@ -18,17 +19,17 @@ RETURNING id, session_id, user_id, created_at, role, turn, model, total_input_to
 `
 
 type CreateMessageParams struct {
-	SessionID         uuid.UUID              `db:"session_id"`
-	UserID            uuid.UUID              `db:"user_id"`
-	Role              MessagesRole           `db:"role"`
-	Model             NullLargeLanguageModel `db:"model"`
-	Turn              int32                  `db:"turn"`
-	TotalInputTokens  *int32                 `db:"total_input_tokens"`
-	TotalOutputTokens *int32                 `db:"total_output_tokens"`
-	Content           *string                `db:"content"`
-	FunctionName      *string                `db:"function_name"`
-	FunctionCall      []byte                 `db:"function_call"`
-	FunctionResponse  []byte                 `db:"function_response"`
+	SessionID         uuid.UUID               `db:"session_id"`
+	UserID            uuid.UUID               `db:"user_id"`
+	Role              dom.MessageRole         `db:"role"`
+	Model             *dom.LargeLanguageModel `db:"model"`
+	Turn              int32                   `db:"turn"`
+	TotalInputTokens  *int32                  `db:"total_input_tokens"`
+	TotalOutputTokens *int32                  `db:"total_output_tokens"`
+	Content           *string                 `db:"content"`
+	FunctionName      *string                 `db:"function_name"`
+	FunctionCall      []byte                  `db:"function_call"`
+	FunctionResponse  []byte                  `db:"function_response"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {

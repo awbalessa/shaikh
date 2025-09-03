@@ -12,46 +12,30 @@ import (
 	"google.golang.org/genai"
 )
 
-const (
-	geminiFlashLiteV2p5         string        = "gemini-2.5-flash-lite"
-	geminiFlashV2p5             string        = "gemini-2.5-flash"
-	geminiTimeoutFifteenSeconds time.Duration = 15 * time.Second
-	geminiMaxRetriesThree       int           = 3
-	geminiMaxIdleConns          int           = 100
-	geminiMaxIdleConnsPerHost   int           = 10
-	geminiIdleConnTimeout       time.Duration = 90 * time.Second
-	geminiDialContextTimeout    time.Duration = 5 * time.Second
-	geminiDialContextKeepAlive  time.Duration = 30 * time.Second
-	geminiTLSHandshakeTimeout   time.Duration = 10 * time.Second
-	geminiTemperatureZero       float32       = 0
-)
-
 type GeminiLLM struct {
 	Cli *genai.Client
 }
 
 func NewGeminiLLM(
 	ctx context.Context,
-	maxRetries int,
-	timeout time.Duration,
 ) (*GeminiLLM, error) {
 	baseClient := &http.Client{
-		Timeout: timeout,
+		Timeout: 15 * time.Second,
 		Transport: &http.Transport{
 			DialContext: (&net.Dialer{
-				Timeout:   geminiDialContextTimeout,
-				KeepAlive: geminiDialContextKeepAlive,
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			MaxIdleConns:        geminiMaxIdleConns,
-			MaxIdleConnsPerHost: geminiMaxIdleConnsPerHost,
-			IdleConnTimeout:     geminiIdleConnTimeout,
-			TLSHandshakeTimeout: geminiTLSHandshakeTimeout,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
 
 	retryClient := retryablehttp.NewClient()
 	retryClient.HTTPClient = baseClient
-	retryClient.RetryMax = geminiMaxRetriesThree
+	retryClient.RetryMax = 3
 	retryClient.CheckRetry = retryablehttp.ErrorPropagatedRetryPolicy
 	retryClient.Backoff = retryablehttp.DefaultBackoff
 
@@ -297,47 +281,6 @@ func toGenaiSchema(s *dom.LLMSchema) *genai.Schema {
 		Minimum:     s.Minimum,
 		Maximum:     s.Maximum,
 	}
-}
-
-func fromGenaiContent(c *genai.Content) *dom.LLMContent {
-	if c == nil {
-		return nil
-	}
-	parts := []*dom.LLMPart{}
-	for _, p := range c.Parts {
-		switch {
-		case p.Text != "":
-			parts = append(parts, &dom.LLMPart{Text: p.Text})
-
-		case p.FunctionCall != nil:
-			parts = append(parts, &dom.LLMPart{
-				FunctionCall: &dom.LLMFunctionCall{
-					Name: p.FunctionCall.Name,
-					Args: p.FunctionCall.Args,
-				},
-			})
-
-		case p.FunctionResponse != nil:
-			parts = append(parts, &dom.LLMPart{
-				FunctionResponse: &dom.LLMFunctionResponse{
-					Name:    p.FunctionResponse.Name,
-					Content: p.FunctionResponse.Response,
-				},
-			})
-		}
-	}
-	return &dom.LLMContent{
-		Role:  dom.LLMRole(c.Role),
-		Parts: parts,
-	}
-}
-
-func fromGenaiContents(cs []*genai.Content) []*dom.LLMContent {
-	out := make([]*dom.LLMContent, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, fromGenaiContent(c))
-	}
-	return out
 }
 
 func (g *GeminiLLM) Ping(ctx context.Context, timeout time.Duration) error {

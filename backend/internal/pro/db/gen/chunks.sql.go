@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
@@ -104,22 +105,22 @@ LIMIT $1
 `
 
 type LexicalSearchParams struct {
-	NumberOfChunks int64            `db:"number_of_chunks"`
-	Query          string           `db:"query"`
-	ContentTypes   []RagContentType `db:"content_types"`
-	Sources        []RagSource      `db:"sources"`
-	Surahs         []RagSurah       `db:"surahs"`
-	Ayahs          []RagAyah        `db:"ayahs"`
+	NumberOfChunks int64             `db:"number_of_chunks"`
+	Query          string            `db:"query"`
+	ContentTypes   []dom.ContentType `db:"content_types"`
+	Sources        []dom.Source      `db:"sources"`
+	Surahs         []dom.SurahNumber `db:"surahs"`
+	Ayahs          []dom.AyahNumber  `db:"ayahs"`
 }
 
 type LexicalSearchRow struct {
-	ID            int64        `db:"id"`
-	Score         float64      `db:"score"`
-	EmbeddedChunk string       `db:"embedded_chunk"`
-	Source        RagSource    `db:"source"`
-	Surah         NullRagSurah `db:"surah"`
-	Ayah          NullRagAyah  `db:"ayah"`
-	ParentID      *int32       `db:"parent_id"`
+	ID            int64            `db:"id"`
+	Score         float64          `db:"score"`
+	EmbeddedChunk string           `db:"embedded_chunk"`
+	Source        dom.Source       `db:"source"`
+	Surah         *dom.SurahNumber `db:"surah"`
+	Ayah          *dom.AyahNumber  `db:"ayah"`
+	ParentID      *int32           `db:"parent_id"`
 }
 
 func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error) {
@@ -233,13 +234,13 @@ type SemanticSearchParams struct {
 }
 
 type SemanticSearchRow struct {
-	ID            int64        `db:"id"`
-	Score         float64      `db:"score"`
-	EmbeddedChunk string       `db:"embedded_chunk"`
-	Source        RagSource    `db:"source"`
-	Surah         NullRagSurah `db:"surah"`
-	Ayah          NullRagAyah  `db:"ayah"`
-	ParentID      *int32       `db:"parent_id"`
+	ID            int64            `db:"id"`
+	Score         float64          `db:"score"`
+	EmbeddedChunk string           `db:"embedded_chunk"`
+	Source        dom.Source       `db:"source"`
+	Surah         *dom.SurahNumber `db:"surah"`
+	Ayah          *dom.AyahNumber  `db:"ayah"`
+	ParentID      *int32           `db:"parent_id"`
 }
 
 func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error) {

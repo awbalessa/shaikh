@@ -3,7 +3,6 @@ package pro
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -11,28 +10,18 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-const (
-	NatsConnNameApi               string        = "shaikh-api"
-	NatsConnNameWorkers           string        = "shaikh-workers"
-	natsConnTimeoutTenSeconds     time.Duration = 10 * time.Second
-	natsPingIntervalTwentySeconds time.Duration = 20 * time.Second
-	natsMaxPingsOutstandingFive   int           = 5
-	natsReconnectWaitTenSeconds   time.Duration = 10 * time.Second
-)
-
 type Nats struct {
 	Conn *nats.Conn
-	Log  *slog.Logger
 }
 
 func NewNats(name string) (*Nats, error) {
 	nc, err := nats.Connect(
 		nats.DefaultURL,
 		nats.Name(name),
-		nats.Timeout(natsConnTimeoutTenSeconds),
-		nats.PingInterval(natsPingIntervalTwentySeconds),
-		nats.MaxPingsOutstanding(natsMaxPingsOutstandingFive),
-		nats.ReconnectWait(natsReconnectWaitTenSeconds),
+		nats.Timeout(10*time.Second),
+		nats.PingInterval(20*time.Second),
+		nats.MaxPingsOutstanding(5),
+		nats.ReconnectWait(10*time.Second),
 	)
 	if err != nil {
 		return nil, err

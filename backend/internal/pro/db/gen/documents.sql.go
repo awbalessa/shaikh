@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 )
 
 const getDocumentByID = `-- name: GetDocumentByID :one
@@ -15,10 +17,10 @@ WHERE id = $1
 `
 
 type GetDocumentByIDRow struct {
-	Source   RagSource    `db:"source"`
-	Document string       `db:"document"`
-	Surah    NullRagSurah `db:"surah"`
-	Ayah     NullRagAyah  `db:"ayah"`
+	Source   dom.Source       `db:"source"`
+	Document string           `db:"document"`
+	Surah    *dom.SurahNumber `db:"surah"`
+	Ayah     *dom.AyahNumber  `db:"ayah"`
 }
 
 func (q *Queries) GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error) {
@@ -39,14 +41,14 @@ WHERE surah = $1 AND ayah = $2
 `
 
 type GetDocumentByKeyParams struct {
-	Surah NullRagSurah `db:"surah"`
-	Ayah  NullRagAyah  `db:"ayah"`
+	Surah *dom.SurahNumber `db:"surah"`
+	Ayah  *dom.AyahNumber  `db:"ayah"`
 }
 
 type GetDocumentByKeyRow struct {
-	ID       int32     `db:"id"`
-	Source   RagSource `db:"source"`
-	Document string    `db:"document"`
+	ID       int32      `db:"id"`
+	Source   dom.Source `db:"source"`
+	Document string     `db:"document"`
 }
 
 func (q *Queries) GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error) {
