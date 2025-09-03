@@ -62,20 +62,19 @@ type NatsPubSub struct {
 	Js   jetstream.JetStream
 }
 
-var toJsRetentionPolicy = map[dom.PubSubRetentionPolicy]jetstream.RetentionPolicy{
-	dom.WorkQueue:   jetstream.WorkQueuePolicy,
-	dom.LimitsBased: jetstream.LimitsPolicy,
+func NewNatsPubSub(nats *Nats, js jetstream.JetStream) *NatsPubSub {
+	return &NatsPubSub{Conn: nats.Conn, Js: js}
 }
 
-var toJsStorage = map[dom.PubSubStorageType]jetstream.StorageType{
-	dom.FileStorage: jetstream.FileStorage,
-}
-
-func (n *NatsPubSub) CreatePublisher() dom.Publisher {
+func (n *NatsPubSub) Publisher() dom.Publisher {
 	return &NatsPublisher{
 		Conn: n.Conn,
 		Js:   n.Js,
 	}
+}
+
+func (n *NatsPubSub) Subscriber() dom.Subscriber {
+
 }
 
 func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfig) error {
@@ -96,35 +95,35 @@ func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfi
 	return nil
 }
 
-type NatsPubMsg struct {
+type NatsDurablePubMsg struct {
 	Msg jetstream.Msg
 }
 
-func (m *NatsPubMsg) Data() []byte {
+func (m *NatsDurablePubMsg) Data() []byte {
 	return m.Msg.Data()
 }
 
-func (m *NatsPubMsg) Subject() string {
+func (m *NatsDurablePubMsg) Subject() string {
 	return m.Msg.Subject()
 }
 
-func (m *NatsPubMsg) Ack() error {
+func (m *NatsDurablePubMsg) Ack() error {
 	return m.Msg.Ack()
 }
 
-func (m *NatsPubMsg) Nak() error {
+func (m *NatsDurablePubMsg) Nak() error {
 	return m.Msg.Nak()
 }
 
-func (m *NatsPubMsg) Term() error {
+func (m *NatsDurablePubMsg) Term() error {
 	return m.Msg.Term()
 }
 
-func (m *NatsPubMsg) InProgress() error {
+func (m *NatsDurablePubMsg) InProgress() error {
 	return m.Msg.InProgress()
 }
 
-func (m *NatsPubMsg) Metadata() (dom.DurablePubMsgMetadata, error) {
+func (m *NatsDurablePubMsg) Metadata() (dom.DurablePubMsgMetadata, error) {
 	meta, err := m.Msg.Metadata()
 	if err != nil {
 		return dom.DurablePubMsgMetadata{}, err
@@ -140,12 +139,6 @@ func (m *NatsPubMsg) Metadata() (dom.DurablePubMsgMetadata, error) {
 
 type NatsPubSubConsumer struct {
 	Cons jetstream.Consumer
-}
-
-func toNatsMsg(msg jetstream.Msg) dom.DurablePubMsg {
-	return &NatsPubMsg{
-		Msg: msg,
-	}
 }
 
 func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.DurablePubMsg, error) {
@@ -291,4 +284,35 @@ func (c *NatsPublisher) DurablePublish(
 		Stream: ack.Stream,
 		Seq:    ack.Sequence,
 	}, nil
+}
+
+type NatsSubscriber struct {
+	Conn *nats.Conn
+}
+
+func (s *NatsSubscriber) Subscribe(subject string, handler func(msg *dom.PubMsg)) error {
+	_, err := s.Conn.Subscribe(subject, func(m *nats.Msg) {
+		dommsg := &dom.PubMsg{
+			Subject: m.Subject,
+			Reply:   m.Reply,
+			Data:    m.Data,
+		}
+		handler(dommsg)
+	})
+	return err
+}
+
+var toJsRetentionPolicy = map[dom.PubSubRetentionPolicy]jetstream.RetentionPolicy{
+	dom.WorkQueue:   jetstream.WorkQueuePolicy,
+	dom.LimitsBased: jetstream.LimitsPolicy,
+}
+
+var toJsStorage = map[dom.PubSubStorageType]jetstream.StorageType{
+	dom.FileStorage: jetstream.FileStorage,
+}
+
+func toNatsMsg(msg jetstream.Msg) dom.DurablePubMsg {
+	return &NatsDurablePubMsg{
+		Msg: msg,
+	}
 }

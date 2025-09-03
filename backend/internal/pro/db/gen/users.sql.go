@@ -88,13 +88,13 @@ RETURNING id, email, password_hash, created_at, updated_at, total_messages, tota
 `
 
 type IncrementUserMessagesByIDParams struct {
-	TotalMessages          int32     `db:"total_messages"`
-	TotalMessagesMemorized int32     `db:"total_messages_memorized"`
+	DeltaMessages          int32     `db:"delta_messages"`
+	DeltaMessagesMemorized int32     `db:"delta_messages_memorized"`
 	ID                     uuid.UUID `db:"id"`
 }
 
 func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error) {
-	row := q.db.QueryRow(ctx, incrementUserMessagesByID, arg.TotalMessages, arg.TotalMessagesMemorized, arg.ID)
+	row := q.db.QueryRow(ctx, incrementUserMessagesByID, arg.DeltaMessages, arg.DeltaMessagesMemorized, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -108,13 +108,13 @@ func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUs
 	return i, err
 }
 
-const listWithBacklog = `-- name: ListWithBacklog :many
+const listUsersWithBacklog = `-- name: ListUsersWithBacklog :many
 SELECT id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized FROM users
 WHERE total_messages > total_messages_memorized
 `
 
-func (q *Queries) ListWithBacklog(ctx context.Context) ([]User, error) {
-	rows, err := q.db.Query(ctx, listWithBacklog)
+func (q *Queries) ListUsersWithBacklog(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsersWithBacklog)
 	if err != nil {
 		return nil, err
 	}

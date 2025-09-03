@@ -16,6 +16,7 @@ type Querier interface {
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteMemoryByUserIDKey(ctx context.Context, arg DeleteMemoryByUserIDKeyParams) error
+	DeleteSessionByID(ctx context.Context, id uuid.UUID) error
 	GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error)
 	GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error)
 	GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error)
@@ -33,8 +34,8 @@ type Querier interface {
 	GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error)
 	IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error)
 	LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error)
-	ListWithBacklog(ctx context.Context) ([]User, error)
-	ListWithSummaryBacklog(ctx context.Context) ([]Session, error)
+	ListSessionsWithBacklog(ctx context.Context) ([]Session, error)
+	ListUsersWithBacklog(ctx context.Context) ([]User, error)
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)
 	UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error)
 	UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error)

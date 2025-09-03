@@ -27,6 +27,10 @@ RETURNING *;
 SELECT max_turn FROM sessions
 WHERE id = @id;
 
--- name: ListWithSummaryBacklog :many
+-- name: ListSessionsWithBacklog :many
 SELECT * FROM sessions
 WHERE max_turn > max_turn_summarized;
+
+-- name: DeleteSessionByID :exec
+DELETE FROM sessions
+WHERE id = @id;

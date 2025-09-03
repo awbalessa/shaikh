@@ -95,7 +95,7 @@ type LLM interface {
 	) (int32, error)
 }
 
-type LLMFunction interface {
+type AgentFn interface {
 	Call(ctx context.Context, args map[string]any) (map[string]any, error)
 }
 
@@ -124,9 +124,45 @@ type Agent interface {
 	) ([]*LLMContent, error)
 }
 
+type AgentName string
+
+const (
+	Caller     AgentName = "Caller"
+	Generator  AgentName = "Generator"
+	Summarizer AgentName = "Summarizer"
+	Memorizer  AgentName = "Memorizer"
+)
+
+type AgentProfile struct {
+	Model  string
+	Config *LLMGenConfig
+}
+
+type AgentFnName string
+
+const (
+	FunctionSearch AgentFnName = "Search()"
+)
+
+type AgentFns map[AgentFnName]AgentFn
+
 type AgentStruct struct {
-	Agents map[AgentName]AgentProfile
+	Agents map[AgentName]*AgentProfile
 	LLM    LLM
+}
+
+func BuildAgent(llm LLM) *AgentStruct {
+	agents := map[AgentName]*AgentProfile{
+		Caller:     BuildCaller(),
+		Generator:  BuildGenerator(),
+		Summarizer: BuildSummarizer(),
+		Memorizer:  BuildMemorizer(),
+	}
+
+	return &AgentStruct{
+		Agents: agents,
+		LLM:    llm,
+	}
 }
 
 func (a *AgentStruct) Generate(
@@ -241,7 +277,7 @@ type PubSub interface {
 }
 
 type Subscriber interface {
-	Subscribe(subject string, handler func(msg PubMsg)) error
+	Subscribe(subject string, handler func(msg *PubMsg)) error
 }
 
 type Publisher interface {
@@ -288,7 +324,7 @@ type MemoryRepo interface {
 		confidence float32,
 		unique_key string,
 		content string,
-	) (Memory, error)
+	) (*Memory, error)
 	UpsertMemory(
 		ctx context.Context,
 		userID uuid.UUID,
@@ -335,7 +371,7 @@ type SessionRepo interface {
 		ctx context.Context,
 		id uuid.UUID,
 	) (int32, error)
-	ListWithBacklog(
+	ListSessionsWithBacklog(
 		ctx context.Context,
 	) ([]*Session, error)
 	BelongsToUser(
@@ -384,7 +420,7 @@ type UserRepo interface {
 		delta int32,
 		deltaMemorized int32,
 	) (*User, error)
-	ListWithBacklog(
+	ListUsersWithBacklog(
 		ctx context.Context,
 	) ([]*User, error)
 }

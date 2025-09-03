@@ -16,29 +16,42 @@ import (
 
 type AskSvc struct {
 	Agent      dom.Agent
-	Functions  dom.LLMFunctions
+	Functions  dom.AgentFns
 	CtxManager *ContextManager
 	SearchSvc  *SearchSvc
 	Logger     *slog.Logger
 }
 
 func BuildAskSvc(
+	ctx context.Context,
 	ag dom.Agent,
-	fns dom.LLMFunctions,
-	ctx *ContextManager,
+	cache dom.Cache,
+	memr dom.MemoryRepo,
+	sr dom.SessionRepo,
+	mr dom.MessageRepo,
+	pub dom.Publisher,
 	se *SearchSvc,
-) *AskSvc {
+) (*AskSvc, error) {
 	log := slog.Default().With(
 		"service", "ask",
 	)
 
+	fns := map[dom.AgentFnName]dom.AgentFn{
+		dom.FunctionSearch: BuildFnSearch(se, log),
+	}
+
+	ctxManager, err := BuildContextManager(ctx, cache, memr, sr, mr, pub, log)
+	if err != nil {
+		return nil, err
+	}
+
 	return &AskSvc{
 		Agent:      ag,
 		Functions:  fns,
-		CtxManager: ctx,
+		CtxManager: ctxManager,
 		SearchSvc:  se,
 		Logger:     log,
-	}
+	}, nil
 }
 
 func (a *AskSvc) Ask(

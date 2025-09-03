@@ -637,7 +637,7 @@ func (m *Memorizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 }
 
 func (m *Memorizer) IdleProcess(ctx context.Context) error {
-	users, err := m.UserRepo.ListWithBacklog(ctx)
+	users, err := m.UserRepo.ListUsersWithBacklog(ctx)
 	if err != nil {
 		return err
 	}

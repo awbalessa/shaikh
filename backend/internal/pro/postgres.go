@@ -79,6 +79,19 @@ func (p *Postgres) Ping(ctx context.Context) error {
 	return nil
 }
 
+func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
+	tx, err := p.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	q := db.New(tx)
+	return &PostgresTx{
+		q:  q,
+		tx: tx,
+	}, nil
+}
+
 type PostgresTx struct {
 	q  db.Querier
 	tx pgx.Tx
@@ -102,21 +115,293 @@ func (t *PostgresTx) Rollback(ctx context.Context) error {
 	return t.tx.Rollback(ctx)
 }
 
-func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
-	tx, err := p.Pool.Begin(ctx)
+type PostgresUserRepo struct {
+	q db.Querier
+}
+
+func NewPostgresUserRepo(q db.Querier) *PostgresUserRepo {
+	return &PostgresUserRepo{q: q}
+}
+
+func (u *PostgresUserRepo) CreateUser(
+	ctx context.Context,
+	id uuid.UUID,
+	email, hash string,
+) (*dom.User, error) {
+	row, err := u.q.CreateUser(ctx, db.CreateUserParams{
+		ID:           id,
+		Email:        email,
+		PasswordHash: hash,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	q := db.New(tx)
-	return &PostgresTx{
-		q:  q,
-		tx: tx,
+	return &dom.User{
+		ID:                     row.ID,
+		Email:                  row.Email,
+		PasswordHash:           row.PasswordHash,
+		UpdatedAt:              row.UpdatedAt,
+		TotalMessages:          row.TotalMessages,
+		TotalMessagesMemorized: row.TotalMessagesMemorized,
 	}, nil
+}
+
+func (u *PostgresUserRepo) GetUserByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*dom.User, error) {
+	row, err := u.q.GetUserByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.User{
+		ID:                     row.ID,
+		Email:                  row.Email,
+		PasswordHash:           row.PasswordHash,
+		UpdatedAt:              row.UpdatedAt,
+		TotalMessages:          row.TotalMessages,
+		TotalMessagesMemorized: row.TotalMessagesMemorized,
+	}, nil
+}
+
+func (u *PostgresUserRepo) GetUserByEmail(
+	ctx context.Context,
+	email string,
+) (*dom.User, error) {
+	row, err := u.q.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.User{
+		ID:                     row.ID,
+		Email:                  row.Email,
+		PasswordHash:           row.PasswordHash,
+		UpdatedAt:              row.UpdatedAt,
+		TotalMessages:          row.TotalMessages,
+		TotalMessagesMemorized: row.TotalMessagesMemorized,
+	}, nil
+}
+
+func (u *PostgresUserRepo) IncrementUserMessagesByID(
+	ctx context.Context,
+	id uuid.UUID,
+	delta int32,
+	deltaMemorized int32,
+) (*dom.User, error) {
+	row, err := u.q.IncrementUserMessagesByID(ctx, db.IncrementUserMessagesByIDParams{
+		DeltaMessages:          delta,
+		DeltaMessagesMemorized: deltaMemorized,
+		ID:                     id,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.User{
+		ID:                     row.ID,
+		Email:                  row.Email,
+		PasswordHash:           row.PasswordHash,
+		UpdatedAt:              row.UpdatedAt,
+		TotalMessages:          row.TotalMessages,
+		TotalMessagesMemorized: row.TotalMessagesMemorized,
+	}, nil
+}
+
+func (u *PostgresUserRepo) ListUsersWithBacklog(
+	ctx context.Context,
+) ([]*dom.User, error) {
+	rows, err := u.q.ListUsersWithBacklog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	final := make([]*dom.User, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, &dom.User{
+			ID:                     r.ID,
+			Email:                  r.Email,
+			PasswordHash:           r.PasswordHash,
+			UpdatedAt:              r.UpdatedAt,
+			TotalMessages:          r.TotalMessages,
+			TotalMessagesMemorized: r.TotalMessagesMemorized,
+		})
+	}
+
+	return final, nil
+}
+
+type PostgresSessionRepo struct {
+	q db.Querier
+}
+
+func NewPostgresSessionRepo(q db.Querier) *PostgresSessionRepo {
+	return &PostgresSessionRepo{q: q}
+}
+
+func (s *PostgresSessionRepo) CreateSession(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) (*dom.Session, error) {
+	row, err := s.q.CreateSession(ctx, db.CreateSessionParams{
+		ID:     id,
+		UserID: userID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.Session{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		LastAccessed: row.UpdatedAt,
+		ArchivedAt:   row.ArchivedAt,
+		MaxTurn:      row.MaxTurn,
+		Summary:      row.Summary,
+	}, nil
+}
+
+func (s *PostgresSessionRepo) GetSessionByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*dom.Session, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.Session{
+		ID:                row.ID,
+		UserID:            row.UserID,
+		LastAccessed:      row.UpdatedAt,
+		MaxTurn:           row.MaxTurn,
+		MaxTurnSummarized: row.MaxTurnSummarized,
+		ArchivedAt:        row.ArchivedAt,
+		Summary:           row.Summary,
+	}, nil
+}
+
+func (s *PostgresSessionRepo) GetSessionsByUserID(
+	ctx context.Context,
+	userID uuid.UUID,
+	numberOfSessions int32,
+) ([]*dom.Session, error) {
+	rows, err := s.q.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
+		UserID:           userID,
+		NumberOfSessions: int64(numberOfSessions),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	final := make([]*dom.Session, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, &dom.Session{
+			ID:           r.ID,
+			UserID:       r.UserID,
+			LastAccessed: r.UpdatedAt,
+			ArchivedAt:   r.ArchivedAt,
+			MaxTurn:      r.MaxTurn,
+			Summary:      r.Summary,
+		})
+	}
+
+	return final, nil
+}
+
+func (s *PostgresSessionRepo) UpdateSessionByID(
+	ctx context.Context,
+	id uuid.UUID,
+	maxTurn *int32,
+	maxTurnSummarized *int32,
+	summary *string,
+	archived_at *time.Time,
+) (*dom.Session, error) {
+	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
+		MaxTurn:           maxTurn,
+		MaxTurnSummarized: maxTurnSummarized,
+		ArchivedAt:        archived_at,
+		Summary:           summary,
+		ID:                id,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.Session{
+		ID:           row.ID,
+		UserID:       row.UserID,
+		LastAccessed: row.UpdatedAt,
+		ArchivedAt:   row.ArchivedAt,
+		MaxTurn:      row.MaxTurn,
+		Summary:      row.Summary,
+	}, nil
+}
+
+func (s *PostgresSessionRepo) GetMaxTurnByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (int32, error) {
+	max, err := s.q.GetMaxTurnByID(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+
+	return max, nil
+}
+
+func (s *PostgresSessionRepo) ListSessionsWithBacklog(ctx context.Context) ([]*dom.Session, error) {
+	rows, err := s.q.ListSessionsWithBacklog(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	final := make([]*dom.Session, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, &dom.Session{
+			ID:                r.ID,
+			UserID:            r.UserID,
+			LastAccessed:      r.UpdatedAt,
+			MaxTurn:           r.MaxTurn,
+			MaxTurnSummarized: r.MaxTurnSummarized,
+			ArchivedAt:        r.ArchivedAt,
+			Summary:           r.Summary,
+		})
+	}
+
+	return final, nil
+}
+
+func (s *PostgresSessionRepo) BelongsToUser(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) (bool, error) {
+	row, err := s.q.GetSessionByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+
+	if row.UserID != userID {
+		return false, fmt.Errorf("session does not belong to user")
+	}
+
+	return true, nil
+}
+
+func (s *PostgresSessionRepo) DeleteSessionByID(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return s.q.DeleteSessionByID(ctx, id)
 }
 
 type PostgresMessageRepo struct {
 	q db.Querier
+}
+
+func NewPostgresMessageRepo(q db.Querier) *PostgresMessageRepo {
+	return &PostgresMessageRepo{q: q}
 }
 
 func (m *PostgresMessageRepo) CreateMessage(
@@ -185,97 +470,6 @@ func (m *PostgresMessageRepo) GetUserMessagesByUserID(
 	return final, nil
 }
 
-type PostgresSessionRepo struct {
-	q db.Querier
-}
-
-func NewPostgresSessionRepo(q db.Querier) *PostgresSessionRepo {
-	return &PostgresSessionRepo{q: q}
-}
-
-func (s *PostgresSessionRepo) CreateSession(
-	ctx context.Context,
-	id, userID uuid.UUID,
-) (dom.Session, error) {
-	row, err := s.q.CreateSession(ctx, db.CreateSessionParams{
-		ID:     id,
-		UserID: userID,
-	})
-	if err != nil {
-		return dom.Session{}, err
-	}
-
-	return dom.Session{
-		ID:           row.ID,
-		UserID:       row.UserID,
-		LastAccessed: row.UpdatedAt,
-		ArchivedAt:   row.ArchivedAt,
-		MaxTurn:      row.MaxTurn,
-		Summary:      row.Summary,
-	}, nil
-}
-
-func (s *PostgresSessionRepo) GetSessionsByUserID(
-	ctx context.Context,
-	userID uuid.UUID,
-	numberOfSessions int32,
-) ([]dom.Session, error) {
-	rows, err := s.q.GetSessionsByUserID(ctx, db.GetSessionsByUserIDParams{
-		UserID:           userID,
-		NumberOfSessions: int64(numberOfSessions),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	final := make([]dom.Session, 0, len(rows))
-	for _, r := range rows {
-		final = append(final, dom.Session{
-			ID:           r.ID,
-			UserID:       r.UserID,
-			LastAccessed: r.UpdatedAt,
-			ArchivedAt:   r.ArchivedAt,
-			MaxTurn:      r.MaxTurn,
-			Summary:      r.Summary,
-		})
-	}
-
-	return final, nil
-}
-
-func (s *PostgresSessionRepo) UpdateSessionByID(
-	ctx context.Context,
-	id uuid.UUID,
-	maxTurn *int32,
-	maxTurnSummarized *int32,
-	summary *string,
-	archived_at *time.Time,
-) (*dom.Session, error) {
-	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
-		MaxTurn:           maxTurn,
-		MaxTurnSummarized: maxTurnSummarized,
-		ArchivedAt:        archived_at,
-		Summary:           summary,
-		ID:                id,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &dom.Session{
-		ID:           row.ID,
-		UserID:       row.UserID,
-		LastAccessed: row.UpdatedAt,
-		ArchivedAt:   row.ArchivedAt,
-		MaxTurn:      row.MaxTurn,
-		Summary:      row.Summary,
-	}, nil
-}
-
-type PostgresSearcher struct {
-	q db.Querier
-}
-
 func (s *PostgresSessionRepo) GetMaxTurnByID(
 	ctx context.Context,
 	id uuid.UUID,
@@ -286,6 +480,118 @@ func (s *PostgresSessionRepo) GetMaxTurnByID(
 	}
 
 	return turn, nil
+}
+
+type PostgresMemoryRepo struct {
+	q db.Querier
+}
+
+func NewPostgresMemoryRepo(q db.Querier) *PostgresMemoryRepo {
+	return &PostgresMemoryRepo{q: q}
+}
+
+func (m *PostgresMemoryRepo) CreateMemory(
+	ctx context.Context,
+	userID uuid.UUID,
+	sourceMsg string,
+	confidence float32,
+	unique_key string,
+	content string,
+) (*dom.Memory, error) {
+	row, err := m.q.CreateMemory(ctx, db.CreateMemoryParams{
+		UserID:        userID,
+		SourceMessage: sourceMsg,
+		Confidence:    confidence,
+		UniqueKey:     unique_key,
+		Memory:        content,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.Memory{
+		ID:         row.ID,
+		UserID:     row.UserID,
+		UpdatedAt:  row.UpdatedAt,
+		SourceMsg:  row.SourceMessage,
+		Confidence: row.Confidence,
+		UniqueKey:  row.UniqueKey,
+		Content:    row.Memory,
+	}, nil
+}
+
+func (m *PostgresMemoryRepo) UpsertMemory(
+	ctx context.Context,
+	userID uuid.UUID,
+	sourceMsg string,
+	confidence float32,
+	unique_key string,
+	content string,
+) (*dom.Memory, error) {
+	row, err := m.q.UpsertMemory(ctx, db.UpsertMemoryParams{
+		UserID:        userID,
+		SourceMessage: sourceMsg,
+		Confidence:    confidence,
+		UniqueKey:     unique_key,
+		Memory:        content,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &dom.Memory{
+		ID:         row.ID,
+		UserID:     row.UserID,
+		UpdatedAt:  row.UpdatedAt,
+		SourceMsg:  row.SourceMessage,
+		Confidence: row.Confidence,
+		UniqueKey:  row.UniqueKey,
+		Content:    row.Memory,
+	}, nil
+}
+
+func (m *PostgresMemoryRepo) GetMemoriesByUserID(
+	ctx context.Context,
+	userID uuid.UUID,
+	numberOfMemories int32,
+) ([]*dom.Memory, error) {
+	rows, err := m.q.GetMemoriesByUserID(ctx, db.GetMemoriesByUserIDParams{
+		UserID:           userID,
+		NumberOfMemories: int64(numberOfMemories),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	final := make([]*dom.Memory, 0, len(rows))
+	for _, r := range rows {
+		final = append(final, &dom.Memory{
+			ID:         r.ID,
+			UserID:     r.UserID,
+			UpdatedAt:  r.UpdatedAt,
+			SourceMsg:  r.SourceMessage,
+			Confidence: r.Confidence,
+			UniqueKey:  r.UniqueKey,
+			Content:    r.Memory,
+		})
+	}
+
+	return final, nil
+}
+
+func (m *PostgresMemoryRepo) DeleteMemoryByUserIDKey(
+	ctx context.Context,
+	userID uuid.UUID,
+	key string,
+) error {
+	return m.q.DeleteMemoryByUserIDKey(ctx, db.DeleteMemoryByUserIDKeyParams{
+		UserID: userID,
+		Key:    key,
+	})
+}
+
+type PostgresSearcher struct {
+	q db.Querier
 }
 
 func NewPostgresSearcher(q db.Querier) *PostgresSearcher {

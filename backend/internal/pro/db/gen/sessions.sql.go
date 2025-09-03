@@ -39,6 +39,16 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const deleteSessionByID = `-- name: DeleteSessionByID :exec
+DELETE FROM sessions
+WHERE id = $1
+`
+
+func (q *Queries) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSessionByID, id)
+	return err
+}
+
 const getMaxTurnByID = `-- name: GetMaxTurnByID :one
 SELECT max_turn FROM sessions
 WHERE id = $1
@@ -113,13 +123,13 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, arg GetSessionsByUser
 	return items, nil
 }
 
-const listWithSummaryBacklog = `-- name: ListWithSummaryBacklog :many
+const listSessionsWithBacklog = `-- name: ListSessionsWithBacklog :many
 SELECT id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary FROM sessions
 WHERE max_turn > max_turn_summarized
 `
 
-func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listWithSummaryBacklog)
+func (q *Queries) ListSessionsWithBacklog(ctx context.Context) ([]Session, error) {
+	rows, err := q.db.Query(ctx, listSessionsWithBacklog)
 	if err != nil {
 		return nil, err
 	}

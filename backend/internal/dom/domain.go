@@ -774,28 +774,6 @@ func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
 	return s
 }
 
-type AgentName string
-
-const (
-	Caller     AgentName = "Caller"
-	Generator  AgentName = "Generator"
-	Summarizer AgentName = "Summarizer"
-	Memorizer  AgentName = "Memorizer"
-)
-
-type AgentProfile struct {
-	Model  string
-	Config *LLMGenConfig
-}
-
-type LLMFunctionName string
-
-const (
-	FunctionSearch LLMFunctionName = "Search()"
-)
-
-type LLMFunctions map[LLMFunctionName]LLMFunction
-
 type TokenUsage struct {
 	InputTokens  int32
 	OutputTokens int32
