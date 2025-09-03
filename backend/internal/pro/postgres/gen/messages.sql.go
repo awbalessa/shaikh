@@ -7,10 +7,8 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createMessage = `-- name: CreateMessage :one
@@ -25,12 +23,12 @@ type CreateMessageParams struct {
 	Role              MessagesRole           `db:"role"`
 	Model             NullLargeLanguageModel `db:"model"`
 	Turn              int32                  `db:"turn"`
-	TotalInputTokens  pgtype.Int4            `db:"total_input_tokens"`
-	TotalOutputTokens pgtype.Int4            `db:"total_output_tokens"`
-	Content           pgtype.Text            `db:"content"`
-	FunctionName      pgtype.Text            `db:"function_name"`
-	FunctionCall      json.RawMessage        `db:"function_call"`
-	FunctionResponse  json.RawMessage        `db:"function_response"`
+	TotalInputTokens  *int32                 `db:"total_input_tokens"`
+	TotalOutputTokens *int32                 `db:"total_output_tokens"`
+	Content           *string                `db:"content"`
+	FunctionName      *string                `db:"function_name"`
+	FunctionCall      []byte                 `db:"function_call"`
+	FunctionResponse  []byte                 `db:"function_response"`
 }
 
 func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error) {

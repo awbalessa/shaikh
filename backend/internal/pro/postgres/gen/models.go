@@ -6,12 +6,10 @@ package db
 
 import (
 	"database/sql/driver"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
@@ -725,12 +723,12 @@ type Message struct {
 	Role              MessagesRole           `db:"role"`
 	Turn              int32                  `db:"turn"`
 	Model             NullLargeLanguageModel `db:"model"`
-	TotalInputTokens  pgtype.Int4            `db:"total_input_tokens"`
-	TotalOutputTokens pgtype.Int4            `db:"total_output_tokens"`
-	Content           pgtype.Text            `db:"content"`
-	FunctionName      pgtype.Text            `db:"function_name"`
-	FunctionCall      json.RawMessage        `db:"function_call"`
-	FunctionResponse  json.RawMessage        `db:"function_response"`
+	TotalInputTokens  *int32                 `db:"total_input_tokens"`
+	TotalOutputTokens *int32                 `db:"total_output_tokens"`
+	Content           *string                `db:"content"`
+	FunctionName      *string                `db:"function_name"`
+	FunctionCall      []byte                 `db:"function_call"`
+	FunctionResponse  []byte                 `db:"function_response"`
 }
 
 type RagAyat struct {
@@ -757,7 +755,7 @@ type RagChunk struct {
 	EmbeddedChunk       string             `db:"embedded_chunk"`
 	Labels              []int16            `db:"labels"`
 	Embedding           pgvector_go.Vector `db:"embedding"`
-	ParentID            pgtype.Int4        `db:"parent_id"`
+	ParentID            *int32             `db:"parent_id"`
 	Surah               NullRagSurah       `db:"surah"`
 	Ayah                NullRagAyah        `db:"ayah"`
 }
@@ -776,14 +774,14 @@ type RagDocument struct {
 }
 
 type Session struct {
-	ID                uuid.UUID   `db:"id"`
-	UserID            uuid.UUID   `db:"user_id"`
-	CreatedAt         time.Time   `db:"created_at"`
-	UpdatedAt         time.Time   `db:"updated_at"`
-	MaxTurn           int32       `db:"max_turn"`
-	MaxTurnSummarized int32       `db:"max_turn_summarized"`
-	ArchivedAt        time.Time   `db:"archived_at"`
-	Summary           pgtype.Text `db:"summary"`
+	ID                uuid.UUID  `db:"id"`
+	UserID            uuid.UUID  `db:"user_id"`
+	CreatedAt         time.Time  `db:"created_at"`
+	UpdatedAt         time.Time  `db:"updated_at"`
+	MaxTurn           int32      `db:"max_turn"`
+	MaxTurnSummarized int32      `db:"max_turn_summarized"`
+	ArchivedAt        *time.Time `db:"archived_at"`
+	Summary           *string    `db:"summary"`
 }
 
 type User struct {

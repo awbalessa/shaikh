@@ -44,9 +44,10 @@ func BuildAskSvc(
 func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
+	userID, sessionID uuid.UUID,
 ) iter.Seq2[string, error] {
 	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		cc, err := a.CtxManager.GetContext(ctx)
+		cc, err := a.CtxManager.GetContext(ctx, userID, sessionID)
 		if err != nil {
 			a.Logger.With(
 				"err", err,
@@ -289,16 +290,7 @@ const (
 	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
 )
 
-func (c *ContextManager) GetContext(ctx context.Context) (*dom.ContextCache, error) {
-	userID, err := UserIDFromCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	sessionID, err := SessionIDFromCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *ContextManager) GetContext(ctx context.Context, userID, sessionID uuid.UUID) (*dom.ContextCache, error) {
 	log := c.Logger.With(
 		"method", "GetContext",
 	)

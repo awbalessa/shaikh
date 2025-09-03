@@ -200,7 +200,7 @@ func (s *Syncer) flush(ctx context.Context) error {
 	s.Buffer = s.Buffer[:0]
 
 	for sid, sa := range bySession {
-		if _, err := s.SessionRepo.UpdateSessionByID(ctx, sid, sa.MaxTurn, nil, nil, nil); err != nil {
+		if _, err := s.SessionRepo.UpdateSessionByID(ctx, sid, &sa.MaxTurn, nil, nil, nil); err != nil {
 			return err
 		}
 	}
@@ -489,7 +489,7 @@ func (s *Summarizer) summarize(
 	_, err = s.SessionRepo.UpdateSessionByID(
 		ctx,
 		sess.ID,
-		lastTurn,
+		&lastTurn,
 		&lastTurn,
 		&resp.Summary,
 		nil,

@@ -146,9 +146,30 @@ type SessionSvc struct {
 
 func (s *SessionSvc) Create(
 	ctx context.Context,
-	id, userID uuid.UUID,
+	userID uuid.UUID,
 ) (*dom.Session, error) {
-	return s.SessionRepo.CreateSession(ctx, id, userID)
+	return s.SessionRepo.CreateSession(ctx, uuid.New(), userID)
+}
+
+func (s *SessionSvc) SetArchive(
+	ctx context.Context,
+	id, userID uuid.UUID,
+	archived bool,
+) (*dom.Session, error) {
+	ok, err := s.SessionRepo.BelongsToUser(ctx, id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("forbidden resource")
+	}
+
+	var archived_at *time.Time = nil
+	if archived {
+		archived_at = dom.Ptr(time.Now())
+	}
+
+	return s.SessionRepo.UpdateSessionByID(ctx, id, nil, nil, nil, archived_at)
 }
 
 func (s *SessionSvc) Delete(

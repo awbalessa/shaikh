@@ -58,9 +58,9 @@ func RegisterAppRoutes(r chi.Router, d Deps) {
 
 		v1.Route("/sessions/{sessionID}", func(sr chi.Router) {
 			sr.Use(SessionAuthMiddleware)
-			sr.Patch("/", updateSessionHandler(d.SessionSvc))
-			sr.Delete("/", deleteSessionHandler(d.SessionSvc))
 			sr.Post("/ask", askHandler(d.AskSvc))
+			sr.Patch("/archive", archiveSessionHandler(d.SessionSvc))
+			sr.Delete("", deleteSessionHandler(d.SessionSvc))
 		})
 	})
 }

@@ -564,7 +564,7 @@ type Document struct {
 
 type Chunk struct {
 	Document
-	ParentID int32
+	ParentID *int32
 }
 
 type User struct {

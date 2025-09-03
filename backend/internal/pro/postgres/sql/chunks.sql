@@ -94,7 +94,7 @@ LIMIT sqlc.arg('number_of_chunks');
 WITH ranked_chunks AS (
   SELECT
     id,
-    (1 - (embedding <=> sqlc.arg('vector')::vector))::float8 AS score,
+    (1 - (embedding <=> sqlc.arg('vector')::public.vector))::float8 AS score,
     embedded_chunk,
     raw_chunk,
     source,

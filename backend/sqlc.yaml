@@ -10,6 +10,7 @@ sql:
         out: "internal/pro/postgres/gen"
         package: "db"
         sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
         emit_interface: true
         emit_empty_slices: true
         emit_db_tags: true
@@ -32,6 +33,7 @@ sql:
             go_type:
               import: "time"
               type: "Time"
+              pointer: true
 
           - db_type: "public.vector"
             go_type:
@@ -39,7 +41,6 @@ sql:
               type: "Vector"
 
           - db_type: "jsonb"
-            nullable: true
             go_type:
               import: "encoding/json"
               type: "RawMessage"

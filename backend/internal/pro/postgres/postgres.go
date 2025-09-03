@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	db "github.com/awbalessa/shaikh/backend/internal/pro/postgres/gen"
@@ -143,10 +144,10 @@ func (m *PostgresMessageRepo) CreateMessage(
 		Role:              toDbMessageRole[role],
 		Model:             toDbLargeLanguageModel(meta.Model),
 		Turn:              meta.Turn,
-		TotalInputTokens:  toPgtypeInt4(meta.TotalInputTokens),
-		TotalOutputTokens: toPgtypeInt4(meta.TotalOutputTokens),
-		Content:           toPgtypeText(meta.Content),
-		FunctionName:      toPgtypeText(meta.FunctionName),
+		TotalInputTokens:  meta.TotalInputTokens,
+		TotalOutputTokens: meta.TotalOutputTokens,
+		Content:           meta.Content,
+		FunctionName:      meta.FunctionName,
 		FunctionCall:      meta.FunctionCall,
 		FunctionResponse:  meta.FunctionResponse,
 	})
@@ -221,9 +222,9 @@ func (s *PostgresSessionRepo) CreateSession(
 		ID:           row.ID,
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
-		ArchivedAt:   &row.ArchivedAt,
+		ArchivedAt:   row.ArchivedAt,
 		MaxTurn:      row.MaxTurn,
-		Summary:      &row.Summary.String,
+		Summary:      row.Summary,
 	}, nil
 }
 
@@ -246,9 +247,9 @@ func (s *PostgresSessionRepo) GetSessionsByUserID(
 			ID:           r.ID,
 			UserID:       r.UserID,
 			LastAccessed: r.UpdatedAt,
-			ArchivedAt:   &r.ArchivedAt,
+			ArchivedAt:   r.ArchivedAt,
 			MaxTurn:      r.MaxTurn,
-			Summary:      &r.Summary.String,
+			Summary:      r.Summary,
 		})
 	}
 
@@ -257,25 +258,30 @@ func (s *PostgresSessionRepo) GetSessionsByUserID(
 
 func (s *PostgresSessionRepo) UpdateSessionByID(
 	ctx context.Context,
-	se dom.Session,
-) (dom.Session, error) {
+	id uuid.UUID,
+	maxTurn *int32,
+	maxTurnSummarized *int32,
+	summary *string,
+	archived_at *time.Time,
+) (*dom.Session, error) {
 	row, err := s.q.UpdateSessionByID(ctx, db.UpdateSessionByIDParams{
-		ArchivedAt: *se.ArchivedAt,
-		MaxTurn:    se.MaxTurn,
-		Summary:    toPgtypeText(se.Summary),
-		ID:         se.ID,
+		MaxTurn:           maxTurn,
+		MaxTurnSummarized: maxTurnSummarized,
+		ArchivedAt:        archived_at,
+		Summary:           summary,
+		ID:                id,
 	})
 	if err != nil {
-		return dom.Session{}, err
+		return nil, err
 	}
 
-	return dom.Session{
+	return &dom.Session{
 		ID:           row.ID,
 		UserID:       row.UserID,
 		LastAccessed: row.UpdatedAt,
-		ArchivedAt:   &row.ArchivedAt,
+		ArchivedAt:   row.ArchivedAt,
 		MaxTurn:      row.MaxTurn,
-		Summary:      &row.Summary.String,
+		Summary:      row.Summary,
 	}, nil
 }
 
@@ -361,7 +367,7 @@ func (r *PostgresSearcher) SemanticSearch(
 					SurahNumber: RagSurahToSurahNumber[row.Surah.RagSurah],
 					AyahNumber:  RagAyahToAyahNumber[row.Ayah.RagAyah],
 				},
-				ParentID: row.ParentID.Int32,
+				ParentID: row.ParentID,
 			},
 		)
 	}
@@ -431,7 +437,7 @@ func (r *PostgresSearcher) LexicalSearch(
 					SurahNumber: RagSurahToSurahNumber[row.Surah.RagSurah],
 					AyahNumber:  RagAyahToAyahNumber[row.Ayah.RagAyah],
 				},
-				ParentID: row.ParentID.Int32,
+				ParentID: row.ParentID,
 			},
 		)
 	}
@@ -588,10 +594,10 @@ func fromDbMessage(row db.Message) dom.Message {
 		UserID:            row.UserID,
 		Model:             dom.Ptr(fromDbLargeLanguageModel[row.Model.LargeLanguageModel]),
 		Turn:              row.Turn,
-		TotalInputTokens:  fromPgtypeInt4(row.TotalInputTokens),
-		TotalOutputTokens: fromPgtypeInt4(row.TotalOutputTokens),
-		Content:           fromPgtypeText(row.Content),
-		FunctionName:      fromPgtypeText(row.FunctionName),
+		TotalInputTokens:  row.TotalInputTokens,
+		TotalOutputTokens: row.TotalOutputTokens,
+		Content:           row.Content,
+		FunctionName:      row.FunctionName,
 		FunctionCall:      row.FunctionCall,
 		FunctionResponse:  row.FunctionResponse,
 	}

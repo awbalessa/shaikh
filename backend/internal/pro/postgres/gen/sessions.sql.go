@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createSession = `-- name: CreateSession :one
@@ -150,22 +149,28 @@ func (q *Queries) ListWithSummaryBacklog(ctx context.Context) ([]Session, error)
 
 const updateSessionByID = `-- name: UpdateSessionByID :one
 UPDATE sessions
-SET updated_at = NOW(), archived_at = $1, max_turn = $2, summary = $3
-WHERE id = $4
+SET updated_at = NOW(),
+max_turn = $1,
+max_turn_summarized = $2,
+archived_at = $3,
+summary = $4
+WHERE id = $5
 RETURNING id, user_id, created_at, updated_at, max_turn, max_turn_summarized, archived_at, summary
 `
 
 type UpdateSessionByIDParams struct {
-	ArchivedAt time.Time   `db:"archived_at"`
-	MaxTurn    int32       `db:"max_turn"`
-	Summary    pgtype.Text `db:"summary"`
-	ID         uuid.UUID   `db:"id"`
+	MaxTurn           *int32     `db:"max_turn"`
+	MaxTurnSummarized *int32     `db:"max_turn_summarized"`
+	ArchivedAt        *time.Time `db:"archived_at"`
+	Summary           *string    `db:"summary"`
+	ID                uuid.UUID  `db:"id"`
 }
 
 func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error) {
 	row := q.db.QueryRow(ctx, updateSessionByID,
-		arg.ArchivedAt,
 		arg.MaxTurn,
+		arg.MaxTurnSummarized,
+		arg.ArchivedAt,
 		arg.Summary,
 		arg.ID,
 	)

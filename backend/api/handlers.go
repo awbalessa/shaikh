@@ -53,12 +53,12 @@ func readyzHandler(hs *svc.HealthReadinessSvc) http.HandlerFunc {
 
 func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var load struct {
+		var body struct {
 			Prompt string `json:"prompt"`
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&load); err != nil || strings.TrimSpace(load.Prompt) == "" {
-			http.Error(w, "invalid body: need {\"prompt\": \"...\"}", http.StatusBadRequest)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -72,7 +72,18 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			return
 		}
 
-		stream := ask.Ask(r.Context(), load.Prompt)
+		userID, err := svc.UserIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		stream := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
 
 		io.WriteString(w, "event: ready\n")
 		io.WriteString(w, "data: {}\n\n")
@@ -116,7 +127,7 @@ func registerHandler(u *svc.UserSvc) http.HandlerFunc {
 			Password string `json:"password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "bad body", http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		body.Email = strings.ToLower(strings.TrimSpace(body.Email))
@@ -127,6 +138,8 @@ func registerHandler(u *svc.UserSvc) http.HandlerFunc {
 			return
 		}
 
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":    user.ID,
 			"email": user.Email,
@@ -141,19 +154,19 @@ func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
 			Password string `json:"password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "bad body", http.StatusBadRequest)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		u, err := user.Login(r.Context(), body.Email, body.Password)
 		if err != nil {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 
 		token, err := tok.Sign(u.ID)
 		if err != nil {
-			http.Error(w, "cannot issue token", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -172,18 +185,82 @@ func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
 
 func createSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := svc.UserIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
+		s, err := sesh.Create(r.Context(), userID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":     s.ID,
+			"userID": s.UserID,
+		})
 	}
 }
 
-func updateSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
+func archiveSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := svc.UserIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
+		var body struct {
+			Archived bool `json:"archived"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		s, err := sesh.SetArchive(r.Context(), sessionID, userID, body.Archived)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":          s.ID,
+			"archived_at": *s.ArchivedAt,
+		})
 	}
 }
 
 func deleteSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := svc.UserIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
+		if err := sesh.Delete(r.Context(), sessionID, userID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

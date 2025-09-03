@@ -48,7 +48,7 @@ func (v *JWTValidator) Middleware(next http.Handler) http.Handler {
 		sub, _ := claims["sub"].(string)
 		uid, err := uuid.Parse(sub)
 		if err != nil {
-			http.Error(w, "bad sub", http.StatusUnauthorized)
+			http.Error(w, "bad jwt sub", http.StatusUnauthorized)
 			return
 		}
 

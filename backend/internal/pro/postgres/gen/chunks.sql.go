@@ -8,8 +8,7 @@ package db
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/pgvector/pgvector-go"
+	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
 const lexicalSearch = `-- name: LexicalSearch :many
@@ -120,7 +119,7 @@ type LexicalSearchRow struct {
 	Source        RagSource    `db:"source"`
 	Surah         NullRagSurah `db:"surah"`
 	Ayah          NullRagAyah  `db:"ayah"`
-	ParentID      pgtype.Int4  `db:"parent_id"`
+	ParentID      *int32       `db:"parent_id"`
 }
 
 func (q *Queries) LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error) {
@@ -162,7 +161,7 @@ const semanticSearch = `-- name: SemanticSearch :many
 WITH ranked_chunks AS (
   SELECT
     id,
-    (1 - (embedding <=> $2::vector))::float8 AS score,
+    (1 - (embedding <=> $2::public.vector))::float8 AS score,
     embedded_chunk,
     raw_chunk,
     source,
@@ -225,12 +224,12 @@ LIMIT $1
 `
 
 type SemanticSearchParams struct {
-	NumberOfChunks    int64           `db:"number_of_chunks"`
-	Vector            pgvector.Vector `db:"vector"`
-	ContentTypeLabels []int16         `db:"content_type_labels"`
-	SourceLabels      []int16         `db:"source_labels"`
-	SurahLabels       []int16         `db:"surah_labels"`
-	AyahLabels        []int16         `db:"ayah_labels"`
+	NumberOfChunks    int64              `db:"number_of_chunks"`
+	Vector            pgvector_go.Vector `db:"vector"`
+	ContentTypeLabels []int16            `db:"content_type_labels"`
+	SourceLabels      []int16            `db:"source_labels"`
+	SurahLabels       []int16            `db:"surah_labels"`
+	AyahLabels        []int16            `db:"ayah_labels"`
 }
 
 type SemanticSearchRow struct {
@@ -240,7 +239,7 @@ type SemanticSearchRow struct {
 	Source        RagSource    `db:"source"`
 	Surah         NullRagSurah `db:"surah"`
 	Ayah          NullRagAyah  `db:"ayah"`
-	ParentID      pgtype.Int4  `db:"parent_id"`
+	ParentID      *int32       `db:"parent_id"`
 }
 
 func (q *Queries) SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error) {

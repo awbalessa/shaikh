@@ -316,7 +316,7 @@ type SessionRepo interface {
 	UpdateSessionByID(
 		ctx context.Context,
 		id uuid.UUID,
-		maxTurn int32,
+		maxTurn *int32,
 		maxTurnSummarized *int32,
 		summary *string,
 		archived_at *time.Time,
