@@ -2,10 +2,18 @@ package dom
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+var (
+	ErrUnauthorized       = errors.New("unauthorized")
+	ErrForbidden          = errors.New("forbidden")
+	ErrOwnershipViolation = errors.New("ownership violation")
+	ErrInvalidState       = errors.New("invalid state")
 )
 
 const (

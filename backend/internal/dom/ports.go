@@ -10,7 +10,13 @@ import (
 )
 
 var (
-	ErrNoResults = errors.New("no results found")
+	ErrUnavailable  = errors.New("provider unavailable")
+	ErrInternal     = errors.New("internal provider error")
+	ErrNoResults    = errors.New("no results found")
+	ErrConflict     = errors.New("conflict")
+	ErrInvalidInput = errors.New("invalid input")
+	ErrTimeout      = errors.New("timeout")
+	ErrExpired      = errors.New("resource expired or revoked")
 )
 
 type Embedder interface {
@@ -313,7 +319,7 @@ type PubSubConsumerConfig struct {
 
 type PubSubConsumer interface {
 	Fetch(batch int) ([]DurablePubMsg, error)
-	Messages(ctx context.Context) (<-chan DurablePubMsg, error)
+	Messages(ctx context.Context) (<-chan DurablePubMsg, <-chan error, error)
 }
 
 type MemoryRepo interface {
@@ -374,10 +380,6 @@ type SessionRepo interface {
 	ListSessionsWithBacklog(
 		ctx context.Context,
 	) ([]*Session, error)
-	BelongsToUser(
-		ctx context.Context,
-		id, userID uuid.UUID,
-	) (bool, error)
 	DeleteSessionByID(
 		ctx context.Context,
 		id uuid.UUID,

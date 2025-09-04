@@ -42,12 +42,13 @@ func main() {
 		).ErrorContext(ctx, "failed to create postgres")
 		os.Exit(1)
 	}
-	defer pg.Pool.Close()
+	defer pg.Close()
 
 	fly := pro.NewDragonflyCache()
-	defer fly.Fly.Close()
+	defer fly.Close()
 
 	voy := pro.NewVoyageEmbedderReranker()
+	defer voy.Close()
 
 	gem, err := pro.NewGeminiLLM(ctx)
 	if err != nil {
@@ -56,6 +57,7 @@ func main() {
 		).ErrorContext(ctx, "failed to create gemini")
 		os.Exit(1)
 	}
+	defer gem.Close()
 
 	nc, err := pro.NewNats(ServiceName)
 	if err != nil {
@@ -64,7 +66,7 @@ func main() {
 		).ErrorContext(ctx, "failed to create nats")
 		os.Exit(1)
 	}
-	defer nc.Conn.Drain()
+	defer nc.Close()
 
 	js, err := pro.NewJS(nc)
 	if err != nil {

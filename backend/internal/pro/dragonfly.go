@@ -2,22 +2,13 @@ package pro
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/redis/go-redis/v9"
-)
-
-const (
-	flyDialTimout      time.Duration = 1 * time.Second
-	flyPoolTimeout     time.Duration = 1 * time.Second
-	flyReadTimeout     time.Duration = 500 * time.Millisecond
-	flyWriteTimeout    time.Duration = 500 * time.Millisecond
-	flyConnMaxIdleTime time.Duration = 5 * time.Minute
-	flyConnMaxLifetime time.Duration = 30 * time.Minute
-	flyPoolSize        int           = 10
-	flyMinIdleConns    int           = 2
 )
 
 type DragonflyCache struct {
@@ -26,22 +17,20 @@ type DragonflyCache struct {
 
 func NewDragonflyCache() *DragonflyCache {
 	fly := redis.NewClient(&redis.Options{
+		ClientName:            os.Getenv("SERVICE_NAME"),
 		Addr:                  os.Getenv("DRAGONFLY_ADDR"),
 		ContextTimeoutEnabled: true,
-		DialTimeout:           flyDialTimout,
-		PoolTimeout:           flyPoolTimeout,
-		ReadTimeout:           flyReadTimeout,
-		WriteTimeout:          flyWriteTimeout,
-		ConnMaxIdleTime:       flyConnMaxIdleTime,
-		ConnMaxLifetime:       flyConnMaxLifetime,
-		PoolSize:              flyPoolSize,
-		MinIdleConns:          flyMinIdleConns,
-		ClientName:            "shaikh-api",
+		DialTimeout:           1 * time.Second,
+		PoolTimeout:           1 * time.Second,
+		ReadTimeout:           500 * time.Millisecond,
+		WriteTimeout:          500 * time.Millisecond,
+		ConnMaxIdleTime:       5 * time.Minute,
+		ConnMaxLifetime:       30 * time.Minute,
+		PoolSize:              10,
+		MinIdleConns:          2,
 	})
 
-	return &DragonflyCache{
-		Fly: fly,
-	}
+	return &DragonflyCache{Fly: fly}
 }
 
 func (f *DragonflyCache) Set(
@@ -50,11 +39,12 @@ func (f *DragonflyCache) Set(
 	value []byte,
 	expr time.Duration,
 ) error {
-	cmd := f.Fly.Set(ctx, key, value, expr)
-	if err := cmd.Err(); err != nil {
-		return err
+	if err := f.Fly.Set(ctx, key, value, expr).Err(); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("dragonfly set: %w", dom.ErrTimeout)
+		}
+		return fmt.Errorf("dragonfly set: %w", dom.ErrInternal)
 	}
-
 	return nil
 }
 
@@ -62,15 +52,16 @@ func (f *DragonflyCache) Get(
 	ctx context.Context,
 	key string,
 ) ([]byte, error) {
-	cmd := f.Fly.Get(ctx, key)
-	bytes, err := cmd.Bytes()
+	bytes, err := f.Fly.Get(ctx, key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
-			return nil, nil
+		if errors.Is(err, redis.Nil) {
+			return nil, nil // cache miss, not an error
 		}
-		return nil, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("dragonfly get: %w", dom.ErrTimeout)
+		}
+		return nil, fmt.Errorf("dragonfly get: %w", dom.ErrInternal)
 	}
-
 	return bytes, nil
 }
 
@@ -80,12 +71,13 @@ func (f *DragonflyCache) SetNX(
 	value []byte,
 	expr time.Duration,
 ) (bool, error) {
-	cmd := f.Fly.SetNX(ctx, key, value, expr)
-	ok, err := cmd.Result()
+	ok, err := f.Fly.SetNX(ctx, key, value, expr).Result()
 	if err != nil {
-		return false, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false, fmt.Errorf("dragonfly setnx: %w", dom.ErrTimeout)
+		}
+		return false, fmt.Errorf("dragonfly setnx: %w", dom.ErrInternal)
 	}
-
 	return ok, nil
 }
 
@@ -93,13 +85,13 @@ func (f *DragonflyCache) Del(
 	ctx context.Context,
 	key string,
 ) (int64, error) {
-	cmd := f.Fly.Del(ctx, key)
-
-	n, err := cmd.Result()
+	n, err := f.Fly.Del(ctx, key).Result()
 	if err != nil {
-		return 0, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return 0, fmt.Errorf("dragonfly del: %w", dom.ErrTimeout)
+		}
+		return 0, fmt.Errorf("dragonfly del: %w", dom.ErrInternal)
 	}
-
 	return n, nil
 }
 
@@ -108,12 +100,13 @@ func (f *DragonflyCache) RefreshTTL(
 	key string,
 	ttl time.Duration,
 ) (bool, error) {
-	cmd := f.Fly.Expire(ctx, key, ttl)
-	ok, err := cmd.Result()
+	ok, err := f.Fly.Expire(ctx, key, ttl).Result()
 	if err != nil {
-		return false, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false, fmt.Errorf("dragonfly refresh ttl: %w", dom.ErrTimeout)
+		}
+		return false, fmt.Errorf("dragonfly refresh ttl: %w", dom.ErrInternal)
 	}
-
 	return ok, nil
 }
 
@@ -121,26 +114,34 @@ func (f *DragonflyCache) Exists(
 	ctx context.Context,
 	key string,
 ) (bool, error) {
-	cmd := f.Fly.Exists(ctx, key)
-	n, err := cmd.Result()
+	n, err := f.Fly.Exists(ctx, key).Result()
 	if err != nil {
-		return false, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false, fmt.Errorf("dragonfly exists: %w", dom.ErrTimeout)
+		}
+		return false, fmt.Errorf("dragonfly exists: %w", dom.ErrInternal)
 	}
-
-	exists := n > 0
-	return exists, nil
+	return n > 0, nil
 }
 
 func (f *DragonflyCache) Ping(ctx context.Context) error {
 	res, err := f.Fly.Ping(ctx).Result()
 	if err != nil {
-		return fmt.Errorf("dragonfly ping failed: %w", err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("dragonfly ping: %w", dom.ErrTimeout)
+		}
+		return fmt.Errorf("dragonfly ping: %w", dom.ErrUnavailable)
 	}
-
 	if res != "PONG" {
-		return fmt.Errorf("dragonfly ping unexpected response: %s", res)
+		return fmt.Errorf("dragonfly ping unexpected: %s", res)
 	}
+	return nil
+}
 
+func (f *DragonflyCache) Close() error {
+	if f.Fly != nil {
+		return f.Fly.Close()
+	}
 	return nil
 }
 

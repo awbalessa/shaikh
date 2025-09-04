@@ -3,6 +3,7 @@ package pro
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -108,6 +109,13 @@ func (v *VoyageEmbedderReranker) EmbedQueries(
 	ctx context.Context,
 	queries []string,
 ) ([]dom.Vector, error) {
+	if len(queries) == 0 {
+		return nil, fmt.Errorf("voyage embed: %w", dom.ErrInvalidInput)
+	}
+	if v.apiKey == "" {
+		return nil, fmt.Errorf("voyage embed: %w", dom.ErrInvalidInput)
+	}
+
 	reqBody := voyageEmbeddingRequest{
 		Input:               queries,
 		Model:               voyageEmbedV3p5,
@@ -119,47 +127,38 @@ func (v *VoyageEmbedderReranker) EmbedQueries(
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage embed marshal: %w", dom.ErrInternal)
 	}
 
-	req, err := retryablehttp.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		voyageBaseURL+"/embeddings",
-		payload,
-	)
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, voyageBaseURL+"/embeddings", payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage embed request: %w", dom.ErrInternal)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+v.apiKey)
 
 	resp, err := v.Cli.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage embed transport: %w", mapNetErr(err))
 	}
-
 	if resp != nil {
 		defer resp.Body.Close()
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("voyage returned non-200 status: %s", resp.Status)
+		return nil, fmt.Errorf("voyage embed http %s: %w", resp.Status, mapHTTPToInfra(resp.StatusCode))
 	}
 
 	var result voyageEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage embed decode: %w", dom.ErrInternal)
 	}
 
 	vectors := make([]dom.Vector, len(result.Data))
 	for i, item := range result.Data {
 		vectors[i] = item.Embedding[:]
 	}
-
 	if len(vectors) != len(queries) {
-		return nil, dom.ErrQueriesVectorsNot1to1
+		return nil, fmt.Errorf("voyage embed count mismatch: %w", dom.ErrInternal)
 	}
 
 	return vectors, nil
@@ -171,6 +170,13 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	docs []string,
 	topk dom.TopK,
 ) ([]dom.Rank, error) {
+	if query == "" || len(docs) == 0 {
+		return nil, fmt.Errorf("voyage rerank: %w", dom.ErrInvalidInput)
+	}
+	if v.apiKey == "" {
+		return nil, fmt.Errorf("voyage rerank: %w", dom.ErrInvalidInput)
+	}
+
 	reqBody := voyageRerankingRequest{
 		Query:           query,
 		Documents:       docs,
@@ -181,38 +187,30 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	}
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage rerank marshal: %w", dom.ErrInternal)
 	}
 
-	req, err := retryablehttp.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		voyageBaseURL+"/rerank",
-		payload,
-	)
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, voyageBaseURL+"/rerank", payload)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage rerank request: %w", dom.ErrInternal)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+v.apiKey)
 
 	resp, err := v.Cli.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage rerank transport: %w", mapNetErr(err))
 	}
-
 	if resp != nil {
 		defer resp.Body.Close()
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("voyage returned non-200 status: %s", resp.Status)
+		return nil, fmt.Errorf("voyage rerank http %s: %w", resp.Status, mapHTTPToInfra(resp.StatusCode))
 	}
 
 	var result voyageRerankingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("voyage rerank decode: %w", dom.ErrInternal)
 	}
 
 	ranks := make([]dom.Rank, len(result.Data))
@@ -222,7 +220,6 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 			Relevance: item.RelevanceScore,
 		}
 	}
-
 	return ranks, nil
 }
 
@@ -232,4 +229,39 @@ func (v *VoyageEmbedderReranker) Ping(ctx context.Context) error {
 
 func (v *VoyageEmbedderReranker) Name() string {
 	return "ERM"
+}
+
+func (v *VoyageEmbedderReranker) Close() error {
+	if tr, ok := v.Cli.HTTPClient.Transport.(*http.Transport); ok {
+		tr.CloseIdleConnections()
+	}
+	return nil
+}
+
+func mapHTTPToInfra(status int) error {
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return dom.ErrExpired // covers “invalid/expired credentials”
+	case status == http.StatusTooManyRequests:
+		return dom.ErrUnavailable // backoff / quota; infra unavailable to us now
+	case status >= 500:
+		return dom.ErrUnavailable
+	case status >= 400:
+		return dom.ErrInvalidInput
+	default:
+		return dom.ErrInternal
+	}
+}
+
+func mapNetErr(err error) error {
+	// context first
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return dom.ErrTimeout
+	}
+	// net.Error timeouts
+	var nerr net.Error
+	if errors.As(err, &nerr) && nerr.Timeout() {
+		return dom.ErrTimeout
+	}
+	return dom.ErrUnavailable // transport/connectivity issues
 }

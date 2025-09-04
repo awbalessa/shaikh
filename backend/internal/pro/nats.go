@@ -2,6 +2,7 @@ package pro
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,7 +25,7 @@ func NewNats(name string) (*Nats, error) {
 		nats.ReconnectWait(10*time.Second),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new nats: %w", dom.ErrUnavailable)
 	}
 
 	return &Nats{
@@ -34,11 +35,14 @@ func NewNats(name string) (*Nats, error) {
 
 func (n *Nats) Ping(ctx context.Context) error {
 	if !n.Conn.IsConnected() {
-		return fmt.Errorf("nats ping failed: not connected")
+		return fmt.Errorf("nats ping: %w", dom.ErrUnavailable)
 	}
 
 	if err := n.Conn.FlushWithContext(ctx); err != nil {
-		return fmt.Errorf("nats ping failed: %w", err)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("nats ping: %w", dom.ErrTimeout)
+		}
+		return fmt.Errorf("nats ping: %w", dom.ErrInternal)
 	}
 
 	return nil
@@ -48,10 +52,17 @@ func (n *Nats) Name() string {
 	return "pubsub"
 }
 
+func (n *Nats) Close() error {
+	if n.Conn != nil && !n.Conn.IsClosed() {
+		n.Conn.Drain()
+	}
+	return nil
+}
+
 func NewJS(nats *Nats) (jetstream.JetStream, error) {
 	js, err := jetstream.New(nats.Conn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new js: %w", dom.ErrUnavailable)
 	}
 
 	return js, nil
@@ -91,9 +102,11 @@ func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfi
 		Duplicates: cfg.Duplicates,
 	})
 	if err != nil {
-		return err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("create stream: %w", dom.ErrTimeout)
+		}
+		return fmt.Errorf("create stream: %w", dom.ErrInternal)
 	}
-
 	return nil
 }
 
@@ -128,7 +141,7 @@ func (m *NatsDurablePubMsg) InProgress() error {
 func (m *NatsDurablePubMsg) Metadata() (dom.DurablePubMsgMetadata, error) {
 	meta, err := m.Msg.Metadata()
 	if err != nil {
-		return dom.DurablePubMsgMetadata{}, err
+		return dom.DurablePubMsgMetadata{}, fmt.Errorf("nats metadata: %w", dom.ErrInternal)
 	}
 
 	return dom.DurablePubMsgMetadata{
@@ -146,48 +159,66 @@ type NatsPubSubConsumer struct {
 func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.DurablePubMsg, error) {
 	msgs, err := c.Cons.Fetch(batch)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("consumer fetch: %w", dom.ErrTimeout)
+		}
+		return nil, fmt.Errorf("consumer fetch: %w", dom.ErrInternal)
 	}
 
 	if msgs.Error() != nil {
-		return nil, msgs.Error()
+		if errors.Is(msgs.Error(), nats.ErrTimeout) {
+			return nil, fmt.Errorf("consumer fetch: %w", dom.ErrExpired)
+		}
+		return nil, fmt.Errorf("consumer fetch: %w", dom.ErrInternal)
 	}
 
 	var final []dom.DurablePubMsg
 	for m := range msgs.Messages() {
 		final = append(final, toNatsMsg(m))
 	}
-
 	return final, nil
 }
 
-func (c *NatsPubSubConsumer) Messages(ctx context.Context) (<-chan dom.DurablePubMsg, error) {
+func (c *NatsPubSubConsumer) Messages(
+	ctx context.Context,
+) (<-chan dom.DurablePubMsg, <-chan error, error) {
 	msgs, err := c.Cons.Messages()
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, nil, fmt.Errorf("consumer messages: %w", dom.ErrTimeout)
+		}
+		return nil, nil, fmt.Errorf("consumer messages: %w", dom.ErrInternal)
 	}
 
 	out := make(chan dom.DurablePubMsg)
+	errCh := make(chan error, 1)
 
 	go func() {
 		defer close(out)
+		defer close(errCh)
 		defer msgs.Drain()
 
 		for {
 			m, err := msgs.Next()
 			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					errCh <- fmt.Errorf("consumer messages: %w", dom.ErrTimeout)
+				} else {
+					errCh <- fmt.Errorf("consumer messages: %w", dom.ErrInternal)
+				}
 				return
 			}
 
 			select {
 			case <-ctx.Done():
+				errCh <- fmt.Errorf("consumer messages: %w", dom.ErrTimeout)
 				return
 			case out <- toNatsMsg(m):
 			}
 		}
 	}()
 
-	return out, nil
+	return out, errCh, nil
 }
 
 func (n *NatsPubSub) CreateConsumer(
@@ -212,7 +243,10 @@ func (n *NatsPubSub) CreateConsumer(
 			MaxRequestExpires: cfg.MaxRequestExpires,
 		})
 		if err != nil {
-			return nil, err
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("create consumer: %w", dom.ErrTimeout)
+			}
+			return nil, fmt.Errorf("create consumer: %w", dom.ErrInternal)
 		}
 
 	} else {
@@ -230,7 +264,10 @@ func (n *NatsPubSub) CreateConsumer(
 			MaxRequestExpires: cfg.MaxRequestExpires,
 		})
 		if err != nil {
-			return nil, err
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("create consumer: %w", dom.ErrTimeout)
+			}
+			return nil, fmt.Errorf("create consumer: %w", dom.ErrInternal)
 		}
 	}
 
@@ -245,17 +282,26 @@ type NatsPublisher struct {
 }
 
 func (c *NatsPublisher) Publish(subject string, data []byte) error {
-	return c.Conn.Publish(subject, data)
+	if err := c.Conn.Publish(subject, data); err != nil {
+		return fmt.Errorf("nats publish: %w", dom.ErrInternal)
+	}
+	return nil
 }
 
 func (c *NatsPublisher) Request(ctx context.Context, subject string, data []byte) (*dom.PubMsg, error) {
 	msg, err := c.Conn.RequestWithContext(ctx, subject, data)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("nats request: %w", dom.ErrTimeout)
+		}
+		if errors.Is(err, nats.ErrNoResponders) {
+			return nil, fmt.Errorf("nats request: %w", dom.ErrNoResults)
+		}
+		return nil, fmt.Errorf("nats request: %w", dom.ErrInternal)
 	}
 
 	if msg == nil {
-		return nil, fmt.Errorf("nats: nil reply for subject %s", subject)
+		return nil, fmt.Errorf("nats request: %w", dom.ErrNoResults)
 	}
 
 	return &dom.PubMsg{
@@ -275,11 +321,10 @@ func (c *NatsPublisher) DurablePublish(
 		jetstream.WithMsgID(opts.MsgID),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("durable publish: %w", dom.ErrInternal)
 	}
-
 	if ack == nil {
-		return nil, fmt.Errorf("unexpected publish ack: %+v", ack)
+		return nil, fmt.Errorf("durable publish: %w", dom.ErrInternal)
 	}
 
 	return &dom.DurablePubAck{
@@ -301,7 +346,10 @@ func (s *NatsSubscriber) Subscribe(subject string, handler func(msg *dom.PubMsg)
 		}
 		handler(dommsg)
 	})
-	return err
+	if err != nil {
+		return fmt.Errorf("nats subscribe: %w", dom.ErrInternal)
+	}
+	return nil
 }
 
 var toJsRetentionPolicy = map[dom.PubSubRetentionPolicy]jetstream.RetentionPolicy{

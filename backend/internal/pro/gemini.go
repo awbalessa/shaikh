@@ -2,6 +2,8 @@ package pro
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -47,7 +49,7 @@ func NewGeminiLLM(
 
 	gc, err := genai.NewClient(ctx, cc)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new gemini client: %w", dom.ErrUnavailable)
 	}
 
 	return &GeminiLLM{
@@ -65,21 +67,19 @@ func (g *GeminiLLM) Generate(
 	gWindow := toGenaiContents(window)
 	gCfg := toGenaiConfig(cfg)
 
-	resp, err := g.Cli.Models.GenerateContent(
-		ctx,
-		model,
-		gWindow,
-		gCfg,
-	)
+	resp, err := g.Cli.Models.GenerateContent(ctx, model, gWindow, gCfg)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil, fmt.Errorf("gemini generate: %w", dom.ErrTimeout)
+		}
+		return nil, fmt.Errorf("gemini generate: %w", dom.ErrInternal)
 	}
 
 	var returned = &dom.LLMContentResult{}
 	if format == dom.ResponseJson {
 		data, err := resp.MarshalJSON()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gemini marshal json: %w", dom.ErrInternal)
 		}
 		returned.Bytes = data
 	} else {
@@ -109,7 +109,11 @@ func (g *GeminiLLM) Stream(
 	stream := g.Cli.Models.GenerateContentStream(ctx, model, gWindow, gCfg)
 	for resp, err := range stream {
 		if err != nil {
-			yield(nil, err)
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				yield(nil, fmt.Errorf("gemini stream: %w", dom.ErrTimeout))
+			} else {
+				yield(nil, fmt.Errorf("gemini stream: %w", dom.ErrInternal))
+			}
 			return &dom.LLMGenResult{
 				Output:        &output,
 				Usage:         &usage,
@@ -183,7 +187,10 @@ func (g *GeminiLLM) CountTokens(
 	}
 	resp, err := g.Cli.Models.CountTokens(ctx, string(model), gWindow, cCfg)
 	if err != nil {
-		return 0, err
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return 0, fmt.Errorf("gemini count tokens: %w", dom.ErrTimeout)
+		}
+		return 0, fmt.Errorf("gemini count tokens: %w", dom.ErrInternal)
 	}
 	return resp.TotalTokens, nil
 }
@@ -289,4 +296,11 @@ func (g *GeminiLLM) Ping(ctx context.Context) error {
 
 func (g *GeminiLLM) Name() string {
 	return "LLM"
+}
+
+func (g *GeminiLLM) Close() error {
+	if tr, ok := g.Cli.ClientConfig().HTTPClient.Transport.(*http.Transport); ok {
+		tr.CloseIdleConnections()
+	}
+	return nil
 }

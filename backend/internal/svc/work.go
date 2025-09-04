@@ -92,7 +92,7 @@ func (s *Syncer) Consumer() dom.PubSubConsumer {
 }
 
 func (s *Syncer) Start(ctx context.Context) error {
-	msgs, err := s.Cons.Messages(ctx)
+	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
 		return fmt.Errorf("syncer failed: %w", err)
 	}
@@ -402,7 +402,7 @@ func (s *Summarizer) Consumer() dom.PubSubConsumer {
 }
 
 func (s *Summarizer) Start(ctx context.Context) error {
-	msgs, err := s.Cons.Messages(ctx)
+	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
 		return fmt.Errorf("summarizer failed: %w", err)
 	}
@@ -582,7 +582,7 @@ func (m *Memorizer) Consumer() dom.PubSubConsumer {
 }
 
 func (m *Memorizer) Start(ctx context.Context) error {
-	msgs, err := m.Cons.Messages(ctx)
+	msgs, _, err := m.Cons.Messages(ctx)
 	if err != nil {
 		return fmt.Errorf("memorizer failed: %w", err)
 	}

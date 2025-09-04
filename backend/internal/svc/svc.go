@@ -226,12 +226,28 @@ func (s *SessionSvc) Create(
 	return s.SessionRepo.CreateSession(ctx, uuid.New(), userID)
 }
 
+func (s *SessionSvc) BelongsToUser(
+	ctx context.Context,
+	id, userID uuid.UUID,
+) (bool, error) {
+	se, err := s.SessionRepo.GetSessionByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+
+	if se.UserID != userID {
+		return false, dom.ErrOwnershipViolation
+	}
+
+	return true, nil
+}
+
 func (s *SessionSvc) SetArchive(
 	ctx context.Context,
 	id, userID uuid.UUID,
 	archived bool,
 ) (*dom.Session, error) {
-	ok, err := s.SessionRepo.BelongsToUser(ctx, id, userID)
+	ok, err := s.BelongsToUser(ctx, id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +267,7 @@ func (s *SessionSvc) Delete(
 	ctx context.Context,
 	id, userID uuid.UUID,
 ) error {
-	ok, err := s.SessionRepo.BelongsToUser(ctx, id, userID)
+	ok, err := s.BelongsToUser(ctx, id, userID)
 	if err != nil {
 		return err
 	}
