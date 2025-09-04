@@ -423,6 +423,10 @@ type UserRepo interface {
 	ListUsersWithBacklog(
 		ctx context.Context,
 	) ([]*User, error)
+	DeleteUserByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) error
 }
 
 type Tx interface {

@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
+	db "github.com/awbalessa/shaikh/backend/internal/db/gen"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
-	db "github.com/awbalessa/shaikh/backend/internal/pro/db/gen"
 	"github.com/awbalessa/shaikh/backend/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -230,6 +230,13 @@ func (u *PostgresUserRepo) ListUsersWithBacklog(
 	}
 
 	return final, nil
+}
+
+func (u *PostgresUserRepo) DeleteUserByID(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return u.q.DeleteUserByID(ctx, id)
 }
 
 type PostgresSessionRepo struct {
@@ -468,18 +475,6 @@ func (m *PostgresMessageRepo) GetUserMessagesByUserID(
 	}
 
 	return final, nil
-}
-
-func (s *PostgresSessionRepo) GetMaxTurnByID(
-	ctx context.Context,
-	id uuid.UUID,
-) (int32, error) {
-	turn, err := s.q.GetMaxTurnByID(ctx, id)
-	if err != nil {
-		return 0, err
-	}
-
-	return turn, nil
 }
 
 type PostgresMemoryRepo struct {

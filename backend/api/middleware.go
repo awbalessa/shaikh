@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/awbalessa/shaikh/backend/internal/svc"
@@ -16,6 +17,14 @@ type JWTValidator struct {
 	Secret   []byte
 	Issuer   string
 	Audience string
+}
+
+func NewJWTValidator() *JWTValidator {
+	return &JWTValidator{
+		Secret:   []byte(os.Getenv("JWT_SECRET")),
+		Issuer:   "shaikh-api",
+		Audience: "shaikh-api",
+	}
 }
 
 func (v *JWTValidator) Middleware(next http.Handler) http.Handler {

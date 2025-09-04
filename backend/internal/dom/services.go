@@ -242,7 +242,7 @@ func CreateContextCacheKey(userID, sessionID uuid.UUID) string {
 type Worker interface {
 	Consumer() PubSubConsumer
 	Start(ctx context.Context) error
-	Process(ctx context.Context, msg *PubMsg) error
+	Process(ctx context.Context, msg DurablePubMsg) error
 }
 
 type WorkerGroup struct {

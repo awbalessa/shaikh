@@ -226,7 +226,7 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	return ranks, nil
 }
 
-func (v *VoyageEmbedderReranker) Ping(ctx context.Context, timeout time.Duration) error {
+func (v *VoyageEmbedderReranker) Ping(ctx context.Context) error {
 	return dom.ErrNotPingable
 }
 

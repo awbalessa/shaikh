@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
+	"github.com/awbalessa/shaikh/backend/api"
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/awbalessa/shaikh/backend/internal/pro"
@@ -41,8 +44,8 @@ func main() {
 	}
 	defer pg.Pool.Close()
 
-	flyCache := pro.NewDragonflyCache()
-	defer flyCache.Fly.Close()
+	fly := pro.NewDragonflyCache()
+	defer fly.Fly.Close()
 
 	voy := pro.NewVoyageEmbedderReranker()
 
@@ -79,19 +82,15 @@ func main() {
 	pgMessageRepo := pro.NewPostgresMessageRepo(q)
 	pgMemoryRepo := pro.NewPostgresMemoryRepo(q)
 
-	searchsvc := svc.BuildSearchSvc(pgSearcher, voy, voy)
 	agent := dom.BuildAgent(gem)
-	pub := natsps.Publisher()
+
+	searchsvc := svc.BuildSearchSvc(pgSearcher, voy, voy)
 
 	asksvc, err := svc.BuildAskSvc(
-		ctx,
-		agent,
-		flyCache,
-		pgMemoryRepo,
-		pgSessionRepo,
-		pgMessageRepo,
-		pub,
-		searchsvc,
+		ctx, agent,
+		fly, pgMemoryRepo,
+		pgSessionRepo, pgMessageRepo,
+		natsps, searchsvc,
 	)
 	if err != nil {
 		slog.With(
@@ -100,27 +99,48 @@ func main() {
 		os.Exit(1)
 	}
 
-	syncer, err := svc.BuildSyncer(ctx, natsps, pg, pgSessionRepo, pgUserRepo)
-	if err != nil {
-		slog.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to build syncer")
-		os.Exit(1)
+	healthsvc := svc.BuildHealthReadinessSvc([]dom.Probe{
+		pg, fly, voy, gem, nc,
+		svc.NewWorkerProbe(svc.SyncerDurableName, svc.SyncerPingSubject, natsps),
+		svc.NewWorkerProbe(svc.SummarizerDurableName, svc.SummarizerPingSubject, natsps),
+		svc.NewWorkerProbe(svc.MemorizerDurableName, svc.MemorizerPingSubject, natsps),
+	})
+
+	usersvc := svc.BuildUserSvc(pgUserRepo)
+
+	sessionsvc := svc.BuildSessionSvc(pgSessionRepo)
+
+	jwtiss := svc.NewJWTIssuer(30 * time.Minute)
+	jwtval := api.NewJWTValidator()
+
+	router := api.CreateRouter(&api.Deps{
+		UserSvc:    usersvc,
+		SessionSvc: sessionsvc,
+		AskSvc:     asksvc,
+		HealthSvc:  healthsvc,
+		JWTIssuer:  jwtiss,
+		JWTValid:   jwtval,
+	})
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: router,
 	}
 
-	summarizer, err := svc.BuildSummarizer(ctx, natsps, agent, pgSessionRepo, pgMessageRepo)
-	if err != nil {
-		slog.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to build summarizer")
-		os.Exit(1)
-	}
+	go func() {
+		slog.Info("server listening", "addr", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.With("err", err).Error("server failed")
+			os.Exit(1)
+		}
+	}()
 
-	memorizer, err := svc.BuildMemorizer(ctx, natsps, agent, pgMessageRepo, pgMemoryRepo)
-	if err != nil {
-		slog.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to build memorizer")
-		os.Exit(1)
+	<-ctx.Done()
+	slog.Info("shutdown signal received")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.With("err", err).Error("graceful shutdown failed")
 	}
 }

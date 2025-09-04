@@ -22,3 +22,7 @@ RETURNING *;
 -- name: ListUsersWithBacklog :many
 SELECT * FROM users
 WHERE total_messages > total_messages_memorized;
+
+-- name: DeleteUserByID :exec
+DELETE FROM users
+WHERE id = @id;

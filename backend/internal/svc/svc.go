@@ -21,11 +21,11 @@ type JWTIssuer struct {
 	TTL      time.Duration
 }
 
-func NewJWTIssuer(audience string, ttl time.Duration) *JWTIssuer {
+func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
 	return &JWTIssuer{
 		Secret:   []byte(os.Getenv("JWT_SECRET")),
 		Issuer:   "shaikh-api",
-		Audience: audience,
+		Audience: "shaikh-api",
 		TTL:      ttl,
 	}
 }
@@ -46,6 +46,10 @@ func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
 
 type HealthReadinessSvc struct {
 	Probes []dom.Probe
+}
+
+func BuildHealthReadinessSvc(probes []dom.Probe) *HealthReadinessSvc {
+	return &HealthReadinessSvc{Probes: probes}
 }
 
 type CheckResult struct {
@@ -106,6 +110,10 @@ type UserSvc struct {
 	UserRepo dom.UserRepo
 }
 
+func BuildUserSvc(ur dom.UserRepo) *UserSvc {
+	return &UserSvc{UserRepo: ur}
+}
+
 func (s *UserSvc) Register(
 	ctx context.Context,
 	email string,
@@ -140,8 +148,19 @@ func (s *UserSvc) Login(
 	return user, nil
 }
 
+func (s *UserSvc) Delete(
+	ctx context.Context,
+	userID uuid.UUID,
+) error {
+	return s.UserRepo.DeleteUserByID(ctx, userID)
+}
+
 type SessionSvc struct {
 	SessionRepo dom.SessionRepo
+}
+
+func BuildSessionSvc(sr dom.SessionRepo) *SessionSvc {
+	return &SessionSvc{SessionRepo: sr}
 }
 
 func (s *SessionSvc) Create(

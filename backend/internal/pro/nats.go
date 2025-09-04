@@ -74,7 +74,9 @@ func (n *NatsPubSub) Publisher() dom.Publisher {
 }
 
 func (n *NatsPubSub) Subscriber() dom.Subscriber {
-
+	return &NatsSubscriber{
+		Conn: n.Conn,
+	}
 }
 
 func (n *NatsPubSub) CreateStream(ctx context.Context, cfg dom.PubSubStreamConfig) error {

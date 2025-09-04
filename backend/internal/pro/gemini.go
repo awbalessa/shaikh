@@ -283,7 +283,7 @@ func toGenaiSchema(s *dom.LLMSchema) *genai.Schema {
 	}
 }
 
-func (g *GeminiLLM) Ping(ctx context.Context, timeout time.Duration) error {
+func (g *GeminiLLM) Ping(ctx context.Context) error {
 	return dom.ErrNotPingable
 }
 

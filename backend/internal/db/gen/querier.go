@@ -17,6 +17,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteMemoryByUserIDKey(ctx context.Context, arg DeleteMemoryByUserIDKeyParams) error
 	DeleteSessionByID(ctx context.Context, id uuid.UUID) error
+	DeleteUserByID(ctx context.Context, id uuid.UUID) error
 	GetAyatByKeys(ctx context.Context, arg GetAyatByKeysParams) ([]RagAyat, error)
 	GetDocumentByID(ctx context.Context, id int32) (GetDocumentByIDRow, error)
 	GetDocumentByKey(ctx context.Context, arg GetDocumentByKeyParams) (GetDocumentByKeyRow, error)

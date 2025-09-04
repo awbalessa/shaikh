@@ -29,7 +29,7 @@ func BuildAskSvc(
 	memr dom.MemoryRepo,
 	sr dom.SessionRepo,
 	mr dom.MessageRepo,
-	pub dom.Publisher,
+	ps dom.PubSub,
 	se *SearchSvc,
 ) (*AskSvc, error) {
 	log := slog.Default().With(
@@ -40,7 +40,12 @@ func BuildAskSvc(
 		dom.FunctionSearch: BuildFnSearch(se, log),
 	}
 
-	ctxManager, err := BuildContextManager(ctx, cache, memr, sr, mr, pub, log)
+	ctxManager, err := BuildContextManager(
+		ctx, cache,
+		mr, memr,
+		sr, ps,
+		log,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +236,7 @@ func (a *AskSvc) handleFn(
 	ctx context.Context,
 	fn dom.LLMFunctionCall,
 ) (*dom.LLMFunctionResponse, error) {
-	function, ok := a.Functions[dom.LLMFunctionName(fn.Name)]
+	function, ok := a.Functions[dom.AgentFnName(fn.Name)]
 	if !ok {
 		return nil, fmt.Errorf("function %s does not exist", fn.Name)
 	}
@@ -269,7 +274,6 @@ func BuildContextManager(
 	mr dom.MessageRepo,
 	memr dom.MemoryRepo,
 	sr dom.SessionRepo,
-	pub dom.Publisher,
 	ps dom.PubSub,
 	log *slog.Logger,
 ) (*ContextManager, error) {
@@ -288,6 +292,8 @@ func BuildContextManager(
 	if err := ps.CreateStream(ctx, cfg); err != nil {
 		return nil, err
 	}
+
+	pub := ps.Publisher()
 
 	return &ContextManager{
 		Cache:       ca,

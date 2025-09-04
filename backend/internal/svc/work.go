@@ -66,7 +66,7 @@ func BuildSyncer(
 
 	pub := ps.Publisher()
 
-	if err := ps.Subscriber().Subscribe(SyncerPingSubject, func(msg dom.PubMsg) {
+	if err := ps.Subscriber().Subscribe(SyncerPingSubject, func(msg *dom.PubMsg) {
 		if msg.Reply != "" {
 			resp := []byte(`{"status": "ok"}`)
 			pub.Publish(msg.Reply, resp)
@@ -378,7 +378,7 @@ func BuildSummarizer(
 		return nil, err
 	}
 
-	if err := ps.Subscriber().Subscribe(SummarizerPingSubject, func(msg dom.PubMsg) {
+	if err := ps.Subscriber().Subscribe(SummarizerPingSubject, func(msg *dom.PubMsg) {
 		if msg.Reply != "" {
 			resp := []byte(`{"status": "ok"}`)
 			ps.Publisher().Publish(msg.Reply, resp)
@@ -457,7 +457,7 @@ func (s *Summarizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 }
 
 func (s *Summarizer) IdleProcess(ctx context.Context) error {
-	sessions, err := s.SessionRepo.ListWithBacklog(ctx)
+	sessions, err := s.SessionRepo.ListSessionsWithBacklog(ctx)
 	if err != nil {
 		return err
 	}
@@ -558,7 +558,7 @@ func BuildMemorizer(
 		return nil, err
 	}
 
-	if err := ps.Subscriber().Subscribe(MemorizerPingSubject, func(msg dom.PubMsg) {
+	if err := ps.Subscriber().Subscribe(MemorizerPingSubject, func(msg *dom.PubMsg) {
 		if msg.Reply != "" {
 			resp := []byte(`{"status": "ok"}`)
 			ps.Publisher().Publish(msg.Reply, resp)
