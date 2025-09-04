@@ -409,14 +409,14 @@ func (c *ContextManager) getDbContext(
 		meta := m.Meta()
 		role := m.Role()
 		switch role {
-		case dom.UserRole:
+		case dom.MessageRoleUser:
 			inf1 = dom.Inference{
 				Input: &dom.InputPrompt{
 					Text: *meta.Content,
 				},
 				InputTokens: *meta.TotalInputTokens,
 			}
-		case dom.FunctionRole:
+		case dom.MessageRoleFunction:
 			has2infs = true
 			call, err := dom.FromJsonRawMessage(meta.FunctionCall)
 			if err != nil {
@@ -441,7 +441,7 @@ func (c *ContextManager) getDbContext(
 				InputTokens: *meta.TotalInputTokens,
 			}
 
-		case dom.ModelRole:
+		case dom.MessageRoleModel:
 			if !has2infs {
 				inf1.Output.Text = *meta.Content
 				inf1.OutputTokens = *meta.TotalOutputTokens
@@ -663,29 +663,4 @@ func (f *FnSearch) Call(
 	return map[string]any{
 		"results": serialized,
 	}, nil
-}
-
-type CtxKey string
-
-const (
-	CtxUserIDKey    CtxKey = "userID"
-	CtxSessionIDKey CtxKey = "sessionID"
-)
-
-func UserIDFromCtx(ctx context.Context) (uuid.UUID, error) {
-	v := ctx.Value(CtxUserIDKey)
-	id, ok := v.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("missing or invalid userID in context")
-	}
-	return id, nil
-}
-
-func SessionIDFromCtx(ctx context.Context) (uuid.UUID, error) {
-	v := ctx.Value(CtxSessionIDKey)
-	id, ok := v.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("missing or invalid sessionID in context")
-	}
-	return id, nil
 }

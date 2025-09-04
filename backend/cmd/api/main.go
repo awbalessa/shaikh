@@ -82,8 +82,13 @@ func main() {
 	pgSessionRepo := pro.NewPostgresSessionRepo(q)
 	pgMessageRepo := pro.NewPostgresMessageRepo(q)
 	pgMemoryRepo := pro.NewPostgresMemoryRepo(q)
+	pgRefreshRepo := pro.NewPostgresRefreshTokenRepo(q)
 
 	agent := dom.BuildAgent(gem)
+
+	usersvc := svc.BuildUserSvc(pgUserRepo)
+
+	sessionsvc := svc.BuildSessionSvc(pgSessionRepo)
 
 	searchsvc := svc.BuildSearchSvc(pgSearcher, voy, voy)
 
@@ -100,6 +105,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	authsvc := svc.BuildAuthSvc(svc.NewJWTIssuer(30*time.Minute), pgRefreshRepo)
+
 	healthsvc := svc.BuildHealthReadinessSvc([]dom.Probe{
 		pg, fly, voy, gem, nc,
 		svc.NewWorkerProbe(svc.SyncerDurableName, svc.SyncerPingSubject, natsps),
@@ -107,17 +114,13 @@ func main() {
 		svc.NewWorkerProbe(svc.MemorizerDurableName, svc.MemorizerPingSubject, natsps),
 	})
 
-	usersvc := svc.BuildUserSvc(pgUserRepo)
-
-	sessionsvc := svc.BuildSessionSvc(pgSessionRepo)
-
-	_ = svc.NewJWTIssuer(30 * time.Minute)
 	jwtval := rest.NewJWTValidator()
 
 	router := rest.CreateRouter(&rest.Deps{
 		UserSvc:    usersvc,
 		SessionSvc: sessionsvc,
 		AskSvc:     asksvc,
+		AuthSvc:    authsvc,
 		HealthSvc:  healthsvc,
 		JWTValid:   jwtval,
 	})

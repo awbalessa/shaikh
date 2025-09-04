@@ -462,4 +462,8 @@ type RefreshTokenRepo interface {
 		ctx context.Context,
 		rawToken string,
 	) error
+	RevokeAll(
+		ctx context.Context,
+		userID uuid.UUID,
+	) error
 }

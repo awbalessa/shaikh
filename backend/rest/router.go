@@ -9,6 +9,7 @@ import (
 	"github.com/awbalessa/shaikh/backend/internal/svc"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v3"
 )
 
@@ -16,13 +17,22 @@ type Deps struct {
 	UserSvc    *svc.UserSvc
 	SessionSvc *svc.SessionSvc
 	AskSvc     *svc.AskSvc
-	HealthSvc  *svc.HealthReadinessSvc
 	AuthSvc    *svc.AuthSvc
+	HealthSvc  *svc.HealthReadinessSvc
 	JWTValid   *JWTValidator
 }
 
 func CreateRouter(d *Deps) http.Handler {
 	r := chi.NewRouter()
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -34,6 +44,7 @@ func CreateRouter(d *Deps) http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	RegisterSystemRoutes(r, d)
+	RegisterAdminRoutes(r, d)
 	RegisterAuthRoutes(r, d)
 	RegisterAppRoutes(r, d)
 
@@ -45,11 +56,22 @@ func RegisterSystemRoutes(r chi.Router, d *Deps) {
 	r.Get("/readyz", readyzHandler(d.HealthSvc))
 }
 
+func RegisterAdminRoutes(r chi.Router, d *Deps) {
+	r.Route("/admin", func(ar chi.Router) {
+		ar.Use(d.JWTValid.Middleware)
+		ar.Use(AdminOnlyMiddleware)
+
+		ar.Delete("/users/{id}", adminDeleteUserHandler(d.UserSvc))
+	})
+}
+
 func RegisterAuthRoutes(r chi.Router, d *Deps) {
 	r.Post("/register", registerHandler(d.UserSvc))
 	r.Route("/auth", func(sr chi.Router) {
 		sr.Post("/login", loginHandler(d.UserSvc, d.AuthSvc))
 		sr.Post("/refresh", refreshHandler(d.AuthSvc))
+		sr.Post("/logout", logoutHandler(d.AuthSvc))
+		sr.Post("/logout_all", logoutAllHandler(d.AuthSvc))
 	})
 }
 

@@ -12,24 +12,31 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, email, password_hash)
-VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized
+INSERT INTO users (id, email, password_hash, is_admin)
+VALUES ($1, $2, $3, $4)
+RETURNING id, email, password_hash, is_admin, created_at, updated_at, total_messages, total_messages_memorized
 `
 
 type CreateUserParams struct {
 	ID           uuid.UUID `db:"id"`
 	Email        string    `db:"email"`
 	PasswordHash string    `db:"password_hash"`
+	IsAdmin      bool      `db:"is_admin"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.ID, arg.Email, arg.PasswordHash)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.ID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.IsAdmin,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TotalMessages,
@@ -49,7 +56,7 @@ func (q *Queries) DeleteUserByID(ctx context.Context, id uuid.UUID) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized FROM users
+SELECT id, email, password_hash, is_admin, created_at, updated_at, total_messages, total_messages_memorized FROM users
 WHERE email = $1
 `
 
@@ -60,6 +67,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TotalMessages,
@@ -69,7 +77,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized FROM users
+SELECT id, email, password_hash, is_admin, created_at, updated_at, total_messages, total_messages_memorized FROM users
 WHERE id = $1
 `
 
@@ -80,6 +88,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TotalMessages,
@@ -94,7 +103,7 @@ SET total_messages = total_messages + $1,
     total_messages_memorized = total_messages_memorized + $2,
     updated_at = NOW()
 WHERE id = $3
-RETURNING id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized
+RETURNING id, email, password_hash, is_admin, created_at, updated_at, total_messages, total_messages_memorized
 `
 
 type IncrementUserMessagesByIDParams struct {
@@ -110,6 +119,7 @@ func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUs
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
+		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TotalMessages,
@@ -119,7 +129,7 @@ func (q *Queries) IncrementUserMessagesByID(ctx context.Context, arg IncrementUs
 }
 
 const listUsersWithBacklog = `-- name: ListUsersWithBacklog :many
-SELECT id, email, password_hash, created_at, updated_at, total_messages, total_messages_memorized FROM users
+SELECT id, email, password_hash, is_admin, created_at, updated_at, total_messages, total_messages_memorized FROM users
 WHERE total_messages > total_messages_memorized
 `
 
@@ -136,6 +146,7 @@ func (q *Queries) ListUsersWithBacklog(ctx context.Context) ([]User, error) {
 			&i.ID,
 			&i.Email,
 			&i.PasswordHash,
+			&i.IsAdmin,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TotalMessages,

@@ -798,6 +798,7 @@ type User struct {
 	ID                     uuid.UUID `db:"id"`
 	Email                  string    `db:"email"`
 	PasswordHash           string    `db:"password_hash"`
+	IsAdmin                bool      `db:"is_admin"`
 	CreatedAt              time.Time `db:"created_at"`
 	UpdatedAt              time.Time `db:"updated_at"`
 	TotalMessages          int32     `db:"total_messages"`

@@ -426,9 +426,9 @@ type MessageRole string
 type LargeLanguageModel string
 
 const (
-	UserRole            MessageRole        = "user"
-	ModelRole           MessageRole        = "model"
-	FunctionRole        MessageRole        = "function"
+	MessageRoleUser     MessageRole        = "user"
+	MessageRoleModel    MessageRole        = "model"
+	MessageRoleFunction MessageRole        = "function"
 	GeminiV2p5Flash     LargeLanguageModel = "gemini-2.5-flash"
 	GeminiV2p5FlashLite LargeLanguageModel = "gemini-2.5-flash-lite"
 )
@@ -571,6 +571,7 @@ type User struct {
 	ID                     uuid.UUID
 	Email                  string
 	PasswordHash           string
+	IsAdmin                bool
 	UpdatedAt              time.Time
 	TotalMessages          int32
 	TotalMessagesMemorized int32
@@ -610,7 +611,7 @@ type UserMessage struct {
 	MsgContent string
 }
 
-func (m *UserMessage) Role() MessageRole { return UserRole }
+func (m *UserMessage) Role() MessageRole { return MessageRoleUser }
 func (m *UserMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type ModelMessage struct {
@@ -618,7 +619,7 @@ type ModelMessage struct {
 	MsgContent string
 }
 
-func (m *ModelMessage) Role() MessageRole { return ModelRole }
+func (m *ModelMessage) Role() MessageRole { return MessageRoleModel }
 func (m *ModelMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type FunctionMessage struct {
@@ -628,7 +629,7 @@ type FunctionMessage struct {
 	FunctionResponse json.RawMessage
 }
 
-func (m *FunctionMessage) Role() MessageRole { return FunctionRole }
+func (m *FunctionMessage) Role() MessageRole { return MessageRoleFunction }
 func (m *FunctionMessage) Meta() *MsgMeta    { return &m.MsgMeta }
 
 type Memory struct {
@@ -836,12 +837,12 @@ func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
 		role := m.Role()
 		meta := m.Meta()
 		switch role {
-		case UserRole:
+		case MessageRoleUser:
 			win = append(win, &LLMContent{
 				Role:  LLMUserRole,
 				Parts: []*LLMPart{{Text: *meta.Content}},
 			})
-		case FunctionRole:
+		case MessageRoleFunction:
 			call, err := FromJsonRawMessage(meta.FunctionCall)
 			if err != nil {
 				return nil, err
@@ -864,7 +865,7 @@ func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
 					Content: fnres,
 				}}},
 			})
-		case ModelRole:
+		case MessageRoleModel:
 			win = append(win, &LLMContent{
 				Role:  LLMModelRole,
 				Parts: []*LLMPart{{Text: *meta.Content}},

@@ -30,15 +30,16 @@ func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
 	}
 }
 
-func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
+func (j *JWTIssuer) Sign(userID uuid.UUID, role string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss": j.issuer,
-		"aud": j.audience,
-		"sub": userID.String(),
-		"iat": now.Unix(),
-		"nbf": now.Unix(),
-		"exp": now.Add(j.TTL).UTC(),
+		"iss":  j.issuer,
+		"aud":  j.audience,
+		"sub":  userID.String(),
+		"role": role,
+		"iat":  now.Unix(),
+		"nbf":  now.Unix(),
+		"exp":  now.Add(j.TTL).Unix(),
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString(j.secret)
@@ -47,6 +48,7 @@ func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
 type AuthSvc struct {
 	jwt     *JWTIssuer
 	refresh dom.RefreshTokenRepo
+	user    dom.UserRepo
 }
 
 func BuildAuthSvc(iss *JWTIssuer, re dom.RefreshTokenRepo) *AuthSvc {
@@ -57,13 +59,18 @@ func (a *AuthSvc) JWT() *JWTIssuer {
 	return a.jwt
 }
 
-func (a *AuthSvc) IssueTokens(ctx context.Context, userID uuid.UUID) (string, string, error) {
-	acc, err := a.jwt.Sign(userID)
+func (a *AuthSvc) IssueTokens(ctx context.Context, u *dom.User) (string, string, error) {
+	var role = map[bool]string{
+		true:  "admin",
+		false: "user",
+	}[u.IsAdmin]
+
+	acc, err := a.jwt.Sign(u.ID, role)
 	if err != nil {
 		return "", "", err
 	}
 
-	ref, err := a.refresh.CreateRefreshToken(ctx, userID, 60*24*time.Hour)
+	ref, err := a.refresh.CreateRefreshToken(ctx, u.ID, 60*24*time.Hour)
 	if err != nil {
 		return "", "", err
 	}
@@ -77,7 +84,20 @@ func (a *AuthSvc) Refresh(ctx context.Context, rawRefresh string) (string, strin
 		return "", "", err
 	}
 
-	return a.IssueTokens(ctx, userID)
+	u, err := a.user.GetUserByID(ctx, userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	return a.IssueTokens(ctx, u)
+}
+
+func (a *AuthSvc) Revoke(ctx context.Context, rawRefresh string) error {
+	return a.refresh.Revoke(ctx, rawRefresh)
+}
+
+func (a *AuthSvc) RevokeAll(ctx context.Context, userID uuid.UUID) error {
+	return a.refresh.RevokeAll(ctx, userID)
 }
 
 type HealthReadinessSvc struct {

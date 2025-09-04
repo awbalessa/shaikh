@@ -4,6 +4,7 @@ CREATE TABLE public.users (
     id uuid NOT NULL,
     email text NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin boolean NOT NULL DEFAULT false,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     total_messages integer NOT NULL DEFAULT 0,

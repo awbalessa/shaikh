@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/svc"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func healthzHandler() http.HandlerFunc {
@@ -72,12 +74,12 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			return
 		}
 
-		userID, err := svc.UserIDFromCtx(r.Context())
+		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		sessionID, err := SessionIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -164,7 +166,7 @@ func loginHandler(user *svc.UserSvc, au *svc.AuthSvc) http.HandlerFunc {
 			return
 		}
 
-		acc, ref, err := au.IssueTokens(r.Context(), u.ID)
+		acc, ref, err := au.IssueTokens(r.Context(), u)
 		if err != nil {
 			http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
 			return
@@ -195,33 +197,92 @@ func loginHandler(user *svc.UserSvc, au *svc.AuthSvc) http.HandlerFunc {
 
 func refreshHandler(au *svc.AuthSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			RefreshToken string `json:"refresh_token"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		rt, err := r.Cookie("rt")
+		if err != nil || rt.Value == "" {
+			http.Error(w, "missing refresh token", http.StatusUnauthorized)
 			return
 		}
 
-		acc, ref, err := au.Refresh(r.Context(), body.RefreshToken)
+		acc, ref, err := au.Refresh(r.Context(), rt.Value)
 		if err != nil {
 			http.Error(w, "invalid refresh token", http.StatusUnauthorized)
 			return
 		}
 
+		http.SetCookie(w, &http.Cookie{
+			Name:     "rt",
+			Value:    ref,
+			Path:     "/auth",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Now().Add(60 * 24 * time.Hour),
+		})
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token":  acc,
-			"refresh_token": ref,
-			"token_type":    "Bearer",
-			"expires_in":    int(au.JWT().TTL.Seconds()),
+			"access_token": acc,
+			"token_type":   "Bearer",
+			"expires_in":   int(au.JWT().TTL.Seconds()),
 		})
+	}
+}
+
+func logoutHandler(au *svc.AuthSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("rt")
+		if err == nil && cookie.Value != "" {
+			_ = au.Revoke(r.Context(), cookie.Value)
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "rt",
+			Value:    "",
+			Path:     "/auth",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Unix(0, 0),
+		})
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func logoutAllHandler(au *svc.AuthSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := UserIDFromCtx(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if userID == uuid.Nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		if err := au.RevokeAll(r.Context(), userID); err != nil {
+			http.Error(w, "failed to revoke all sessions", http.StatusInternalServerError)
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "rt",
+			Value:    "",
+			Path:     "/auth",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Unix(0, 0),
+		})
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
 func createSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, err := svc.UserIDFromCtx(r.Context())
+		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -244,12 +305,12 @@ func createSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 
 func archiveSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, err := svc.UserIDFromCtx(r.Context())
+		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		sessionID, err := SessionIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -281,12 +342,12 @@ func archiveSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 
 func deleteSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, err := svc.UserIDFromCtx(r.Context())
+		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		sessionID, err := svc.SessionIDFromCtx(r.Context())
+		sessionID, err := SessionIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -303,13 +364,35 @@ func deleteSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 
 func deleteUserHandler(u *svc.UserSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, err := svc.UserIDFromCtx(r.Context())
+		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := u.Delete(r.Context(), userID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func adminDeleteUserHandler(u *svc.UserSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID := chi.URLParam(r, "id")
+		if userID == "" {
+			http.Error(w, "missing user id", http.StatusBadRequest)
+			return
+		}
+		uid, err := uuid.Parse(userID)
+		if err != nil {
+			http.Error(w, "invalid user id", http.StatusBadRequest)
+			return
+		}
+
+		if err := u.Delete(r.Context(), uid); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

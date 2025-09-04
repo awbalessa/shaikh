@@ -7,11 +7,36 @@ import (
 	"os"
 	"strings"
 
-	"github.com/awbalessa/shaikh/backend/internal/svc"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+type CtxKey string
+
+const (
+	CtxUserIDKey    CtxKey = "userID"
+	CtxSessionIDKey CtxKey = "sessionID"
+	CtxUserRoleKey  CtxKey = "role"
+)
+
+func UserIDFromCtx(ctx context.Context) (uuid.UUID, error) {
+	v := ctx.Value(CtxUserIDKey)
+	id, ok := v.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("missing or invalid userID in context")
+	}
+	return id, nil
+}
+
+func SessionIDFromCtx(ctx context.Context) (uuid.UUID, error) {
+	v := ctx.Value(CtxSessionIDKey)
+	id, ok := v.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("missing or invalid sessionID in context")
+	}
+	return id, nil
+}
 
 type JWTValidator struct {
 	Secret   []byte
@@ -61,7 +86,13 @@ func (v *JWTValidator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), svc.CtxUserIDKey, uid)
+		role, _ := claims["role"].(string)
+		if role == "" {
+			role = "user"
+		}
+
+		ctx := context.WithValue(r.Context(), CtxUserIDKey, uid)
+		ctx = context.WithValue(ctx, CtxUserRoleKey, role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -79,7 +110,18 @@ func SessionAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), svc.CtxSessionIDKey, sessionID)
+		ctx := context.WithValue(r.Context(), CtxSessionIDKey, sessionID)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func AdminOnlyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		role, _ := r.Context().Value(CtxUserRoleKey).(string)
+		if role != "admin" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }

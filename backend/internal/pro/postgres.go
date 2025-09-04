@@ -801,19 +801,19 @@ func fromDbMessage(row db.Message) dom.Message {
 	}
 
 	switch row.Role {
-	case dom.UserRole:
+	case dom.MessageRoleUser:
 		return &dom.UserMessage{
 			MsgMeta:    meta,
 			MsgContent: *meta.Content,
 		}
-	case dom.FunctionRole:
+	case dom.MessageRoleFunction:
 		return &dom.FunctionMessage{
 			MsgMeta:          meta,
 			FunctionName:     *meta.FunctionName,
 			FunctionCall:     meta.FunctionCall,
 			FunctionResponse: meta.FunctionResponse,
 		}
-	case dom.ModelRole:
+	case dom.MessageRoleModel:
 		return &dom.ModelMessage{
 			MsgMeta:    meta,
 			MsgContent: *meta.Content,
@@ -876,4 +876,19 @@ func (r *PostgresRefreshTokenRepo) ValidateAndRotate(
 	}
 
 	return row.UserID, nil
+}
+
+func (r *PostgresRefreshTokenRepo) Revoke(
+	ctx context.Context,
+	rawToken string,
+) error {
+	hash := sha256.Sum256([]byte(rawToken))
+	return r.q.RevokeRefreshTokenByHash(ctx, hex.EncodeToString(hash[:]))
+}
+
+func (r *PostgresRefreshTokenRepo) RevokeAll(
+	ctx context.Context,
+	userID uuid.UUID,
+) error {
+	return r.q.RevokeAllUserTokens(ctx, userID)
 }
