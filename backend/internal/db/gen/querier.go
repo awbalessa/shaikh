@@ -13,8 +13,10 @@ import (
 type Querier interface {
 	CreateMemory(ctx context.Context, arg CreateMemoryParams) (Memory, error)
 	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
+	CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteExpiredTokens(ctx context.Context) error
 	DeleteMemoryByUserIDKey(ctx context.Context, arg DeleteMemoryByUserIDKeyParams) error
 	DeleteSessionByID(ctx context.Context, id uuid.UUID) error
 	DeleteUserByID(ctx context.Context, id uuid.UUID) error
@@ -28,6 +30,7 @@ type Querier interface {
 	GetMessagesBySessionID(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
 	GetMessagesBySessionIDAsc(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
 	GetMessagesBySessionIdOrdered(ctx context.Context, sessionID uuid.UUID) ([]Message, error)
+	GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error)
 	GetSessionsByUserID(ctx context.Context, arg GetSessionsByUserIDParams) ([]Session, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
@@ -35,8 +38,12 @@ type Querier interface {
 	GetUserMessagesByUserID(ctx context.Context, arg GetUserMessagesByUserIDParams) ([]Message, error)
 	IncrementUserMessagesByID(ctx context.Context, arg IncrementUserMessagesByIDParams) (User, error)
 	LexicalSearch(ctx context.Context, arg LexicalSearchParams) ([]LexicalSearchRow, error)
+	ListActiveTokensByUser(ctx context.Context, userID uuid.UUID) ([]RefreshToken, error)
 	ListSessionsWithBacklog(ctx context.Context) ([]Session, error)
 	ListUsersWithBacklog(ctx context.Context) ([]User, error)
+	RevokeAllUserTokens(ctx context.Context, userID uuid.UUID) error
+	RevokeRefreshTokenByHash(ctx context.Context, tokenHash string) error
+	RevokeRefreshTokenByID(ctx context.Context, id uuid.UUID) error
 	SemanticSearch(ctx context.Context, arg SemanticSearchParams) ([]SemanticSearchRow, error)
 	UpdateMemoryByID(ctx context.Context, arg UpdateMemoryByIDParams) (Memory, error)
 	UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDParams) (Session, error)

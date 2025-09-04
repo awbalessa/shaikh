@@ -8,11 +8,11 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/awbalessa/shaikh/backend/api"
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/awbalessa/shaikh/backend/internal/pro"
 	"github.com/awbalessa/shaikh/backend/internal/svc"
+	"github.com/awbalessa/shaikh/backend/rest"
 )
 
 const (
@@ -73,6 +73,7 @@ func main() {
 		).ErrorContext(ctx, "failed to create jetstream")
 		os.Exit(1)
 	}
+
 	natsps := pro.NewNatsPubSub(nc, js)
 
 	q := pg.Runner()
@@ -110,15 +111,14 @@ func main() {
 
 	sessionsvc := svc.BuildSessionSvc(pgSessionRepo)
 
-	jwtiss := svc.NewJWTIssuer(30 * time.Minute)
-	jwtval := api.NewJWTValidator()
+	_ = svc.NewJWTIssuer(30 * time.Minute)
+	jwtval := rest.NewJWTValidator()
 
-	router := api.CreateRouter(&api.Deps{
+	router := rest.CreateRouter(&rest.Deps{
 		UserSvc:    usersvc,
 		SessionSvc: sessionsvc,
 		AskSvc:     asksvc,
 		HealthSvc:  healthsvc,
-		JWTIssuer:  jwtiss,
 		JWTValid:   jwtval,
 	})
 
@@ -128,9 +128,9 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("server listening", "addr", srv.Addr)
+		slog.With("addr", srv.Addr).InfoContext(ctx, "server listening")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.With("err", err).Error("server failed")
+			slog.With("err", err).ErrorContext(ctx, "server failed")
 			os.Exit(1)
 		}
 	}()
@@ -141,6 +141,6 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.With("err", err).Error("graceful shutdown failed")
+		slog.With("err", err).ErrorContext(shutdownCtx, "graceful shutdown failed")
 	}
 }

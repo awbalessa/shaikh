@@ -2,7 +2,12 @@ package pro
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -816,4 +821,59 @@ func fromDbMessage(row db.Message) dom.Message {
 	default:
 		return nil
 	}
+}
+
+type PostgresRefreshTokenRepo struct {
+	q db.Querier
+}
+
+func NewPostgresRefreshTokenRepo(q db.Querier) *PostgresRefreshTokenRepo {
+	return &PostgresRefreshTokenRepo{q: q}
+}
+
+func (r *PostgresRefreshTokenRepo) CreateRefreshToken(
+	ctx context.Context,
+	userID uuid.UUID,
+	ttl time.Duration,
+) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	refreshToken := base64.RawURLEncoding.EncodeToString(raw)
+	hash := sha256.Sum256([]byte(refreshToken))
+	expiry := time.Now().Add(ttl)
+
+	_, err := r.q.CreateRefreshToken(ctx, db.CreateRefreshTokenParams{
+		ID:        uuid.New(),
+		UserID:    userID,
+		TokenHash: hex.EncodeToString(hash[:]),
+		ExpiresAt: expiry,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return refreshToken, nil
+}
+
+func (r *PostgresRefreshTokenRepo) ValidateAndRotate(
+	ctx context.Context,
+	rawToken string,
+) (uuid.UUID, error) {
+	hash := sha256.Sum256([]byte(rawToken))
+	row, err := r.q.GetRefreshTokenByHash(ctx, hex.EncodeToString(hash[:]))
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	if row.RevokedAt != nil || time.Now().After(row.ExpiresAt) {
+		return uuid.Nil, errors.New("refresh token expired or revoked")
+	}
+
+	if err := r.q.RevokeRefreshTokenByID(ctx, row.ID); err != nil {
+		return uuid.Nil, err
+	}
+
+	return row.UserID, nil
 }

@@ -15,17 +15,17 @@ import (
 )
 
 type JWTIssuer struct {
-	Secret   []byte
-	Issuer   string
-	Audience string
+	secret   []byte
+	issuer   string
+	audience string
 	TTL      time.Duration
 }
 
 func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
 	return &JWTIssuer{
-		Secret:   []byte(os.Getenv("JWT_SECRET")),
-		Issuer:   "shaikh-api",
-		Audience: "shaikh-api",
+		secret:   []byte(os.Getenv("JWT_SECRET")),
+		issuer:   "shaikh-api",
+		audience: "shaikh-api",
 		TTL:      ttl,
 	}
 }
@@ -33,15 +33,51 @@ func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
 func (j *JWTIssuer) Sign(userID uuid.UUID) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss": j.Issuer,
-		"aud": j.Audience,
+		"iss": j.issuer,
+		"aud": j.audience,
 		"sub": userID.String(),
 		"iat": now.Unix(),
 		"nbf": now.Unix(),
 		"exp": now.Add(j.TTL).UTC(),
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return t.SignedString(j.Secret)
+	return t.SignedString(j.secret)
+}
+
+type AuthSvc struct {
+	jwt     *JWTIssuer
+	refresh dom.RefreshTokenRepo
+}
+
+func BuildAuthSvc(iss *JWTIssuer, re dom.RefreshTokenRepo) *AuthSvc {
+	return &AuthSvc{jwt: iss, refresh: re}
+}
+
+func (a *AuthSvc) JWT() *JWTIssuer {
+	return a.jwt
+}
+
+func (a *AuthSvc) IssueTokens(ctx context.Context, userID uuid.UUID) (string, string, error) {
+	acc, err := a.jwt.Sign(userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	ref, err := a.refresh.CreateRefreshToken(ctx, userID, 60*24*time.Hour)
+	if err != nil {
+		return "", "", err
+	}
+
+	return acc, ref, nil
+}
+
+func (a *AuthSvc) Refresh(ctx context.Context, rawRefresh string) (string, string, error) {
+	userID, err := a.refresh.ValidateAndRotate(ctx, rawRefresh)
+	if err != nil {
+		return "", "", err
+	}
+
+	return a.IssueTokens(ctx, userID)
 }
 
 type HealthReadinessSvc struct {

@@ -447,3 +447,19 @@ type Probe interface {
 	Name() string
 	Ping(ctx context.Context) error
 }
+
+type RefreshTokenRepo interface {
+	CreateRefreshToken(
+		ctx context.Context,
+		userID uuid.UUID,
+		ttl time.Duration,
+	) (string, error)
+	ValidateAndRotate(
+		ctx context.Context,
+		rawToken string,
+	) (uuid.UUID, error)
+	Revoke(
+		ctx context.Context,
+		rawToken string,
+	) error
+}

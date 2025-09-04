@@ -774,6 +774,15 @@ type RagDocument struct {
 	Ayah          *dom.AyahNumber  `db:"ayah"`
 }
 
+type RefreshToken struct {
+	ID        uuid.UUID  `db:"id"`
+	UserID    uuid.UUID  `db:"user_id"`
+	TokenHash string     `db:"token_hash"`
+	CreatedAt time.Time  `db:"created_at"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	RevokedAt *time.Time `db:"revoked_at"`
+}
+
 type Session struct {
 	ID                uuid.UUID  `db:"id"`
 	UserID            uuid.UUID  `db:"user_id"`

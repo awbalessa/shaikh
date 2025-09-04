@@ -895,3 +895,10 @@ func MemoriesToLLMContent(mems []*Memory) ([]*LLMContent, error) {
 	}
 	return final, nil
 }
+
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash string
+	ExpiresAt time.Time
+}

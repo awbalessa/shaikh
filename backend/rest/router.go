@@ -1,4 +1,4 @@
-package api
+package rest
 
 import (
 	"log/slog"
@@ -17,7 +17,7 @@ type Deps struct {
 	SessionSvc *svc.SessionSvc
 	AskSvc     *svc.AskSvc
 	HealthSvc  *svc.HealthReadinessSvc
-	JWTIssuer  *svc.JWTIssuer
+	AuthSvc    *svc.AuthSvc
 	JWTValid   *JWTValidator
 }
 
@@ -47,7 +47,10 @@ func RegisterSystemRoutes(r chi.Router, d *Deps) {
 
 func RegisterAuthRoutes(r chi.Router, d *Deps) {
 	r.Post("/register", registerHandler(d.UserSvc))
-	r.Post("/login", loginHandler(d.UserSvc, d.JWTIssuer))
+	r.Route("/auth", func(sr chi.Router) {
+		sr.Post("/login", loginHandler(d.UserSvc, d.AuthSvc))
+		sr.Post("/refresh", refreshHandler(d.AuthSvc))
+	})
 }
 
 func RegisterAppRoutes(r chi.Router, d *Deps) {

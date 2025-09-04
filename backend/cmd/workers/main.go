@@ -65,6 +65,7 @@ func main() {
 		).ErrorContext(ctx, "failed to create jetstream")
 		os.Exit(1)
 	}
+
 	natsps := pro.NewNatsPubSub(nc, js)
 
 	q := pg.Runner()

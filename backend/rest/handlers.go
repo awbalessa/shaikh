@@ -1,4 +1,4 @@
-package api
+package rest
 
 import (
 	"context"
@@ -147,7 +147,7 @@ func registerHandler(u *svc.UserSvc) http.HandlerFunc {
 	}
 }
 
-func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
+func loginHandler(user *svc.UserSvc, au *svc.AuthSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Email    string `json:"email"`
@@ -160,25 +160,61 @@ func loginHandler(user *svc.UserSvc, tok *svc.JWTIssuer) http.HandlerFunc {
 
 		u, err := user.Login(r.Context(), body.Email, body.Password)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
-		token, err := tok.Sign(u.ID)
+		acc, ref, err := au.IssueTokens(r.Context(), u.ID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
 			return
 		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "rt",
+			Value:    ref,
+			Path:     "/auth",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Expires:  time.Now().Add(60 * 24 * time.Hour),
+		})
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"access_token": token,
+			"access_token": acc,
 			"token_type":   "Bearer",
-			"expires_in":   int(tok.TTL.Seconds()),
+			"expires_in":   int(au.JWT().TTL.Seconds()),
 			"user": map[string]any{
 				"id":    u.ID,
 				"email": u.Email,
 			},
+		})
+	}
+}
+
+func refreshHandler(au *svc.AuthSvc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		acc, ref, err := au.Refresh(r.Context(), body.RefreshToken)
+		if err != nil {
+			http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  acc,
+			"refresh_token": ref,
+			"token_type":    "Bearer",
+			"expires_in":    int(au.JWT().TTL.Seconds()),
 		})
 	}
 }
