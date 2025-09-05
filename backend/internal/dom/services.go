@@ -2,7 +2,6 @@ package dom
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -10,32 +9,25 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	ErrQueriesVectorsNot1to1 = errors.New("vectors and queries are not one-to-one")
-	ErrNoSubqueries          = errors.New("must pass in at least one subquery")
-	ErrTooManySubqueries     = errors.New("cannot pass in more than 3 sub-queries")
-	ErrAyahNeedsSingleSurah  = errors.New("must specify exactly one surah when specifying ayah filters")
-	ErrAgentDoesNotExist     = errors.New("agent does not exist")
-)
-
 func ValidateSearchQuery(arg SearchQuery) ([]FullQueryContext, error) {
 	if len(arg.QueriesWithFilters) == 0 {
-		return nil, ErrNoSubqueries
+		return nil, fmt.Errorf("validate search query: no subqueries: %w", ErrInvalidInput)
 	}
 	if len(arg.QueriesWithFilters) > MaxSubqueries {
-		return nil, ErrTooManySubqueries
+		return nil, fmt.Errorf("validate search query: too many subqueries: %w", ErrInvalidInput)
 	}
 
 	out := make([]FullQueryContext, 0, len(arg.QueriesWithFilters))
 
 	for _, item := range arg.QueriesWithFilters {
-		f := item.FilterContext // start with the user-provided filters
+		f := item.FilterContext
 
 		switch {
 		case len(f.OptionalAyahs) > 0 && len(f.OptionalSurahs) != 1:
-			return nil, ErrAyahNeedsSingleSurah
+			return nil, fmt.Errorf("validate search query: ayahs require exactly one surah: %w", ErrInvalidInput)
 
 		case len(f.OptionalSurahs) > 1:
+			// invalid combo but not fatal — just clear ayahs
 			f.OptionalAyahs = nil
 		}
 
@@ -58,38 +50,34 @@ func ValidateSearchQuery(arg SearchQuery) ([]FullQueryContext, error) {
 
 func FiltersToLabels(f FilterContext) LabelContext {
 	var (
-		contentTypes []LabelContentType = []LabelContentType{}
-		sources      []LabelSource      = []LabelSource{}
-		surahs       []LabelSurahNumber = []LabelSurahNumber{}
-		ayahs        []LabelAyahNumber  = []LabelAyahNumber{}
+		contentTypes []LabelContentType
+		sources      []LabelSource
+		surahs       []LabelSurahNumber
+		ayahs        []LabelAyahNumber
 	)
 
-	if len(f.OptionalContentTypes) > 0 {
-		for _, ct := range f.OptionalContentTypes {
-			contentTypes = append(contentTypes, ContentTypeToLabel[ct])
+	for _, ct := range f.OptionalContentTypes {
+		if lbl, ok := ContentTypeToLabel[ct]; ok {
+			contentTypes = append(contentTypes, lbl)
 		}
 	}
 
-	if len(f.OptionalSources) > 0 {
-		for _, src := range f.OptionalSources {
-			sources = append(sources, SourceToLabel[src])
+	for _, src := range f.OptionalSources {
+		if lbl, ok := SourceToLabel[src]; ok {
+			sources = append(sources, lbl)
 		}
 	}
 
-	if len(f.OptionalSurahs) > 0 {
-		for _, sur := range f.OptionalSurahs {
-			surahs = append(surahs,
-				LabelSurahNumber(sur+SurahNumber(SurahNumberToLabelOffset)),
-			)
-		}
+	for _, sur := range f.OptionalSurahs {
+		surahs = append(surahs,
+			LabelSurahNumber(sur+SurahNumber(SurahNumberToLabelOffset)),
+		)
 	}
 
-	if len(f.OptionalAyahs) > 0 {
-		for _, aya := range f.OptionalAyahs {
-			ayahs = append(ayahs,
-				LabelAyahNumber(aya+AyahNumber(AyahNumberToLabelOffset)),
-			)
-		}
+	for _, aya := range f.OptionalAyahs {
+		ayahs = append(ayahs,
+			LabelAyahNumber(aya+AyahNumber(AyahNumberToLabelOffset)),
+		)
 	}
 
 	return LabelContext{
@@ -101,45 +89,52 @@ func FiltersToLabels(f FilterContext) LabelContext {
 }
 
 func RRFusion(sem []Chunk, lex []Chunk) []Chunk {
-	ranked := rankedLists{}
+	var ranked rankedLists
 	rowMap := make(map[int32]Chunk)
-	semIDs := make([]int32, 0, len(sem))
-	lexIDs := make([]int32, 0, len(lex))
 
+	semIDs := make([]int32, 0, len(sem))
 	for _, row := range sem {
 		semIDs = append(semIDs, row.ID)
 		rowMap[row.ID] = row
 	}
-	ranked = append(ranked, semIDs)
+	if len(semIDs) > 0 {
+		ranked = append(ranked, semIDs)
+	}
 
+	lexIDs := make([]int32, 0, len(lex))
 	for _, row := range lex {
 		lexIDs = append(lexIDs, row.ID)
 		rowMap[row.ID] = row
 	}
-	ranked = append(ranked, lexIDs)
+	if len(lexIDs) > 0 {
+		ranked = append(ranked, lexIDs)
+	}
 
+	// score fusion
 	scores := rrfusion(ranked)
 
+	// convert map -> slice
 	pairs := make([]Rank, 0, len(scores))
 	for id, score := range scores {
-		pairs = append(pairs, Rank{Index: id, Relevance: float64(score)})
+		pairs = append(pairs, Rank{Index: id, Relevance: score})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
 		return pairs[i].Relevance > pairs[j].Relevance
 	})
 
-	total := len(pairs)
-	cutoff := total
-	if total > 100 {
-		cutoff = total / 2
+	// cutoff strategy: cap at 100, otherwise half
+	cutoff := len(pairs)
+	if cutoff > 100 {
+		cutoff = cutoff / 2
 	}
-	top := pairs[:cutoff]
 
+	// assemble fused chunks
 	fused := make([]Chunk, 0, cutoff)
-	for _, pair := range top {
-		fused = append(fused, rowMap[pair.Index])
+	for _, pair := range pairs[:cutoff] {
+		if row, ok := rowMap[pair.Index]; ok {
+			fused = append(fused, row)
+		}
 	}
-
 	return fused
 }
 
@@ -500,7 +495,7 @@ func (a *AgentStruct) BuildContextWindow(
 ) ([]*LLMContent, error) {
 	prof, ok := a.Agents[name]
 	if !ok {
-		return nil, ErrAgentDoesNotExist
+		return nil, fmt.Errorf("build context window: %w", ErrInvalidInput)
 	}
 
 	var contents []*LLMContent
@@ -590,7 +585,7 @@ func (a *AgentStruct) BuildContextWindow(
 
 		tokens, err := a.LLM.CountTokens(ctx, prof.Model, fullContext, ctc)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build context window: %w", err)
+			return nil, fmt.Errorf("build context window: %w", err)
 		}
 
 		if tokens < TokenLimit {
@@ -635,25 +630,6 @@ func HumanizeFrom(now, t time.Time) string {
 	default:
 		return fmt.Sprintf("%d years ago", int(d.Hours()/(24*365)))
 	}
-}
-
-type Err struct {
-	Error   error
-	IsFatal bool
-}
-
-func Fatal(err error) *Err {
-	if err == nil {
-		return nil
-	}
-	return &Err{Error: err, IsFatal: true}
-}
-
-func NonFatal(err error) *Err {
-	if err == nil {
-		return nil
-	}
-	return &Err{Error: err, IsFatal: false}
 }
 
 func BuildSummarizer() *AgentProfile {

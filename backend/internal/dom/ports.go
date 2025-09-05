@@ -3,6 +3,7 @@ package dom
 import (
 	"context"
 	"errors"
+	"fmt"
 	"iter"
 	"time"
 
@@ -17,6 +18,7 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 	ErrTimeout      = errors.New("timeout")
 	ErrExpired      = errors.New("resource expired or revoked")
+	ErrRateLimit    = errors.New("rate limited")
 )
 
 type Embedder interface {
@@ -178,7 +180,7 @@ func (a *AgentStruct) Generate(
 ) (*LLMContentResult, error) {
 	prof, ok := a.Agents[name]
 	if !ok {
-		return nil, ErrAgentDoesNotExist
+		return nil, fmt.Errorf("generate: %w", ErrInvalidInput)
 	}
 
 	resp, err := a.LLM.Generate(ctx, prof.Model, win, prof.Config, prof.Config.ResponseMimeType)
@@ -197,7 +199,7 @@ func (a *AgentStruct) Stream(
 	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
 		prof, ok := a.Agents[name]
 		if !ok {
-			yield(nil, ErrAgentDoesNotExist)
+			yield(nil, fmt.Errorf("stream: %w", ErrInvalidInput))
 			return
 		}
 
@@ -213,7 +215,7 @@ func (a *AgentStruct) StreamWithYield(
 ) *LLMGenResult {
 	prof, ok := a.Agents[name]
 	if !ok {
-		yield(nil, ErrAgentDoesNotExist)
+		yield(nil, fmt.Errorf("stream with yield: %w", ErrInvalidInput))
 		return nil
 	}
 
@@ -440,10 +442,6 @@ type Tx interface {
 type UnitOfWork interface {
 	Begin(ctx context.Context) (Tx, error)
 }
-
-var (
-	ErrNotPingable = errors.New("provider not pingable")
-)
 
 type Probe interface {
 	Name() string

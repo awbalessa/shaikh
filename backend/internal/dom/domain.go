@@ -14,7 +14,41 @@ var (
 	ErrForbidden          = errors.New("forbidden")
 	ErrOwnershipViolation = errors.New("ownership violation")
 	ErrInvalidState       = errors.New("invalid state")
+	ErrNotPingable        = errors.New("not pingable")
 )
+
+type Err struct {
+	Cause    error  // the wrapped/root error
+	Code     string // machine-friendly code, e.g. "Timeout", "Unavailable", "InvalidInput"
+	Msg      string // safe, human-readable message for API clients
+	Continue bool   // marks if this should terminate the flow
+}
+
+func (e *Err) Error() string {
+	return fmt.Sprintf("code=%s, fatal=%t, msg=%s, cause=%v",
+		e.Code, e.Continue, e.Msg, e.Cause)
+}
+
+func (e *Err) Unwrap() error {
+	return e.Cause
+}
+
+func NewErr(cause error, code, msg string, fatal bool) *Err {
+	return &Err{
+		Cause:    cause,
+		Code:     code,
+		Msg:      msg,
+		Continue: fatal,
+	}
+}
+
+func AsErr(err error) (*Err, bool) {
+	var e *Err
+	if errors.As(err, &e) {
+		return e, true
+	}
+	return nil, false
+}
 
 const (
 	SurahNumber1   SurahNumber = 1
@@ -825,7 +859,7 @@ var AgentToModel = map[AgentName]LargeLanguageModel{
 func ToJsonRawMessage(m map[string]any) (json.RawMessage, error) {
 	b, err := json.Marshal(m)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("to json raw message: %w", ErrInvalidInput)
 	}
 	return json.RawMessage(b), nil
 }
@@ -833,47 +867,71 @@ func ToJsonRawMessage(m map[string]any) (json.RawMessage, error) {
 func FromJsonRawMessage(m json.RawMessage) (map[string]any, error) {
 	final := make(map[string]any)
 	if err := json.Unmarshal(m, &final); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("from json raw message: %w", ErrInvalidInput)
 	}
-
 	return final, nil
 }
 
 func MessagesToLLMContent(msgs []Message) ([]*LLMContent, error) {
 	var win []*LLMContent
+
 	for _, m := range msgs {
 		role := m.Role()
 		meta := m.Meta()
+
 		switch role {
 		case MessageRoleUser:
+			if meta.Content == nil {
+				return nil, fmt.Errorf("messages to llm content: user message missing content: %w", ErrInvalidState)
+			}
 			win = append(win, &LLMContent{
 				Role:  LLMUserRole,
 				Parts: []*LLMPart{{Text: *meta.Content}},
 			})
+
 		case MessageRoleFunction:
+			if meta.FunctionName == nil {
+				return nil, fmt.Errorf("messages to llm content: function message missing name: %w", ErrInvalidState)
+			}
+			if len(meta.FunctionCall) == 0 {
+				return nil, fmt.Errorf("messages to llm content: function message missing call: %w", ErrInvalidState)
+			}
+			if len(meta.FunctionResponse) == 0 {
+				return nil, fmt.Errorf("messages to llm content: function message missing response: %w", ErrInvalidState)
+			}
+
 			call, err := FromJsonRawMessage(meta.FunctionCall)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("messages to llm content: parse function call: %w", err)
 			}
 			fnres, err := FromJsonRawMessage(meta.FunctionResponse)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("messages to llm content: parse function response: %w", err)
 			}
+
 			win = append(win, &LLMContent{
 				Role: LLMModelRole,
-				Parts: []*LLMPart{{FunctionCall: &LLMFunctionCall{
-					Name: *meta.FunctionName,
-					Args: call,
-				}}},
+				Parts: []*LLMPart{{
+					FunctionCall: &LLMFunctionCall{
+						Name: *meta.FunctionName,
+						Args: call,
+					},
+				}},
 			})
 			win = append(win, &LLMContent{
 				Role: LLMUserRole,
-				Parts: []*LLMPart{{FunctionResponse: &LLMFunctionResponse{
-					Name:    *meta.FunctionName,
-					Content: fnres,
-				}}},
+				Parts: []*LLMPart{{
+					FunctionResponse: &LLMFunctionResponse{
+						Name:    *meta.FunctionName,
+						Content: fnres,
+					},
+				}},
 			})
+
 		case MessageRoleModel:
+			if meta.Content == nil {
+				return nil, fmt.Errorf("messages to llm content: model message missing content: %w", ErrInvalidState)
+			}
 			win = append(win, &LLMContent{
 				Role:  LLMModelRole,
 				Parts: []*LLMPart{{Text: *meta.Content}},
@@ -889,12 +947,8 @@ func MemoriesToLLMContent(mems []*Memory) ([]*LLMContent, error) {
 	for _, m := range mems {
 		text := fmt.Sprintf(
 			"Memory\n- Unique Key: %s\n- Confidence: %.2f\n- Content: %s\n- Source Msg: %s\n",
-			m.UniqueKey,
-			m.Confidence,
-			m.Content,
-			m.SourceMsg,
+			m.UniqueKey, m.Confidence, m.Content, m.SourceMsg,
 		)
-
 		final = append(final, &LLMContent{
 			Role: LLMUserRole,
 			Parts: []*LLMPart{
