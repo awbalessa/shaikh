@@ -103,8 +103,13 @@ type LLM interface {
 	) (int32, error)
 }
 
+type CallResult struct {
+	Response map[string]any
+	Metadata map[string]any
+}
+
 type AgentFn interface {
-	Call(ctx context.Context, args map[string]any) (map[string]any, error)
+	Call(ctx context.Context, args map[string]any) (*CallResult, error)
 }
 
 type Agent interface {

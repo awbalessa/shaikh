@@ -3,6 +3,7 @@ package svc
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"golang.org/x/sync/errgroup"
@@ -22,19 +23,31 @@ func BuildSearchSvc(se dom.Searcher, em dom.Embedder, re dom.Reranker) *SearchSv
 	}
 }
 
-func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.SearchResult, error) {
+type SearchResult struct {
+	Results             []dom.SearchResult
+	Duration            time.Duration
+	SemanticResultCount int
+	LexicalResultCount  int
+	FusedResultCount    int
+	DedupedResultCount  int
+	FinalResultCount    int
+}
+
+func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) (*SearchResult, error) {
+	start := time.Now()
+
 	queries, err := dom.ValidateSearchQuery(arg)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
 
-	results, err := s.hybridSearch(ctx, queries, dom.InitialChunks200)
+	hybrid, err := s.hybridSearch(ctx, queries, dom.InitialChunks200)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
 
-	docs := make([]string, 0, len(results))
-	for _, chunk := range results {
+	docs := make([]string, 0, len(hybrid.results))
+	for _, chunk := range hybrid.results {
 		docs = append(docs, chunk.Content)
 	}
 
@@ -45,7 +58,7 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 
 	final := make([]dom.SearchResult, 0, len(ranks))
 	for _, rank := range ranks {
-		chunk := results[rank.Index]
+		chunk := hybrid.results[rank.Index]
 		final = append(final, dom.SearchResult{
 			Chunk: dom.Chunk{
 				Document: dom.Document{
@@ -61,14 +74,30 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 		})
 	}
 
-	return final, nil
+	return &SearchResult{
+		Results:             final,
+		Duration:            time.Since(start),
+		SemanticResultCount: hybrid.semanticResultCount,
+		LexicalResultCount:  hybrid.lexicalResultCount,
+		FusedResultCount:    hybrid.fusedResultCount,
+		DedupedResultCount:  hybrid.dedupedResultCount,
+		FinalResultCount:    len(final),
+	}, nil
+}
+
+type hybridSearchResult struct {
+	results             []dom.Chunk
+	semanticResultCount int
+	lexicalResultCount  int
+	fusedResultCount    int
+	dedupedResultCount  int
 }
 
 func (s *SearchSvc) hybridSearch(
 	ctx context.Context,
 	queries []dom.FullQueryContext,
 	topk int,
-) ([]dom.Chunk, error) {
+) (*hybridSearchResult, error) {
 	semChan := make(chan [][]dom.Chunk, 1)
 	lexChan := make(chan [][]dom.Chunk, 1)
 
@@ -116,9 +145,17 @@ func (s *SearchSvc) hybridSearch(
 	semRes := <-semChan
 	lexRes := <-lexChan
 
+	var semanticCount, lexicalCount int
+	for i := range queries {
+		semanticCount += len(semRes[i])
+		lexicalCount += len(lexRes[i])
+	}
+
 	fused := make([][]dom.Chunk, len(queries))
+	var fusedCount int
 	for i := range queries {
 		fused[i] = dom.RRFusion(semRes[i], lexRes[i])
+		fusedCount += len(fused[i])
 	}
 
 	var allChunks []dom.Chunk
@@ -126,14 +163,20 @@ func (s *SearchSvc) hybridSearch(
 		allChunks = append(allChunks, group...)
 	}
 
-	seen := make(map[string]bool)
+	seen := make(map[int32]bool)
 	deduped := make([]dom.Chunk, 0, len(allChunks))
 	for _, chunk := range allChunks {
-		if !seen[chunk.Content] {
-			seen[chunk.Content] = true
+		if !seen[chunk.ID] {
+			seen[chunk.ID] = true
 			deduped = append(deduped, chunk)
 		}
 	}
 
-	return deduped, nil
+	return &hybridSearchResult{
+		results:             deduped,
+		semanticResultCount: semanticCount,
+		lexicalResultCount:  lexicalCount,
+		fusedResultCount:    fusedCount,
+		dedupedResultCount:  len(deduped),
+	}, nil
 }

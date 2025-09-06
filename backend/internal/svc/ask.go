@@ -3,7 +3,6 @@ package svc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
@@ -37,7 +36,7 @@ func BuildAskSvc(
 	)
 
 	fns := map[dom.AgentFnName]dom.AgentFn{
-		dom.FunctionSearch: BuildFnSearch(se, log),
+		dom.FunctionSearch: BuildFnSearch(se),
 	}
 
 	ctxManager, err := BuildContextManager(
@@ -248,7 +247,7 @@ func (a *AskSvc) handleFn(
 
 	return &dom.LLMFunctionResponse{
 		Name:    fn.Name,
-		Content: res,
+		Content: res.Response,
 	}, nil
 }
 
@@ -566,73 +565,81 @@ type FnSearchSchema struct {
 
 type FnSearch struct {
 	SearchSvc *SearchSvc
-	Logger    *slog.Logger
 }
 
-func BuildFnSearch(se *SearchSvc, log *slog.Logger) *FnSearch {
-	log = log.With(
-		"component", "FnSearch",
-	)
-
+func BuildFnSearch(se *SearchSvc) *FnSearch {
 	return &FnSearch{
 		SearchSvc: se,
-		Logger:    log,
 	}
 }
 
 func (f *FnSearch) Call(
 	ctx context.Context,
 	args map[string]any,
-) (map[string]any, error) {
-	log := f.Logger.With(
-		"method", "Call",
-	)
+) (*dom.CallResult, error) {
+	start := time.Now()
 
 	fullPrompt, ok := args["full_prompt"].(string)
 	if !ok {
-		return nil, errors.New("missing or invalid 'full_prompt'")
+		return nil, fmt.Errorf("missing or invalid 'full_prompt': %w", dom.ErrInvalidInput)
 	}
 
-	argPrompts, ok := args["prompts_with_filter"].([]any)
+	rawPrompts, ok := args["prompts_with_filter"].([]any)
 	if !ok {
-		return nil, errors.New("missing or invalid 'prompt_with_filter'")
+		return nil, fmt.Errorf("missing or invalid 'prompts_with_filter': %w", dom.ErrInvalidInput)
 	}
 
-	prompts := make([]dom.QueryWithFilter, 0, len(argPrompts))
-	for _, raw := range argPrompts {
+	prompts := make([]dom.QueryWithFilter, 0, len(rawPrompts))
+	subQueryMeta := make([]map[string]any, 0, len(rawPrompts))
+
+	for _, raw := range rawPrompts {
 		pmap, ok := raw.(map[string]any)
 		if !ok {
-			return nil, errors.New("invalid prompts_with_filter entry")
+			return nil, fmt.Errorf("invalid prompts_with_filter entry: %w", dom.ErrInvalidInput)
 		}
 
 		prompt, _ := pmap["prompt"].(string)
 
-		contentTypes := dom.RawToContentTypes(pmap["content_type_filters"].([]string))
-		sources := dom.RawToSources(pmap["source_filters"].([]string))
+		rawCT := pmap["content_type_filters"]
+		rawSO := pmap["source_filters"]
+
+		var rawSurahAyah any = nil
+		if sa, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
+			rawSurahAyah = sa
+		}
 
 		var surahs []dom.SurahNumber
 		var ayahs []dom.AyahNumber
-		if surahAyah, ok := pmap["surah_ayah_filters"].(map[string]any); ok {
-			surahs = dom.RawToSurahNumbers(surahAyah["surahs"].([]int))
-			ayahs = dom.RawToAyahNumbers(surahAyah["ayahs"].([]int))
+		if sa, ok := rawSurahAyah.(map[string]any); ok {
+			surahs = dom.RawToSurahNumbers(sa["surahs"])
+			ayahs = dom.RawToAyahNumbers(sa["ayahs"])
 		}
 
 		prompts = append(prompts, dom.QueryWithFilter{
 			Query: prompt,
 			FilterContext: dom.FilterContext{
-				OptionalContentTypes: contentTypes,
-				OptionalSources:      sources,
+				OptionalContentTypes: dom.RawToContentTypes(rawCT),
+				OptionalSources:      dom.RawToSources(rawSO),
 				OptionalSurahs:       surahs,
 				OptionalAyahs:        ayahs,
 			},
 		})
-	}
 
-	log.With(
-		"full_prompt", fullPrompt,
-		"prompts_with_filter_count", len(prompts),
-		"raw", args,
-	).DebugContext(ctx, "agent called Search() function")
+		metaSA := map[string]any{"surahs": nil, "ayahs": nil}
+		if sa, ok := rawSurahAyah.(map[string]any); ok {
+			metaSA = map[string]any{
+				"surahs": sa["surahs"],
+				"ayahs":  sa["ayahs"],
+			}
+		}
+
+		subQueryMeta = append(subQueryMeta, map[string]any{
+			"prompt":               prompt,
+			"content_type_filters": rawCT,
+			"source_filters":       rawSO,
+			"surah_ayah_filters":   metaSA,
+		})
+	}
 
 	params := dom.SearchQuery{
 		FullQuery:          fullPrompt,
@@ -640,17 +647,14 @@ func (f *FnSearch) Call(
 		TopK:               dom.Top20Documents,
 	}
 
-	results, err := f.SearchSvc.Search(ctx, params)
+	res, err := f.SearchSvc.Search(ctx, params)
 	if err != nil {
-		log.With(
-			"err", err,
-		).ErrorContext(ctx, "agent failed to call Search() function")
-		return nil, fmt.Errorf("agent failed to call Search() function: %w", err)
+		return nil, fmt.Errorf("call: %w", err)
 	}
 
-	serialized := make([]map[string]any, 0, len(results))
-	for _, r := range results {
-		serialized = append(serialized, map[string]any{
+	out := make([]map[string]any, 0, len(res.Results))
+	for _, r := range res.Results {
+		out = append(out, map[string]any{
 			"relevance": r.Relevance,
 			"source":    r.Source,
 			"document":  r.Content,
@@ -660,7 +664,23 @@ func (f *FnSearch) Call(
 		})
 	}
 
-	return map[string]any{
-		"results": serialized,
+	metadata := map[string]any{
+		"full_prompt": fullPrompt,
+		"sub_queries": subQueryMeta,
+		"duration_ms": time.Since(start).Milliseconds(),
+		"search": map[string]any{
+			"top_k":                 params.TopK,
+			"semantic_result_count": res.SemanticResultCount,
+			"lexical_result_count":  res.LexicalResultCount,
+			"fused_result_count":    res.FusedResultCount,
+			"deduped_result_count":  res.DedupedResultCount,
+			"final_result_count":    res.FinalResultCount,
+			"duration_ms":           res.Duration.Milliseconds(),
+		},
+	}
+
+	return &dom.CallResult{
+		Response: map[string]any{"results": out},
+		Metadata: metadata,
 	}, nil
 }
