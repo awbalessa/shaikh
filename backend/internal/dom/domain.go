@@ -18,28 +18,40 @@ var (
 )
 
 type Err struct {
-	Cause    error  // the wrapped/root error
-	Code     string // machine-friendly code, e.g. "Timeout", "Unavailable", "InvalidInput"
-	Msg      string // safe, human-readable message for API clients
-	Continue bool   // marks if this should terminate the flow
+	Root      error  // wrapped cause, for operators/debugging
+	Msg       string // client-safe message
+	Code      string // stable symbolic code: INVALID_ARGUMENT, NOT_FOUND, INTERNAL
+	Status    int    // HTTP status mapping (422, 404, 500, etc.)
+	Retryable bool   // safe to retry? infra/transient errors, not input errors
 }
 
 func (e *Err) Error() string {
-	return fmt.Sprintf("code=%s, fatal=%t, msg=%s, cause=%v",
-		e.Code, e.Continue, e.Msg, e.Cause)
+	// Keep Error() concise for debugging/logging
+	return fmt.Sprintf("[%s] %s (retryable=%t, cause=%v)", e.Code, e.Msg, e.Retryable, e.Root)
 }
 
 func (e *Err) Unwrap() error {
-	return e.Cause
+	return e.Root
 }
 
-func NewErr(cause error, code, msg string, fatal bool) *Err {
-	return &Err{
-		Cause:    cause,
-		Code:     code,
-		Msg:      msg,
-		Continue: fatal,
-	}
+func InvalidArg(msg string, cause error) *Err {
+	return &Err{Root: cause, Msg: msg, Code: "INVALID_ARGUMENT", Status: 422, Retryable: false}
+}
+
+func NotFound(msg string, cause error) *Err {
+	return &Err{Root: cause, Msg: msg, Code: "NOT_FOUND", Status: 404, Retryable: false}
+}
+
+func Unauthorized(msg string, cause error) *Err {
+	return &Err{Root: cause, Msg: msg, Code: "UNAUTHORIZED", Status: 401, Retryable: false}
+}
+
+func Conflict(msg string, cause error) *Err {
+	return &Err{Root: cause, Msg: msg, Code: "CONFLICT", Status: 409, Retryable: false}
+}
+
+func Internal(msg string, cause error) *Err {
+	return &Err{Root: cause, Msg: msg, Code: "INTERNAL", Status: 500, Retryable: true}
 }
 
 func AsErr(err error) (*Err, bool) {

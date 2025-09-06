@@ -481,7 +481,7 @@ func (s *Summarizer) summarize(
 	ctx context.Context,
 	sess *dom.Session,
 ) error {
-	msgs, err := s.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sess.ID)
+	msgs, err := s.MessageRepo.GetMessagesBySessionID(ctx, sess.ID)
 	if err != nil {
 		return err
 	}
@@ -645,8 +645,11 @@ func (m *Memorizer) IdleProcess(ctx context.Context) error {
 	now := time.Now()
 	for _, u := range users {
 		if now.Sub(u.UpdatedAt) >= MemorizerMaxIdleTime {
-			if err := m.memorize(ctx, u); err != nil {
-				return err
+			delta := u.TotalMessages - u.TotalMessagesMemorized
+			if delta > MemorizerMinMsgsIdle {
+				if err := m.memorize(ctx, u); err != nil {
+					return err
+				}
 			}
 		}
 	}

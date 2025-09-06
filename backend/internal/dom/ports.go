@@ -393,7 +393,7 @@ type MessageRepo interface {
 		ctx context.Context,
 		msg Message,
 	) (Message, error)
-	GetMessagesBySessionIDOrdered(
+	GetMessagesBySessionID(
 		ctx context.Context,
 		sessionID uuid.UUID,
 	) ([]Message, error)

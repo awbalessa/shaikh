@@ -387,7 +387,7 @@ func (c *ContextManager) getDbContext(
 	})
 
 	g.Go(func() error {
-		msgs, err := c.MessageRepo.GetMessagesBySessionIDOrdered(ctx, sessionID)
+		msgs, err := c.MessageRepo.GetMessagesBySessionID(ctx, sessionID)
 		if err != nil {
 			return err
 		}

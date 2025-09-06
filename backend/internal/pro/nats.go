@@ -28,9 +28,7 @@ func NewNats(name string) (*Nats, error) {
 		return nil, fmt.Errorf("new nats: %w", dom.ErrUnavailable)
 	}
 
-	return &Nats{
-		Conn: nc,
-	}, nil
+	return &Nats{Conn: nc}, nil
 }
 
 func (n *Nats) Ping(ctx context.Context) error {
@@ -54,7 +52,9 @@ func (n *Nats) Name() string {
 
 func (n *Nats) Close() error {
 	if n.Conn != nil && !n.Conn.IsClosed() {
-		n.Conn.Drain()
+		if err := n.Conn.Drain(); err != nil {
+			return fmt.Errorf("nats drain: %w", dom.ErrInternal)
+		}
 	}
 	return nil
 }
@@ -159,9 +159,6 @@ type NatsPubSubConsumer struct {
 func (c *NatsPubSubConsumer) Fetch(batch int) ([]dom.DurablePubMsg, error) {
 	msgs, err := c.Cons.Fetch(batch)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("consumer fetch: %w", dom.ErrTimeout)
-		}
 		return nil, fmt.Errorf("consumer fetch: %w", dom.ErrInternal)
 	}
 
@@ -321,6 +318,9 @@ func (c *NatsPublisher) DurablePublish(
 		jetstream.WithMsgID(opts.MsgID),
 	)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("durable publish: %w", dom.ErrTimeout)
+		}
 		return nil, fmt.Errorf("durable publish: %w", dom.ErrInternal)
 	}
 	if ack == nil {

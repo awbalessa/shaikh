@@ -3,7 +3,6 @@ package svc
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"golang.org/x/sync/errgroup"
@@ -13,44 +12,26 @@ type SearchSvc struct {
 	Searcher dom.Searcher
 	Embedder dom.Embedder
 	Reranker dom.Reranker
-	Logger   *slog.Logger
 }
 
 func BuildSearchSvc(se dom.Searcher, em dom.Embedder, re dom.Reranker) *SearchSvc {
-	log := slog.Default().With(
-		"service", "search",
-	)
-
 	return &SearchSvc{
 		Searcher: se,
 		Embedder: em,
 		Reranker: re,
-		Logger:   log,
 	}
 }
 
 func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.SearchResult, error) {
 	queries, err := dom.ValidateSearchQuery(arg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("search: %w", err)
 	}
-
-	log := s.Logger.With(
-		"method", "Search",
-	)
-
-	numOfQueries := len(arg.QueriesWithFilters)
-	s.Logger.With(
-		slog.Int("number_of_queries", numOfQueries),
-		slog.Int("topk", int(arg.TopK)),
-	).DebugContext(ctx, "starting hybrid search...")
 
 	results, err := s.hybridSearch(ctx, queries, dom.InitialChunks200)
 	if err != nil {
-		return nil, fmt.Errorf("hybrid search failed: %w", err)
+		return nil, fmt.Errorf("search: %w", err)
 	}
-
-	log.DebugContext(ctx, "hybrid search completed, reranking...")
 
 	docs := make([]string, 0, len(results))
 	for _, chunk := range results {
@@ -59,7 +40,7 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 
 	ranks, err := s.Reranker.RerankDocuments(ctx, arg.FullQuery, docs, arg.TopK)
 	if err != nil {
-		return nil, fmt.Errorf("reranking failed: %w", err)
+		return nil, fmt.Errorf("search: %w", err)
 	}
 
 	final := make([]dom.SearchResult, 0, len(ranks))
@@ -80,10 +61,6 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) ([]dom.Sear
 		})
 	}
 
-	log.With(
-		"returned_chunks", len(final),
-	).DebugContext(ctx, "search completed successfully")
-
 	return final, nil
 }
 
@@ -92,10 +69,6 @@ func (s *SearchSvc) hybridSearch(
 	queries []dom.FullQueryContext,
 	topk int,
 ) ([]dom.Chunk, error) {
-	log := s.Logger.With(
-		"method", "hybridSearch",
-	)
-
 	semChan := make(chan [][]dom.Chunk, 1)
 	lexChan := make(chan [][]dom.Chunk, 1)
 
@@ -161,11 +134,6 @@ func (s *SearchSvc) hybridSearch(
 			deduped = append(deduped, chunk)
 		}
 	}
-
-	log.With(
-		"fused_count", len(fused),
-		"deduped_count", len(deduped),
-	).DebugContext(ctx, "hybrid search completed")
 
 	return deduped, nil
 }
