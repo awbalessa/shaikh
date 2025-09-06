@@ -192,22 +192,14 @@ type SearchResult struct {
 	Relevance float64
 }
 
-type InputPrompt struct {
-	Text             string               `json:"text"`
-	FunctionResponse *LLMFunctionResponse `json:"function_response,omitempty"`
-}
-
-type ModelOutput struct {
-	Text         string           `json:"text"`
-	FunctionCall *LLMFunctionCall `json:"function_call,omitempty"`
-}
-
 type Inference struct {
-	Input        *InputPrompt `json:"input"`
-	Output       *ModelOutput `json:"output"`
-	InputTokens  int32
-	OutputTokens int32
-	Model        LargeLanguageModel
+	Input         *LLMInput          `json:"input"`
+	Output        *LLMOutput         `json:"output"`
+	InputTokens   int32              `json:"-"`
+	OutputTokens  int32              `json:"-"`
+	FinishMessage string             `json:"-"`
+	FinishReason  string             `json:"-"`
+	Model         LargeLanguageModel `json:"-"`
 }
 
 type Interaction struct {

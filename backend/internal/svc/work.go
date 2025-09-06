@@ -500,12 +500,16 @@ func (s *Summarizer) summarize(
 	if err != nil {
 		return err
 	}
-	if res.Bytes == nil {
+	data, err := res.MarshalJSON()
+	if err != nil {
+		return err
+	}
+	if data == nil {
 		return fmt.Errorf("empty summarizer result")
 	}
 
 	var resp SummarizerResponse
-	if err := json.Unmarshal(res.Bytes, &resp); err != nil {
+	if err := json.Unmarshal(data, &resp); err != nil {
 		return err
 	}
 
@@ -701,12 +705,17 @@ func (m *Memorizer) memorize(
 	if err != nil {
 		return err
 	}
-	if res.Bytes == nil {
-		return fmt.Errorf("empty memorizer result")
+	data, err := res.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
+	if data == nil {
+		return fmt.Errorf("empty result")
 	}
 
 	var mr MemorizerResponse
-	if err := json.Unmarshal(res.Bytes, &mr); err != nil {
+	if err := json.Unmarshal(data, &mr); err != nil {
 		return err
 	}
 

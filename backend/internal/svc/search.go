@@ -24,13 +24,8 @@ func BuildSearchSvc(se dom.Searcher, em dom.Embedder, re dom.Reranker) *SearchSv
 }
 
 type SearchResult struct {
-	Results             []dom.SearchResult
-	Duration            time.Duration
-	SemanticResultCount int
-	LexicalResultCount  int
-	FusedResultCount    int
-	DedupedResultCount  int
-	FinalResultCount    int
+	Results  []dom.SearchResult
+	Metadata map[string]any
 }
 
 func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) (*SearchResult, error) {
@@ -74,23 +69,24 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) (*SearchRes
 		})
 	}
 
+	metadata := map[string]any{
+		"duration_ms":           time.Since(start).Milliseconds(),
+		"semantic_result_count": hybrid.metadata["semantic_result_count"],
+		"lexical_result_count":  hybrid.metadata["lexical_result_count"],
+		"fused_result_count":    hybrid.metadata["fused_result_count"],
+		"deduped_result_count":  hybrid.metadata["deduped_result_count"],
+		"final_result_count":    len(final),
+	}
+
 	return &SearchResult{
-		Results:             final,
-		Duration:            time.Since(start),
-		SemanticResultCount: hybrid.semanticResultCount,
-		LexicalResultCount:  hybrid.lexicalResultCount,
-		FusedResultCount:    hybrid.fusedResultCount,
-		DedupedResultCount:  hybrid.dedupedResultCount,
-		FinalResultCount:    len(final),
+		Results:  final,
+		Metadata: metadata,
 	}, nil
 }
 
 type hybridSearchResult struct {
-	results             []dom.Chunk
-	semanticResultCount int
-	lexicalResultCount  int
-	fusedResultCount    int
-	dedupedResultCount  int
+	results  []dom.Chunk
+	metadata map[string]any
 }
 
 func (s *SearchSvc) hybridSearch(
@@ -173,10 +169,12 @@ func (s *SearchSvc) hybridSearch(
 	}
 
 	return &hybridSearchResult{
-		results:             deduped,
-		semanticResultCount: semanticCount,
-		lexicalResultCount:  lexicalCount,
-		fusedResultCount:    fusedCount,
-		dedupedResultCount:  len(deduped),
+		results: deduped,
+		metadata: map[string]any{
+			"semantic_result_count": semanticCount,
+			"lexical_result_count":  lexicalCount,
+			"fused_result_count":    fusedCount,
+			"deduped_result_count":  len(deduped),
+		},
 	}, nil
 }

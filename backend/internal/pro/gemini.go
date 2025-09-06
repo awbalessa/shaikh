@@ -57,37 +57,67 @@ func NewGeminiLLM(
 	}, nil
 }
 
+type GeminiLLMOut struct {
+	Out *genai.GenerateContentResponse
+}
+
+func (g *GeminiLLMOut) Text() string {
+	return g.Out.Text()
+}
+
+func (g *GeminiLLMOut) FunctionCall() *dom.LLMFunctionCall {
+	fns := g.Out.FunctionCalls()
+	if fns == nil {
+		return nil
+	}
+	return &dom.LLMFunctionCall{
+		Name: fns[0].Name,
+		Args: fns[0].Args,
+	}
+}
+
+func (g *GeminiLLMOut) MarshalJSON() ([]byte, error) {
+	return g.Out.MarshalJSON()
+}
+
+func (g *GeminiLLMOut) UnmarshalJSON(data []byte) error {
+	return g.Out.UnmarshalJSON(data)
+}
+
+func (g *GeminiLLMOut) TokenUsage() (int32, int32) {
+	if g.Out.UsageMetadata == nil {
+		return 0, 0
+	}
+
+	return g.Out.UsageMetadata.PromptTokenCount, g.Out.UsageMetadata.CandidatesTokenCount
+}
+
+func (g *GeminiLLMOut) Finish() (string, string) {
+	if len(g.Out.Candidates) == 0 && g.Out.Candidates[0].FinishMessage == "" && g.Out.Candidates[0].FinishReason == "" {
+		return "", ""
+	}
+	return g.Out.Candidates[0].FinishMessage, string(g.Out.Candidates[0].FinishReason)
+}
+
 func (g *GeminiLLM) Generate(
 	ctx context.Context,
 	model string,
 	window []*dom.LLMContent,
 	cfg *dom.LLMGenConfig,
-	format dom.LLMResponseSchema,
-) (*dom.LLMContentResult, error) {
-	gWindow := toGenaiContents(window)
+) (dom.LLMOut, error) {
+	gContents := toGenaiContents(window)
 	gCfg := toGenaiConfig(cfg)
-
-	resp, err := g.Cli.Models.GenerateContent(ctx, model, gWindow, gCfg)
+	resp, err := g.Cli.Models.GenerateContent(ctx, model, gContents, gCfg)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return nil, fmt.Errorf("gemini generate: %w", dom.ErrTimeout)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("generate: %w", dom.ErrTimeout)
 		}
-		return nil, fmt.Errorf("gemini generate: %w", dom.ErrInternal)
+		return nil, fmt.Errorf("generate: %w", dom.ErrInternal)
 	}
 
-	var returned = &dom.LLMContentResult{}
-	if format == dom.ResponseJson {
-		data, err := resp.MarshalJSON()
-		if err != nil {
-			return nil, fmt.Errorf("gemini marshal json: %w", dom.ErrInternal)
-		}
-		returned.Bytes = data
-	} else {
-		text := resp.Text()
-		returned.Text = &text
-	}
-
-	return returned, nil
+	return &GeminiLLMOut{
+		Out: resp,
+	}, nil
 }
 
 func (g *GeminiLLM) Stream(
@@ -95,80 +125,70 @@ func (g *GeminiLLM) Stream(
 	model string,
 	window []*dom.LLMContent,
 	cfg *dom.LLMGenConfig,
-	yield func(*dom.LLMPart, error) bool,
-) *dom.LLMGenResult {
-	gWindow := toGenaiContents(window)
+	yield func(dom.LLMOut, error) bool,
+) *dom.Inference {
+	gContents := toGenaiContents(window)
 	gCfg := toGenaiConfig(cfg)
 
-	var str strings.Builder
-	var output dom.ModelOutput
-	var usage dom.TokenUsage
-	var finishMessage string
-	var finishReason dom.FinishReason
+	var (
+		textBuf       strings.Builder
+		fnCall        *dom.LLMFunctionCall
+		inTokens      int32
+		outTokens     int32
+		finishReason  string
+		finishMessage string
+	)
 
-	stream := g.Cli.Models.GenerateContentStream(ctx, model, gWindow, gCfg)
-	for resp, err := range stream {
+	for p, err := range g.Cli.Models.GenerateContentStream(ctx, model, gContents, gCfg) {
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				yield(nil, fmt.Errorf("gemini stream: %w", dom.ErrTimeout))
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				yield(nil, fmt.Errorf("stream: %w", dom.ErrTimeout))
 			} else {
-				yield(nil, fmt.Errorf("gemini stream: %w", dom.ErrInternal))
+				yield(nil, fmt.Errorf("stream: %w", dom.ErrInternal))
 			}
-			return &dom.LLMGenResult{
-				Output:        &output,
-				Usage:         &usage,
-				FinishReason:  finishReason,
-				FinishMessage: finishMessage,
-			}
-		}
-		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
-			continue
+			return nil
 		}
 
-		if r := resp.Candidates[0].FinishReason; r != "" {
-			finishReason = dom.FinishReason(r)
-		}
-		if m := resp.Candidates[0].FinishMessage; m != "" {
-			finishMessage = m
+		if p.UsageMetadata != nil {
+			inTokens = p.UsageMetadata.PromptTokenCount
+			outTokens = p.UsageMetadata.CandidatesTokenCount
 		}
 
-		if resp.UsageMetadata != nil {
-			if inp := resp.UsageMetadata.PromptTokenCount; inp != 0 {
-				usage.InputTokens = inp
+		if len(p.Candidates) > 0 {
+			if r := p.Candidates[0].FinishReason; r != "" {
+				finishReason = string(r)
 			}
-			if op := resp.UsageMetadata.CandidatesTokenCount; op != 0 {
-				usage.OutputTokens = op
+			if m := p.Candidates[0].FinishMessage; m != "" {
+				finishMessage = m
 			}
 		}
 
-		for _, p := range resp.Candidates[0].Content.Parts {
-			part := dom.LLMPart{}
-			if p.Text != "" {
-				part.Text = p.Text
-				str.WriteString(p.Text)
-				output.Text = str.String()
-			}
-			if p.FunctionCall != nil {
-				part.FunctionCall = &dom.LLMFunctionCall{
-					Name: p.FunctionCall.Name,
-					Args: p.FunctionCall.Args,
+		if len(p.Candidates) > 0 && p.Candidates[0].Content != nil {
+			for _, part := range p.Candidates[0].Content.Parts {
+				if part.Text != "" {
+					textBuf.WriteString(part.Text)
 				}
-				output.FunctionCall = part.FunctionCall
-			}
-			if !yield(&part, nil) {
-				return &dom.LLMGenResult{
-					Output:        &output,
-					Usage:         &usage,
-					FinishReason:  finishReason,
-					FinishMessage: finishMessage,
+				if part.FunctionCall != nil && fnCall == nil {
+					fnCall = &dom.LLMFunctionCall{
+						Name: part.FunctionCall.Name,
+						Args: part.FunctionCall.Args,
+					}
+				}
+
+				if !yield(&GeminiLLMOut{Out: p}, nil) {
+					return nil
 				}
 			}
 		}
 	}
 
-	return &dom.LLMGenResult{
-		Output:        &output,
-		Usage:         &usage,
+	return &dom.Inference{
+		Output: &dom.LLMOutput{
+			Text:         textBuf.String(),
+			FunctionCall: fnCall,
+		},
+		InputTokens:   inTokens,
+		OutputTokens:  outTokens,
 		FinishReason:  finishReason,
 		FinishMessage: finishMessage,
 	}

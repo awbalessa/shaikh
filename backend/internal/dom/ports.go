@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,9 +74,185 @@ type Cache interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 }
 
-type LLMContentResult struct {
-	Text  *string
-	Bytes []byte
+type LLMRole string
+
+const (
+	LLMUserRole  LLMRole = "user"
+	LLMModelRole LLMRole = "model"
+)
+
+type LLMFunctionCall struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+}
+
+type LLMFunctionResponse struct {
+	Name     string         `json:"name"`
+	Content  map[string]any `json:"content"`
+	Metadata map[string]any `json:"-"`
+}
+
+type LLMPart struct {
+	Text             string
+	FunctionCall     *LLMFunctionCall
+	FunctionResponse *LLMFunctionResponse
+}
+
+type LLMContent struct {
+	Role  LLMRole
+	Parts []*LLMPart
+}
+
+const (
+	SchemaString  string = "STRING"
+	SchemaInteger string = "INTEGER"
+	SchemaNumber  string = "NUMBER"
+	SchemaBoolean string = "BOOLEAN"
+	SchemaArray   string = "ARRAY"
+	SchemaObject  string = "OBJECT"
+)
+
+type LLMSchema struct {
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Type        string `json:"type,omitempty"`
+
+	Format string   `json:"format,omitempty"`
+	Enum   []string `json:"enum,omitempty"`
+
+	Required   []string              `json:"required,omitempty"`
+	Properties map[string]*LLMSchema `json:"properties,omitempty"`
+
+	Items    *LLMSchema `json:"items,omitempty"`
+	MinItems *int64     `json:"minItems,omitempty"`
+	MaxItems *int64     `json:"maxItems,omitempty"`
+
+	Minimum *float64 `json:"minimum,omitempty"`
+	Maximum *float64 `json:"maximum,omitempty"`
+
+	Example any `json:"example,omitempty"`
+}
+
+type LLMFunctionDecl struct {
+	Name        string
+	Description string
+	Parameters  *LLMSchema
+}
+
+type LLMGenConfig struct {
+	SystemInstructions *LLMContent
+	Temperature        float32
+	CandidateCount     int32
+	Tools              []*LLMFunctionDecl
+	ResponseMimeType   LLMResponseSchema
+	ResponseSchema     *LLMSchema
+}
+
+type LLMCountConfig struct {
+	System *LLMContent
+	Tools  []*LLMFunctionDecl
+}
+
+type LLMResponseSchema string
+
+const (
+	ResponseJson LLMResponseSchema = "application/json"
+	ResponseText LLMResponseSchema = "text/plain"
+)
+
+func Ptr[T any](v T) *T { return &v }
+
+func StringEnum(options ...string) *LLMSchema {
+	return &LLMSchema{
+		Type: SchemaString,
+		Enum: options,
+	}
+}
+
+func ArrayOf(item *LLMSchema, min, max *int64) *LLMSchema {
+	return &LLMSchema{
+		Type:     SchemaArray,
+		Items:    item,
+		MinItems: min,
+		MaxItems: max,
+	}
+}
+
+func ObjectWith(props map[string]*LLMSchema, required ...string) *LLMSchema {
+	return &LLMSchema{
+		Type:       SchemaObject,
+		Properties: props,
+		Required:   required,
+	}
+}
+
+func IntegerRange(min, max *float64) *LLMSchema {
+	return &LLMSchema{
+		Type:    SchemaInteger,
+		Minimum: min,
+		Maximum: max,
+	}
+}
+
+func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
+	if title != nil {
+		s.Title = *title
+	}
+
+	if description != nil {
+		s.Description = *description
+	}
+
+	return s
+}
+
+const (
+	TokenLimit int32 = 200_000
+)
+
+var AgentToModel = map[AgentName]LargeLanguageModel{
+	Caller:    GeminiV2p5Flash,
+	Generator: GeminiV2p5FlashLite,
+}
+
+type TokenUsage struct {
+	InputTokens  int32
+	OutputTokens int32
+}
+
+const (
+	FinishReasonUnspecified           string = "FINISH_REASON_UNSPECIFIED"
+	FinishReasonStop                  string = "STOP"
+	FinishReasonMaxTokens             string = "MAX_TOKENS"
+	FinishReasonSafety                string = "SAFETY"
+	FinishReasonRecitation            string = "RECITATION"
+	FinishReasonLanguage              string = "LANGUAGE"
+	FinishReasonOther                 string = "OTHER"
+	FinishReasonBlocklist             string = "BLOCKLIST"
+	FinishReasonProhibitedContent     string = "PROHIBITED_CONTENT"
+	FinishReasonSPII                  string = "SPII"
+	FinishReasonMalformedFunctionCall string = "MALFORMED_FUNCTION_CALL"
+	FinishReasonImageSafety           string = "IMAGE_SAFETY"
+	FinishReasonUnexpectedToolCall    string = "UNEXPECTED_TOOL_CALL"
+)
+
+type LLMInput struct {
+	Text             string               `json:"text,omitempty"`
+	FunctionResponse *LLMFunctionResponse `json:"function_response,omitempty"`
+}
+
+type LLMOutput struct {
+	Text         string           `json:"text,omitempty"`
+	FunctionCall *LLMFunctionCall `json:"function_call,omitempty"`
+	Json         []byte           `json:"json,omitempty"`
+}
+
+type LLMOut interface {
+	Text() string
+	FunctionCall() *LLMFunctionCall
+	MarshalJSON() ([]byte, error)
+	TokenUsage() (int32, int32)
+	Finish() (string, string)
 }
 
 type LLM interface {
@@ -86,15 +261,14 @@ type LLM interface {
 		model string,
 		window []*LLMContent,
 		cfg *LLMGenConfig,
-		format LLMResponseSchema,
-	) (*LLMContentResult, error)
+	) (LLMOut, error)
 	Stream(
 		ctx context.Context,
 		model string,
 		window []*LLMContent,
 		cfg *LLMGenConfig,
-		yield func(*LLMPart, error) bool,
-	) *LLMGenResult
+		yield func(LLMOut, error) bool,
+	) *Inference
 	CountTokens(
 		ctx context.Context,
 		model string,
@@ -117,18 +291,13 @@ type Agent interface {
 		ctx context.Context,
 		name AgentName,
 		win []*LLMContent,
-	) (*LLMContentResult, error)
+	) (LLMOut, error)
 	Stream(
 		ctx context.Context,
 		name AgentName,
 		win []*LLMContent,
-	) iter.Seq2[*LLMPart, error]
-	StreamWithYield(
-		ctx context.Context,
-		name AgentName,
-		win []*LLMContent,
-		yield func(*LLMPart, error) bool,
-	) *LLMGenResult
+		yield func(LLMOut, error) bool,
+	) *Inference
 	BuildContextWindow(
 		ctx context.Context,
 		name AgentName,
@@ -182,13 +351,13 @@ func (a *AgentStruct) Generate(
 	ctx context.Context,
 	name AgentName,
 	win []*LLMContent,
-) (*LLMContentResult, error) {
+) (LLMOut, error) {
 	prof, ok := a.Agents[name]
 	if !ok {
 		return nil, fmt.Errorf("generate: %w", ErrInvalidInput)
 	}
 
-	resp, err := a.LLM.Generate(ctx, prof.Model, win, prof.Config, prof.Config.ResponseMimeType)
+	resp, err := a.LLM.Generate(ctx, prof.Model, win, prof.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -200,31 +369,17 @@ func (a *AgentStruct) Stream(
 	ctx context.Context,
 	name AgentName,
 	win []*LLMContent,
-) iter.Seq2[*LLMPart, error] {
-	return iter.Seq2[*LLMPart, error](func(yield func(*LLMPart, error) bool) {
-		prof, ok := a.Agents[name]
-		if !ok {
-			yield(nil, fmt.Errorf("stream: %w", ErrInvalidInput))
-			return
-		}
-
-		a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
-	})
-}
-
-func (a *AgentStruct) StreamWithYield(
-	ctx context.Context,
-	name AgentName,
-	win []*LLMContent,
-	yield func(*LLMPart, error) bool,
-) *LLMGenResult {
+	yield func(LLMOut, error) bool,
+) *Inference {
 	prof, ok := a.Agents[name]
 	if !ok {
-		yield(nil, fmt.Errorf("stream with yield: %w", ErrInvalidInput))
+		yield(nil, fmt.Errorf("stream: %w", ErrInvalidInput))
 		return nil
 	}
 
-	return a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
+	inf := a.LLM.Stream(ctx, prof.Model, win, prof.Config, yield)
+	inf.Model = AgentToModel[name]
+	return inf
 }
 
 type PubMsg struct {

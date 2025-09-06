@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -18,7 +17,6 @@ type AskSvc struct {
 	Functions  dom.AgentFns
 	CtxManager *ContextManager
 	SearchSvc  *SearchSvc
-	Logger     *slog.Logger
 }
 
 func BuildAskSvc(
@@ -31,10 +29,6 @@ func BuildAskSvc(
 	ps dom.PubSub,
 	se *SearchSvc,
 ) (*AskSvc, error) {
-	log := slog.Default().With(
-		"service", "ask",
-	)
-
 	fns := map[dom.AgentFnName]dom.AgentFn{
 		dom.FunctionSearch: BuildFnSearch(se),
 	}
@@ -43,7 +37,6 @@ func BuildAskSvc(
 		ctx, cache,
 		mr, memr,
 		sr, ps,
-		log,
 	)
 	if err != nil {
 		return nil, err
@@ -54,67 +47,46 @@ func BuildAskSvc(
 		Functions:  fns,
 		CtxManager: ctxManager,
 		SearchSvc:  se,
-		Logger:     log,
 	}, nil
+}
+
+type AskResult struct {
+	Stream   iter.Seq2[string, *dom.Err]
+	Metadata func() map[string]any
+}
+
+type AskResult struct {
+	// Stream yields chunks and boundary-mapped *dom.Err.
+	Stream iter.Seq2[string, *dom.Err]
+	// Metadata returns a snapshot of metrics (safe to call after stream finishes;
+	// can be called during streaming too if you protect updates).
+	Metadata func() map[string]any
 }
 
 func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
 	userID, sessionID uuid.UUID,
-) iter.Seq2[string, error] {
-	return iter.Seq2[string, error](func(yield func(string, error) bool) {
-		cc, err := a.CtxManager.GetContext(ctx, userID, sessionID)
-		if err != nil {
-			a.Logger.With(
-				"err", err,
-			).ErrorContext(ctx, "failed to get context")
-			yield("", fmt.Errorf("failed to get context: %w", err))
-			return
-		}
-		if cc.Window == nil {
-			cc.Window = &dom.ContextWindow{}
-		}
+) (*AskResult, *dom.Err) {
+	ccRes, err := a.CtxManager.GetContext(ctx, userID, sessionID)
+	if err != nil {
+		return nil, dom.ToDomErr(err)
+	}
+	if ccRes.Result.Window == nil {
+		ccRes.Result.Window = &dom.ContextWindow{}
+	}
 
-		log := a.Logger.With(
-			"user_id", cc.UserID,
-			"session_id", cc.SessionID,
-		)
+	win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, ccRes.Result.Window, time.Now())
+	if err != nil {
+		return nil, dom.ToDomErr(err)
+	}
 
-		log.With(
-			"prompt", prompt,
-		).InfoContext(ctx, "asking agent...")
+	// res := a.ask(ctx, prompt, win, yield func(string, error) bool)
+}
 
-		win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, cc.Window, time.Now())
-		if err != nil {
-			yield("", fmt.Errorf("failed to build context window: %w", err))
-			return
-		}
-
-		infs := a.ask(ctx, prompt, win, yield)
-		turn := cc.Window.Turns + 1
-		inter := &dom.Interaction{
-			Inferences: infs,
-			TurnNumber: turn,
-		}
-
-		cc.Window.History = append(cc.Window.History, inter)
-
-		if err = a.CtxManager.SetContext(ctx, cc, inter); err != nil {
-			log.With(
-				"err", err,
-			).ErrorContext(ctx, "failed to set context")
-			yield("", fmt.Errorf("failed to set context: %w", err))
-			return
-		}
-
-		log.With(
-			"number_of_inferences", len(infs),
-			"total_input_tokens", infs[0].InputTokens+infs[1].InputTokens,
-			"total_output_tokens", infs[0].OutputTokens+infs[0].OutputTokens,
-			"turn", turn,
-		).InfoContext(ctx, "agent answered succesfully")
-	})
+type askResult struct {
+	infs     []*dom.Inference
+	metadata map[string]any
 }
 
 func (a *AskSvc) ask(
@@ -122,122 +94,103 @@ func (a *AskSvc) ask(
 	prompt string,
 	win []*dom.LLMContent,
 	yield func(string, error) bool,
-) [2]*dom.Inference {
-	var infs [2]*dom.Inference
-
+) *askResult {
+	start := time.Now()
 	win = append(win, &dom.LLMContent{
-		Role: dom.LLMUserRole,
-		Parts: []*dom.LLMPart{
-			&dom.LLMPart{Text: prompt},
-		},
+		Role:  dom.LLMUserRole,
+		Parts: []*dom.LLMPart{{Text: prompt}},
 	})
 
-	var fnResp *dom.LLMFunctionResponse
-
-	results := make([]*dom.LLMGenResult, 0, 2)
-
-	syield := func(p *dom.LLMPart, err error) bool {
+	var infs []*dom.Inference
+	syield := func(out dom.LLMOut, err error) bool {
 		if err != nil {
-			return yield("", fmt.Errorf("ask: %w", err))
+			yield("", err)
+			return false
 		}
-		if p == nil {
-			return true
-		}
-
-		if p.Text != "" {
-			return yield(p.Text, nil)
-		}
-		if p.FunctionCall != nil {
-			fnResp, err = a.handleFn(ctx, *p.FunctionCall)
-			if err != nil {
-				return yield("", fmt.Errorf("ask: %w", err))
+		if out.Text() != "" {
+			if !yield(out.Text(), nil) {
+				return false
 			}
+		}
+		if out.FunctionCall() != nil {
 			return false
 		}
 
 		return true
 	}
-
-	results = append(results,
-		a.Agent.StreamWithYield(ctx, dom.Caller, win, syield),
-	)
-
-	if fnResp != nil {
-		win = append(win, &dom.LLMContent{
-			Role: dom.LLMModelRole,
-			Parts: []*dom.LLMPart{
-				&dom.LLMPart{FunctionCall: results[0].Output.FunctionCall},
-			},
-		})
-		win = append(win, &dom.LLMContent{
-			Role: dom.LLMUserRole,
-			Parts: []*dom.LLMPart{
-				&dom.LLMPart{FunctionResponse: fnResp},
-			},
-		})
-
-		results = append(results,
-			a.Agent.StreamWithYield(ctx, dom.Generator, win, syield),
-		)
-
-		infs = [2]*dom.Inference{
-			&dom.Inference{
-				Input: &dom.InputPrompt{
-					Text: prompt,
+	infs = append(infs, a.Agent.Stream(ctx, dom.Caller, win, syield))
+	if infs[0].Output.FunctionCall == nil {
+		infs[0].Input = &dom.LLMInput{
+			Text:             prompt,
+			FunctionResponse: nil,
+		}
+		return &askResult{
+			infs: infs,
+			metadata: map[string]any{
+				"caller": map[string]any{
+					"duration_ms":    time.Since(start).Milliseconds(),
+					"input_tokens":   infs[0].InputTokens,
+					"output_tokens":  infs[0].OutputTokens,
+					"finish_message": infs[0].FinishMessage,
+					"finish_reason":  infs[0].FinishReason,
 				},
-				Output: &dom.ModelOutput{
-					FunctionCall: &dom.LLMFunctionCall{
-						Name: results[0].Output.FunctionCall.Name,
-						Args: results[0].Output.FunctionCall.Args,
-					},
-				},
-				InputTokens:  results[0].Usage.InputTokens,
-				OutputTokens: results[0].Usage.OutputTokens,
-				Model:        dom.AgentToModel[dom.Caller],
-			},
-			&dom.Inference{
-				Input: &dom.InputPrompt{
-					FunctionResponse: &dom.LLMFunctionResponse{
-						Name:    fnResp.Name,
-						Content: fnResp.Content,
-					},
-				},
-				Output: &dom.ModelOutput{
-					Text: results[1].Output.Text,
-				},
-				InputTokens:  results[1].Usage.InputTokens,
-				OutputTokens: results[1].Usage.OutputTokens,
-				Model:        dom.AgentToModel[dom.Generator],
 			},
 		}
-
-		return infs
 	}
 
-	infs = [2]*dom.Inference{
-		&dom.Inference{
-			Input: &dom.InputPrompt{
-				Text: prompt,
+	secondStart := time.Now()
+	res, err := a.handleFn(ctx, infs[0].Output.FunctionCall)
+	if err != nil {
+		yield("", err)
+		return nil
+	}
+	win = append(win, &dom.LLMContent{
+		Role:  dom.LLMModelRole,
+		Parts: []*dom.LLMPart{{FunctionCall: infs[0].Output.FunctionCall}},
+	})
+	win = append(win, &dom.LLMContent{
+		Role:  dom.LLMUserRole,
+		Parts: []*dom.LLMPart{{FunctionResponse: res}},
+	})
+
+	infs = append(infs, a.Agent.Stream(ctx, dom.Generator, win, syield))
+	infs[1].Input = &dom.LLMInput{
+		Text:             prompt,
+		FunctionResponse: res,
+	}
+	return &askResult{
+		infs: infs,
+		metadata: map[string]any{
+			"caller": map[string]any{
+				"duration_ms":    secondStart.Sub(start).Milliseconds(),
+				"input_tokens":   infs[0].InputTokens,
+				"output_tokens":  infs[0].OutputTokens,
+				"finish_message": infs[0].FinishMessage,
+				"finish_reason":  infs[0].FinishReason,
 			},
-			Output: &dom.ModelOutput{
-				Text: results[0].Output.Text,
+			"function_call": map[string]any{
+				"name": res.Name,
+				"meta": res.Metadata,
 			},
-			InputTokens:  results[0].Usage.InputTokens,
-			OutputTokens: results[0].Usage.OutputTokens,
-			Model:        dom.AgentToModel[dom.Caller],
+			"generator": map[string]any{
+				"duration_ms":    time.Since(secondStart).Milliseconds(),
+				"input_tokens":   infs[1].InputTokens,
+				"output_tokens":  infs[1].OutputTokens,
+				"finish_message": infs[1].FinishMessage,
+				"finish_reason":  infs[1].FinishReason,
+			},
 		},
-		nil,
 	}
-	return infs
+
 }
 
 func (a *AskSvc) handleFn(
 	ctx context.Context,
-	fn dom.LLMFunctionCall,
+	fn *dom.LLMFunctionCall,
 ) (*dom.LLMFunctionResponse, error) {
 	function, ok := a.Functions[dom.AgentFnName(fn.Name)]
 	if !ok {
-		return nil, fmt.Errorf("function %s does not exist", fn.Name)
+		return nil, fmt.Errorf("function %s does not exist: %w", fn.Name, dom.ErrInvalidInput)
 	}
 
 	res, err := function.Call(ctx, fn.Args)
@@ -246,304 +199,10 @@ func (a *AskSvc) handleFn(
 	}
 
 	return &dom.LLMFunctionResponse{
-		Name:    fn.Name,
-		Content: res.Response,
+		Name:     fn.Name,
+		Content:  res.Response,
+		Metadata: res.Metadata,
 	}, nil
-}
-
-type ContextManager struct {
-	dom.Cache
-	dom.MemoryRepo
-	dom.SessionRepo
-	dom.MessageRepo
-	dom.Publisher
-	Logger *slog.Logger
-}
-
-const (
-	ContextStream            string        = "CONTEXT"
-	ContextStreamSubject     string        = "context"
-	ContextStreamSubjectStar string        = "context.*"
-	ContextStreamMaxAge      time.Duration = 24 * time.Hour
-)
-
-func BuildContextManager(
-	ctx context.Context,
-	ca dom.Cache,
-	mr dom.MessageRepo,
-	memr dom.MemoryRepo,
-	sr dom.SessionRepo,
-	ps dom.PubSub,
-	log *slog.Logger,
-) (*ContextManager, error) {
-	log = log.With(
-		"component", "ContextManager",
-	)
-
-	cfg := dom.PubSubStreamConfig{
-		Name:      ContextStream,
-		Subjects:  []string{ContextStreamSubjectStar},
-		Retention: dom.WorkQueue,
-		Storage:   dom.FileStorage,
-		MaxAge:    ContextStreamMaxAge,
-	}
-
-	if err := ps.CreateStream(ctx, cfg); err != nil {
-		return nil, err
-	}
-
-	pub := ps.Publisher()
-
-	return &ContextManager{
-		Cache:       ca,
-		SessionRepo: sr,
-		MemoryRepo:  memr,
-		MessageRepo: mr,
-		Publisher:   pub,
-		Logger:      log,
-	}, nil
-}
-
-const (
-	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
-)
-
-func (c *ContextManager) GetContext(ctx context.Context, userID, sessionID uuid.UUID) (*dom.ContextCache, error) {
-	log := c.Logger.With(
-		"method", "GetContext",
-	)
-
-	cc, err := c.getContextCache(ctx, userID, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	if cc == nil {
-		log.WarnContext(ctx, "cache miss, pulling from db...")
-		window, err := c.getDbContext(ctx, userID, sessionID)
-		if err != nil {
-			return nil, err
-		}
-
-		cc = &dom.ContextCache{
-			UserID:    userID,
-			SessionID: sessionID,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-			Window:    window,
-		}
-	}
-
-	return cc, nil
-}
-
-func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*dom.ContextCache, error) {
-	key := dom.CreateContextCacheKey(userID, sessionID)
-	bytes, err := c.Cache.Get(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if bytes == nil {
-		return nil, nil
-	}
-
-	var cc dom.ContextCache
-	if err := json.Unmarshal(bytes, &cc); err != nil {
-		return nil, err
-	}
-
-	return &cc, nil
-}
-
-func (c *ContextManager) getDbContext(
-	ctx context.Context,
-	userID, sessionID uuid.UUID,
-) (*dom.ContextWindow, error) {
-	g, ctx := errgroup.WithContext(ctx)
-
-	var (
-		memories []*dom.Memory
-		sessions []*dom.Session
-		messages []dom.Message
-	)
-
-	g.Go(func() error {
-		mem, err := c.MemoryRepo.GetMemoriesByUserID(ctx, userID, 50)
-		if err != nil {
-			return err
-		}
-		memories = mem
-		return nil
-	})
-
-	g.Go(func() error {
-		prev, err := c.SessionRepo.GetSessionsByUserID(ctx, userID, 5)
-		if err != nil {
-			return err
-		}
-		sessions = prev
-		return nil
-	})
-
-	g.Go(func() error {
-		msgs, err := c.MessageRepo.GetMessagesBySessionID(ctx, sessionID)
-		if err != nil {
-			return err
-		}
-		messages = msgs
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	var (
-		interactions []*dom.Interaction
-		inf1         dom.Inference = dom.Inference{}
-		inf2         dom.Inference = dom.Inference{}
-		has2infs     bool          = false
-	)
-	for _, m := range messages {
-		meta := m.Meta()
-		role := m.Role()
-		switch role {
-		case dom.MessageRoleUser:
-			inf1 = dom.Inference{
-				Input: &dom.InputPrompt{
-					Text: *meta.Content,
-				},
-				InputTokens: *meta.TotalInputTokens,
-			}
-		case dom.MessageRoleFunction:
-			has2infs = true
-			call, err := dom.FromJsonRawMessage(meta.FunctionCall)
-			if err != nil {
-				return nil, err
-			}
-			resp, err := dom.FromJsonRawMessage(meta.FunctionResponse)
-			if err != nil {
-				return nil, err
-			}
-			inf1.Output.FunctionCall = &dom.LLMFunctionCall{
-				Name: *meta.FunctionName,
-				Args: call,
-			}
-			inf1.OutputTokens = *meta.TotalOutputTokens
-			inf2 = dom.Inference{
-				Input: &dom.InputPrompt{
-					FunctionResponse: &dom.LLMFunctionResponse{
-						Name:    *meta.FunctionName,
-						Content: resp,
-					},
-				},
-				InputTokens: *meta.TotalInputTokens,
-			}
-
-		case dom.MessageRoleModel:
-			if !has2infs {
-				inf1.Output.Text = *meta.Content
-				inf1.OutputTokens = *meta.TotalOutputTokens
-				inf1.Model = *meta.Model
-			} else {
-				inf2.Output.Text = *meta.Content
-				inf2.OutputTokens = *meta.TotalOutputTokens
-				inf2.Model = *meta.Model
-			}
-
-			has2infs = false
-			interactions = append(interactions, &dom.Interaction{
-				Inferences: [2]*dom.Inference{&inf1, &inf2},
-				TurnNumber: meta.Turn,
-			})
-			inf1 = dom.Inference{}
-			inf2 = dom.Inference{}
-		}
-	}
-
-	var turns int32 = 0
-	if len(interactions) > 0 {
-		turns = interactions[len(interactions)-1].TurnNumber
-	}
-
-	return &dom.ContextWindow{
-		UserMemories:     memories,
-		PreviousSessions: sessions,
-		History:          interactions,
-		Turns:            turns,
-	}, nil
-}
-
-func (c *ContextManager) SetContext(
-	ctx context.Context,
-	cc *dom.ContextCache,
-	interaction *dom.Interaction,
-) error {
-	if err := c.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
-		return err
-	}
-
-	if err := c.sendContextUpdate(ctx, cc.UserID, cc.SessionID, interaction); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *ContextManager) setContextCache(
-	ctx context.Context,
-	userID, sessionID uuid.UUID,
-	win *dom.ContextWindow,
-) error {
-	now := time.Now()
-	win.Turns += 1
-	bytes, err := json.Marshal(&dom.ContextCache{
-		UserID:    userID,
-		SessionID: sessionID,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Window:    win,
-	})
-	if err != nil {
-		return err
-	}
-
-	key := dom.CreateContextCacheKey(userID, sessionID)
-
-	if err = c.Cache.Set(ctx, key, bytes, ContextCacheTTL6Hrs); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *ContextManager) sendContextUpdate(
-	ctx context.Context,
-	userID, sessionID uuid.UUID,
-	interaction *dom.Interaction,
-) error {
-	load := &SyncPayload{
-		UserID:      userID,
-		SessionID:   sessionID,
-		Interaction: interaction,
-	}
-
-	data, err := json.Marshal(load)
-	if err != nil {
-		return err
-	}
-
-	ack, err := c.Publisher.DurablePublish(ctx, SyncerSubject, data, &dom.DurablePubOptions{
-		MsgID: fmt.Sprintf("sync:%s:%s:%d", userID, sessionID, interaction.TurnNumber),
-	})
-	if err != nil {
-		return err
-	}
-
-	if ack.Stream != ContextStream {
-		return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
-	}
-
-	return nil
 }
 
 type SurahAyahFilters struct {
@@ -660,7 +319,6 @@ func (f *FnSearch) Call(
 			"document":  r.Content,
 			"surah":     r.SurahNumber,
 			"ayah":      r.AyahNumber,
-			"parent_id": r.ParentID,
 		})
 	}
 
@@ -668,19 +326,309 @@ func (f *FnSearch) Call(
 		"full_prompt": fullPrompt,
 		"sub_queries": subQueryMeta,
 		"duration_ms": time.Since(start).Milliseconds(),
-		"search": map[string]any{
-			"top_k":                 params.TopK,
-			"semantic_result_count": res.SemanticResultCount,
-			"lexical_result_count":  res.LexicalResultCount,
-			"fused_result_count":    res.FusedResultCount,
-			"deduped_result_count":  res.DedupedResultCount,
-			"final_result_count":    res.FinalResultCount,
-			"duration_ms":           res.Duration.Milliseconds(),
-		},
+		"search":      res.Metadata,
 	}
 
 	return &dom.CallResult{
 		Response: map[string]any{"results": out},
 		Metadata: metadata,
 	}, nil
+}
+
+type ContextManager struct {
+	dom.Cache
+	dom.MemoryRepo
+	dom.SessionRepo
+	dom.MessageRepo
+	dom.Publisher
+}
+
+const (
+	ContextStream            string        = "CONTEXT"
+	ContextStreamSubject     string        = "context"
+	ContextStreamSubjectStar string        = "context.*"
+	ContextStreamMaxAge      time.Duration = 24 * time.Hour
+)
+
+func BuildContextManager(
+	ctx context.Context,
+	ca dom.Cache,
+	mr dom.MessageRepo,
+	memr dom.MemoryRepo,
+	sr dom.SessionRepo,
+	ps dom.PubSub,
+) (*ContextManager, error) {
+	cfg := dom.PubSubStreamConfig{
+		Name:      ContextStream,
+		Subjects:  []string{ContextStreamSubjectStar},
+		Retention: dom.WorkQueue,
+		Storage:   dom.FileStorage,
+		MaxAge:    ContextStreamMaxAge,
+	}
+
+	if err := ps.CreateStream(ctx, cfg); err != nil {
+		return nil, err
+	}
+
+	pub := ps.Publisher()
+
+	return &ContextManager{
+		Cache:       ca,
+		SessionRepo: sr,
+		MemoryRepo:  memr,
+		MessageRepo: mr,
+		Publisher:   pub,
+	}, nil
+}
+
+const (
+	ContextCacheTTL6Hrs time.Duration = 6 * time.Hour
+)
+
+type GetContextResult struct {
+	Result   *dom.ContextCache
+	Metadata map[string]any
+}
+
+func (c *ContextManager) GetContext(ctx context.Context, userID, sessionID uuid.UUID) (*GetContextResult, error) {
+	cc, err := c.getContextCache(ctx, userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	var cacheHit bool = true
+	if cc == nil {
+		cacheHit = false
+		window, err := c.getDbContext(ctx, userID, sessionID)
+		if err != nil {
+			return nil, err
+		}
+
+		cc = &dom.ContextCache{
+			UserID:    userID,
+			SessionID: sessionID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Window:    window,
+		}
+	}
+
+	return &GetContextResult{
+		Result: cc,
+		Metadata: map[string]any{
+			"cache_hit":         cacheHit,
+			"user_memories":     len(cc.Window.UserMemories),
+			"session_summaries": len(cc.Window.PreviousSessions),
+			"previous_turns":    cc.Window.Turns,
+		},
+	}, nil
+}
+
+func (c *ContextManager) getContextCache(ctx context.Context, userID, sessionID uuid.UUID) (*dom.ContextCache, error) {
+	key := dom.CreateContextCacheKey(userID, sessionID)
+	bytes, err := c.Cache.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if bytes == nil {
+		return nil, nil
+	}
+
+	var cc dom.ContextCache
+	if err := json.Unmarshal(bytes, &cc); err != nil {
+		return nil, err
+	}
+
+	return &cc, nil
+}
+
+func (c *ContextManager) getDbContext(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+) (*dom.ContextWindow, error) {
+	g, ctx := errgroup.WithContext(ctx)
+
+	var (
+		memories []*dom.Memory
+		sessions []*dom.Session
+		messages []dom.Message
+	)
+
+	g.Go(func() error {
+		mem, err := c.MemoryRepo.GetMemoriesByUserID(ctx, userID, 50)
+		if err != nil {
+			return err
+		}
+		memories = mem
+		return nil
+	})
+
+	g.Go(func() error {
+		prev, err := c.SessionRepo.GetSessionsByUserID(ctx, userID, 5)
+		if err != nil {
+			return err
+		}
+		sessions = prev
+		return nil
+	})
+
+	g.Go(func() error {
+		msgs, err := c.MessageRepo.GetMessagesBySessionID(ctx, sessionID)
+		if err != nil {
+			return err
+		}
+		messages = msgs
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	var (
+		interactions []*dom.Interaction
+		inf1         dom.Inference = dom.Inference{}
+		inf2         dom.Inference = dom.Inference{}
+		has2infs     bool          = false
+	)
+	for _, m := range messages {
+		meta := m.Meta()
+		role := m.Role()
+		switch role {
+		case dom.MessageRoleUser:
+			inf1 = dom.Inference{
+				Input: &dom.LLMInput{
+					Text: *meta.Content,
+				},
+				InputTokens: *meta.TotalInputTokens,
+			}
+		case dom.MessageRoleFunction:
+			has2infs = true
+			call, err := dom.FromJsonRawMessage(meta.FunctionCall)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := dom.FromJsonRawMessage(meta.FunctionResponse)
+			if err != nil {
+				return nil, err
+			}
+			inf1.Output.FunctionCall = &dom.LLMFunctionCall{
+				Name: *meta.FunctionName,
+				Args: call,
+			}
+			inf1.OutputTokens = *meta.TotalOutputTokens
+			inf2 = dom.Inference{
+				Input: &dom.LLMInput{
+					FunctionResponse: &dom.LLMFunctionResponse{
+						Name:    *meta.FunctionName,
+						Content: resp,
+					},
+				},
+				InputTokens: *meta.TotalInputTokens,
+			}
+
+		case dom.MessageRoleModel:
+			if !has2infs {
+				inf1.Output.Text = *meta.Content
+				inf1.OutputTokens = *meta.TotalOutputTokens
+				inf1.Model = *meta.Model
+			} else {
+				inf2.Output.Text = *meta.Content
+				inf2.OutputTokens = *meta.TotalOutputTokens
+				inf2.Model = *meta.Model
+			}
+
+			has2infs = false
+			interactions = append(interactions, &dom.Interaction{
+				Inferences: [2]*dom.Inference{&inf1, &inf2},
+				TurnNumber: meta.Turn,
+			})
+			inf1 = dom.Inference{}
+			inf2 = dom.Inference{}
+		}
+	}
+
+	var turns int32 = 0
+	if len(interactions) > 0 {
+		turns = interactions[len(interactions)-1].TurnNumber
+	}
+
+	return &dom.ContextWindow{
+		UserMemories:     memories,
+		PreviousSessions: sessions,
+		History:          interactions,
+		Turns:            turns,
+	}, nil
+}
+
+func (c *ContextManager) SetContext(
+	ctx context.Context,
+	cc *dom.ContextCache,
+	interaction *dom.Interaction,
+) error {
+	if err := c.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
+		return err
+	}
+
+	if err := c.sendContextUpdate(ctx, cc.UserID, cc.SessionID, interaction); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ContextManager) setContextCache(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+	win *dom.ContextWindow,
+) error {
+	now := time.Now()
+	win.Turns += 1
+	bytes, err := json.Marshal(&dom.ContextCache{
+		UserID:    userID,
+		SessionID: sessionID,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Window:    win,
+	})
+	if err != nil {
+		return err
+	}
+
+	key := dom.CreateContextCacheKey(userID, sessionID)
+
+	if err = c.Cache.Set(ctx, key, bytes, ContextCacheTTL6Hrs); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *ContextManager) sendContextUpdate(
+	ctx context.Context,
+	userID, sessionID uuid.UUID,
+	interaction *dom.Interaction,
+) error {
+	load := &SyncPayload{
+		UserID:      userID,
+		SessionID:   sessionID,
+		Interaction: interaction,
+	}
+
+	data, err := json.Marshal(load)
+	if err != nil {
+		return err
+	}
+
+	ack, err := c.Publisher.DurablePublish(ctx, SyncerSubject, data, &dom.DurablePubOptions{
+		MsgID: fmt.Sprintf("sync:%s:%s:%d", userID, sessionID, interaction.TurnNumber),
+	})
+	if err != nil {
+		return err
+	}
+
+	if ack.Stream != ContextStream {
+		return fmt.Errorf("published to unexpected stream: %s, %w", ack.Stream, dom.ErrInvalidState)
+	}
+
+	return nil
 }

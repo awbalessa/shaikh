@@ -34,24 +34,134 @@ func (e *Err) Unwrap() error {
 	return e.Root
 }
 
+func Timeout(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "TIMEOUT",
+		Status:    504, // Gateway Timeout (or 408 if you want request timeout)
+		Retryable: true,
+	}
+}
+
 func InvalidArg(msg string, cause error) *Err {
-	return &Err{Root: cause, Msg: msg, Code: "INVALID_ARGUMENT", Status: 422, Retryable: false}
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "INVALID_ARGUMENT",
+		Status:    422, // Unprocessable Entity
+		Retryable: false,
+	}
 }
 
 func NotFound(msg string, cause error) *Err {
-	return &Err{Root: cause, Msg: msg, Code: "NOT_FOUND", Status: 404, Retryable: false}
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "NOT_FOUND",
+		Status:    404,
+		Retryable: false,
+	}
 }
 
 func Unauthorized(msg string, cause error) *Err {
-	return &Err{Root: cause, Msg: msg, Code: "UNAUTHORIZED", Status: 401, Retryable: false}
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "UNAUTHORIZED",
+		Status:    401,
+		Retryable: false,
+	}
+}
+
+func Forbidden(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "FORBIDDEN",
+		Status:    403,
+		Retryable: false,
+	}
 }
 
 func Conflict(msg string, cause error) *Err {
-	return &Err{Root: cause, Msg: msg, Code: "CONFLICT", Status: 409, Retryable: false}
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "CONFLICT",
+		Status:    409,
+		Retryable: false,
+	}
 }
 
 func Internal(msg string, cause error) *Err {
-	return &Err{Root: cause, Msg: msg, Code: "INTERNAL", Status: 500, Retryable: true}
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "INTERNAL",
+		Status:    500,
+		Retryable: true,
+	}
+}
+
+func Unavailable(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "UNAVAILABLE",
+		Status:    503, // Service Unavailable
+		Retryable: true,
+	}
+}
+
+func Expired(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "EXPIRED",
+		Status:    410, // Gone
+		Retryable: false,
+	}
+}
+
+func RateLimit(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "RATE_LIMIT",
+		Status:    429, // Too Many Requests
+		Retryable: true,
+	}
+}
+
+func OwnershipViolation(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "OWNERSHIP_VIOLATION",
+		Status:    403, // same as forbidden, but distinct code
+		Retryable: false,
+	}
+}
+
+func InvalidState(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "INVALID_STATE",
+		Status:    409, // conflict, but semantic difference
+		Retryable: false,
+	}
+}
+
+func NotPingable(msg string, cause error) *Err {
+	return &Err{
+		Root:      cause,
+		Msg:       msg,
+		Code:      "NOT_PINGABLE",
+		Status:    503, // service unavailable
+		Retryable: true,
+	}
 }
 
 func AsErr(err error) (*Err, bool) {
@@ -60,6 +170,56 @@ func AsErr(err error) (*Err, bool) {
 		return e, true
 	}
 	return nil, false
+}
+
+func ToDomErr(err error) *Err {
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.Is(err, ErrTimeout):
+		return Timeout("operation timed out", err)
+
+	case errors.Is(err, ErrInvalidInput):
+		return InvalidArg("invalid argument", err)
+
+	case errors.Is(err, ErrNoResults):
+		return NotFound("resource not found", err)
+
+	case errors.Is(err, ErrUnauthorized):
+		return Unauthorized("unauthorized", err)
+
+	case errors.Is(err, ErrForbidden):
+		return Forbidden("forbidden", err)
+
+	case errors.Is(err, ErrConflict):
+		return Conflict("conflict", err)
+
+	case errors.Is(err, ErrInternal):
+		return Internal("internal error", err)
+
+	case errors.Is(err, ErrUnavailable):
+		return Unavailable("service unavailable", err)
+
+	case errors.Is(err, ErrExpired):
+		return Expired("resource expired", err)
+
+	case errors.Is(err, ErrRateLimit):
+		return RateLimit("rate limited", err)
+
+	case errors.Is(err, ErrOwnershipViolation):
+		return OwnershipViolation("ownership violation", err)
+
+	case errors.Is(err, ErrInvalidState):
+		return InvalidState("invalid state", err)
+
+	case errors.Is(err, ErrNotPingable):
+		return NotPingable("not pingable", err)
+
+	default:
+		return Internal("unexpected error", err)
+	}
 }
 
 const (
@@ -694,178 +854,6 @@ type Memory struct {
 	Confidence float32
 	UniqueKey  string
 	Content    string
-}
-
-type LLMRole string
-
-const (
-	LLMUserRole  LLMRole = "user"
-	LLMModelRole LLMRole = "model"
-)
-
-type LLMFunctionCall struct {
-	Name string         `json:"name"`
-	Args map[string]any `json:"args"`
-}
-
-type LLMFunctionResponse struct {
-	Name    string         `json:"name"`
-	Content map[string]any `json:"content"`
-}
-
-type LLMPart struct {
-	Text             string
-	FunctionCall     *LLMFunctionCall
-	FunctionResponse *LLMFunctionResponse
-}
-
-type LLMContent struct {
-	Role  LLMRole
-	Parts []*LLMPart
-}
-
-type LLMSchemaType string
-
-const (
-	SchemaString  LLMSchemaType = "STRING"
-	SchemaInteger LLMSchemaType = "INTEGER"
-	SchemaNumber  LLMSchemaType = "NUMBER"
-	SchemaBoolean LLMSchemaType = "BOOLEAN"
-	SchemaArray   LLMSchemaType = "ARRAY"
-	SchemaObject  LLMSchemaType = "OBJECT"
-)
-
-type LLMSchema struct {
-	Title       string        `json:"title,omitempty"`
-	Description string        `json:"description,omitempty"`
-	Type        LLMSchemaType `json:"type,omitempty"`
-
-	Format string   `json:"format,omitempty"`
-	Enum   []string `json:"enum,omitempty"`
-
-	Required   []string              `json:"required,omitempty"`
-	Properties map[string]*LLMSchema `json:"properties,omitempty"`
-
-	Items    *LLMSchema `json:"items,omitempty"`
-	MinItems *int64     `json:"minItems,omitempty"`
-	MaxItems *int64     `json:"maxItems,omitempty"`
-
-	Minimum *float64 `json:"minimum,omitempty"`
-	Maximum *float64 `json:"maximum,omitempty"`
-
-	Example any `json:"example,omitempty"`
-}
-
-type LLMFunctionDecl struct {
-	Name        string
-	Description string
-	Parameters  *LLMSchema
-}
-
-type LLMGenConfig struct {
-	SystemInstructions *LLMContent
-	Temperature        float32
-	CandidateCount     int32
-	Tools              []*LLMFunctionDecl
-	ResponseMimeType   LLMResponseSchema
-	ResponseSchema     *LLMSchema
-}
-
-type LLMCountConfig struct {
-	System *LLMContent
-	Tools  []*LLMFunctionDecl
-}
-
-type LLMResponseSchema string
-
-const (
-	ResponseJson LLMResponseSchema = "application/json"
-	ResponseText LLMResponseSchema = "text/plain"
-)
-
-func Ptr[T any](v T) *T { return &v }
-
-func StringEnum(options ...string) *LLMSchema {
-	return &LLMSchema{
-		Type: SchemaString,
-		Enum: options,
-	}
-}
-
-func ArrayOf(item *LLMSchema, min, max *int64) *LLMSchema {
-	return &LLMSchema{
-		Type:     SchemaArray,
-		Items:    item,
-		MinItems: min,
-		MaxItems: max,
-	}
-}
-
-func ObjectWith(props map[string]*LLMSchema, required ...string) *LLMSchema {
-	return &LLMSchema{
-		Type:       SchemaObject,
-		Properties: props,
-		Required:   required,
-	}
-}
-
-func IntegerRange(min, max *float64) *LLMSchema {
-	return &LLMSchema{
-		Type:    SchemaInteger,
-		Minimum: min,
-		Maximum: max,
-	}
-}
-
-func WithDocs(title *string, description *string, s *LLMSchema) *LLMSchema {
-	if title != nil {
-		s.Title = *title
-	}
-
-	if description != nil {
-		s.Description = *description
-	}
-
-	return s
-}
-
-type TokenUsage struct {
-	InputTokens  int32
-	OutputTokens int32
-}
-
-type FinishReason string
-
-const (
-	FinishReasonUnspecified           FinishReason = "FINISH_REASON_UNSPECIFIED"
-	FinishReasonStop                  FinishReason = "STOP"
-	FinishReasonMaxTokens             FinishReason = "MAX_TOKENS"
-	FinishReasonSafety                FinishReason = "SAFETY"
-	FinishReasonRecitation            FinishReason = "RECITATION"
-	FinishReasonLanguage              FinishReason = "LANGUAGE"
-	FinishReasonOther                 FinishReason = "OTHER"
-	FinishReasonBlocklist             FinishReason = "BLOCKLIST"
-	FinishReasonProhibitedContent     FinishReason = "PROHIBITED_CONTENT"
-	FinishReasonSPII                  FinishReason = "SPII"
-	FinishReasonMalformedFunctionCall FinishReason = "MALFORMED_FUNCTION_CALL"
-	FinishReasonImageSafety           FinishReason = "IMAGE_SAFETY"
-	FinishReasonUnexpectedToolCall    FinishReason = "UNEXPECTED_TOOL_CALL"
-)
-
-type LLMGenResult struct {
-	Output        *ModelOutput
-	Usage         *TokenUsage
-	FinishReason  FinishReason
-	FinishMessage string
-}
-
-const (
-	TokenLimit int32 = 200_000
-)
-
-var AgentToModel = map[AgentName]LargeLanguageModel{
-	Caller:    GeminiV2p5Flash,
-	Generator: GeminiV2p5FlashLite,
 }
 
 func ToJsonRawMessage(m map[string]any) (json.RawMessage, error) {
