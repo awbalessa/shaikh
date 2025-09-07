@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
@@ -28,35 +27,30 @@ type Postgres struct {
 }
 
 func NewPostgres(ctx context.Context) (*Postgres, error) {
-	connStr := fmt.Sprintf(
-		"%s?%s&%s&%s&%s&%s&%s&%s&%s",
-		os.Getenv("POSTGRES_URL"),
-		"sslmode=disable",
-		"pool_max_conns=8",
-		"pool_min_conns=2",
-		"pool_min_idle_conns=2",
-		"pool_max_conn_lifetime=30m",
-		"pool_max_conn_lifetime_jitter=5m",
-		"pool_max_conn_idle_time=15m",
-		"pool_health_check_period=30s",
-	)
+	connStr := os.Getenv("POSTGRES_URL") +
+		"?sslmode=disable" +
+		"&pool_max_conns=8" +
+		"&pool_min_conns=2" +
+		"&pool_min_idle_conns=2" +
+		"&pool_max_conn_lifetime=30m" +
+		"&pool_max_conn_lifetime_jitter=5m" +
+		"&pool_max_conn_idle_time=15m" +
+		"&pool_health_check_period=30s"
 
 	pgxCfg, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
-		return nil, fmt.Errorf("postgres parse config: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	conn, err := pgxpool.NewWithConfig(ctx, pgxCfg)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("postgres connect: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return nil, fmt.Errorf("postgres connect: %w", dom.ErrUnavailable)
+		return nil, dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
 
-	return &Postgres{
-		Pool: conn,
-	}, nil
+	return &Postgres{Pool: conn}, nil
 }
 
 func (p *Postgres) Runner() db.Querier { return db.New(p.Pool) }
@@ -65,60 +59,53 @@ func (p *Postgres) WithTx(ctx context.Context, fn func(q db.Querier) error) erro
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("begin tx: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("begin tx: %w", dom.ErrUnavailable)
+		return dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
 
 	q := db.New(tx)
 	if err := fn(q); err != nil {
 		_ = tx.Rollback(ctx)
-		return err
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("tx commit: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("tx commit: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
 
-func (p *Postgres) Name() string {
-	return "db"
-}
+func (p *Postgres) Name() string { return "db" }
 
 func (p *Postgres) Ping(ctx context.Context) error {
 	if err := p.Pool.Ping(ctx); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("postgres ping: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("postgres ping: %w", dom.ErrUnavailable)
+		return dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
 	return nil
 }
 
-func (p *Postgres) Close() error {
+func (p *Postgres) Close() {
 	if p.Pool != nil {
 		p.Pool.Close()
 	}
-	return nil
 }
 
 func (p *Postgres) Begin(ctx context.Context) (dom.Tx, error) {
 	tx, err := p.Pool.Begin(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("begin tx: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return nil, fmt.Errorf("begin tx: %w", dom.ErrUnavailable)
+		return nil, dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
-
 	q := db.New(tx)
-	return &PostgresTx{
-		q:  q,
-		tx: tx,
-	}, nil
+	return &PostgresTx{q: q, tx: tx}, nil
 }
 
 type PostgresTx struct {
@@ -132,16 +119,16 @@ func (t *PostgresTx) Get(repo any) error {
 		*r = &PostgresMessageRepo{q: t.q}
 		return nil
 	default:
-		return fmt.Errorf("unsupported repo type: %T, %w", r, dom.ErrInvalidInput)
+		return dom.NewTaggedError(dom.ErrInvalidInput, errors.New("unsupported repo type"))
 	}
 }
 
 func (t *PostgresTx) Commit(ctx context.Context) error {
 	if err := t.tx.Commit(ctx); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("tx commit: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("tx commit: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
@@ -149,101 +136,71 @@ func (t *PostgresTx) Commit(ctx context.Context) error {
 func (t *PostgresTx) Rollback(ctx context.Context) error {
 	if err := t.tx.Rollback(ctx); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("tx rollback: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("tx rollback: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
 
-type PostgresUserRepo struct {
-	q db.Querier
-}
+type PostgresUserRepo struct{ q db.Querier }
 
-func NewPostgresUserRepo(q db.Querier) *PostgresUserRepo {
-	return &PostgresUserRepo{q: q}
-}
+func NewPostgresUserRepo(q db.Querier) *PostgresUserRepo { return &PostgresUserRepo{q: q} }
 
-func (u *PostgresUserRepo) CreateUser(
-	ctx context.Context,
-	id uuid.UUID,
-	email, hash string,
-) (*dom.User, error) {
-	row, err := u.q.CreateUser(ctx, db.CreateUserParams{
-		ID:           id,
-		Email:        email,
-		PasswordHash: hash,
-	})
+func (u *PostgresUserRepo) CreateUser(ctx context.Context, id uuid.UUID, email, hash string) (*dom.User, error) {
+	row, err := u.q.CreateUser(ctx, db.CreateUserParams{ID: id, Email: email, PasswordHash: hash})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("create user: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("create user: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, fmt.Errorf("create user: %w", dom.ErrConflict)
+			return nil, dom.NewTaggedError(dom.ErrConflict, err)
 		}
-		return nil, fmt.Errorf("create user: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
-
 	return &dom.User{
-		ID:                     row.ID,
-		Email:                  row.Email,
-		PasswordHash:           row.PasswordHash,
-		UpdatedAt:              row.UpdatedAt,
-		TotalMessages:          row.TotalMessages,
+		ID: row.ID, Email: row.Email, PasswordHash: row.PasswordHash,
+		UpdatedAt: row.UpdatedAt, TotalMessages: row.TotalMessages,
 		TotalMessagesMemorized: row.TotalMessagesMemorized,
 	}, nil
 }
 
-func (u *PostgresUserRepo) GetUserByID(
-	ctx context.Context,
-	id uuid.UUID,
-) (*dom.User, error) {
+func (u *PostgresUserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (*dom.User, error) {
 	row, err := u.q.GetUserByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get user by id: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get user by id: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("get user by id: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
-
 	return &dom.User{
-		ID:                     row.ID,
-		Email:                  row.Email,
-		PasswordHash:           row.PasswordHash,
-		UpdatedAt:              row.UpdatedAt,
-		TotalMessages:          row.TotalMessages,
+		ID: row.ID, Email: row.Email, PasswordHash: row.PasswordHash,
+		UpdatedAt: row.UpdatedAt, TotalMessages: row.TotalMessages,
 		TotalMessagesMemorized: row.TotalMessagesMemorized,
 	}, nil
 }
 
-func (u *PostgresUserRepo) GetUserByEmail(
-	ctx context.Context,
-	email string,
-) (*dom.User, error) {
+func (u *PostgresUserRepo) GetUserByEmail(ctx context.Context, email string) (*dom.User, error) {
 	row, err := u.q.GetUserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get user by email: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get user by email: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("get user by email: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
-
 	return &dom.User{
-		ID:                     row.ID,
-		Email:                  row.Email,
-		PasswordHash:           row.PasswordHash,
-		UpdatedAt:              row.UpdatedAt,
-		TotalMessages:          row.TotalMessages,
+		ID: row.ID, Email: row.Email, PasswordHash: row.PasswordHash,
+		UpdatedAt: row.UpdatedAt, TotalMessages: row.TotalMessages,
 		TotalMessagesMemorized: row.TotalMessagesMemorized,
 	}, nil
 }
@@ -261,12 +218,12 @@ func (u *PostgresUserRepo) IncrementUserMessagesByID(
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("increment user messages: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("increment user messages: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("increment user messages: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return &dom.User{
@@ -285,12 +242,12 @@ func (u *PostgresUserRepo) ListUsersWithBacklog(
 	rows, err := u.q.ListUsersWithBacklog(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("list users with backlog: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("list users with backlog: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("list users with backlog: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	final := make([]*dom.User, 0, len(rows))
@@ -314,12 +271,12 @@ func (u *PostgresUserRepo) DeleteUserByID(
 ) error {
 	if err := u.q.DeleteUserByID(ctx, id); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("delete user: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("delete user: %w", dom.ErrNoResults)
+			return dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return fmt.Errorf("delete user: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
@@ -342,12 +299,12 @@ func (s *PostgresSessionRepo) CreateSession(
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("create session: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("create session: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("create session: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return &dom.Session{
@@ -367,12 +324,12 @@ func (s *PostgresSessionRepo) GetSessionByID(
 	row, err := s.q.GetSessionByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get session by id: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get session by id: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("get session by id: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return &dom.Session{
@@ -397,12 +354,12 @@ func (s *PostgresSessionRepo) GetSessionsByUserID(
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get sessions by user id: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get sessions by user id: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("get sessions by user id: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	final := make([]*dom.Session, 0, len(rows))
@@ -437,12 +394,12 @@ func (s *PostgresSessionRepo) UpdateSessionByID(
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("update session by id: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("update session by id: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("update session by id: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return &dom.Session{
@@ -462,12 +419,12 @@ func (s *PostgresSessionRepo) GetMaxTurnByID(
 	max, err := s.q.GetMaxTurnByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return 0, fmt.Errorf("get max turn by id: %w", dom.ErrTimeout)
+			return 0, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, fmt.Errorf("get max turn by id: %w", dom.ErrNoResults)
+			return 0, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return 0, fmt.Errorf("get max turn by id: %w", dom.ErrInternal)
+		return 0, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return max, nil
@@ -477,12 +434,12 @@ func (s *PostgresSessionRepo) ListSessionsWithBacklog(ctx context.Context) ([]*d
 	rows, err := s.q.ListSessionsWithBacklog(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("list sessions with backlog: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("list sessions with backlog: %w", dom.ErrNoResults)
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return nil, fmt.Errorf("list sessions with backlog: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	final := make([]*dom.Session, 0, len(rows))
@@ -507,12 +464,12 @@ func (s *PostgresSessionRepo) DeleteSessionByID(
 ) error {
 	if err := s.q.DeleteSessionByID(ctx, id); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("delete session: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("delete session: %w", dom.ErrNoResults)
+			return dom.NewTaggedError(dom.ErrNoResults, err)
 		}
-		return fmt.Errorf("delete session: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
@@ -546,17 +503,18 @@ func (m *PostgresMessageRepo) CreateMessage(
 		FunctionResponse:  meta.FunctionResponse,
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("create message: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return nil, dom.NewTaggedError(dom.ErrConflict, err)
+			}
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("create message: %w", dom.ErrNoResults)
-		}
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique violation
-			return nil, fmt.Errorf("create message: %w", dom.ErrConflict)
-		}
-		return nil, fmt.Errorf("create message: %w", dom.ErrInternal)
 	}
 
 	return fromDbMessage(row), nil
@@ -568,20 +526,20 @@ func (m *PostgresMessageRepo) GetMessagesBySessionID(
 ) ([]dom.Message, error) {
 	rows, err := m.q.GetMessagesBySessionIdOrdered(ctx, sessionID)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get messages by session id: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get messages by session id: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("get messages by session id: %w", dom.ErrInternal)
 	}
 
 	final := make([]dom.Message, 0, len(rows))
 	for _, r := range rows {
 		final = append(final, fromDbMessage(r))
 	}
-
 	return final, nil
 }
 
@@ -595,20 +553,20 @@ func (m *PostgresMessageRepo) GetUserMessagesByUserID(
 		NumberOfMessages: int64(numberOfMessages),
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get user messages by user id: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get user messages by user id: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("get user messages by user id: %w", dom.ErrInternal)
 	}
 
 	final := make([]dom.Message, 0, len(rows))
 	for _, r := range rows {
 		final = append(final, fromDbMessage(r))
 	}
-
 	return final, nil
 }
 
@@ -636,17 +594,18 @@ func (m *PostgresMemoryRepo) CreateMemory(
 		Memory:        content,
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("create memory: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return nil, dom.NewTaggedError(dom.ErrConflict, err)
+			}
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("create memory: %w", dom.ErrNoResults)
-		}
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique violation
-			return nil, fmt.Errorf("create memory: %w", dom.ErrConflict)
-		}
-		return nil, fmt.Errorf("create memory: %w", dom.ErrInternal)
 	}
 
 	return &dom.Memory{
@@ -676,13 +635,14 @@ func (m *PostgresMemoryRepo) UpsertMemory(
 		Memory:        content,
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("upsert memory: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("upsert memory: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("upsert memory: %w", dom.ErrInternal)
 	}
 
 	return &dom.Memory{
@@ -706,13 +666,14 @@ func (m *PostgresMemoryRepo) GetMemoriesByUserID(
 		NumberOfMemories: int64(numberOfMemories),
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("get memories by user id: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("get memories by user id: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("get memories by user id: %w", dom.ErrInternal)
 	}
 
 	final := make([]*dom.Memory, 0, len(rows))
@@ -727,7 +688,6 @@ func (m *PostgresMemoryRepo) GetMemoriesByUserID(
 			Content:    r.Memory,
 		})
 	}
-
 	return final, nil
 }
 
@@ -740,13 +700,14 @@ func (m *PostgresMemoryRepo) DeleteMemoryByUserIDKey(
 		UserID: userID,
 		Key:    key,
 	}); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("delete memory by user id key: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("delete memory by user id key: %w", dom.ErrNoResults)
-		}
-		return fmt.Errorf("delete memory by user id key: %w", dom.ErrInternal)
 	}
 	return nil
 }
@@ -765,10 +726,10 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 	topk int,
 ) ([][]dom.Chunk, error) {
 	if len(queries) == 0 {
-		return nil, fmt.Errorf("parallel semantic search: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
-	chunksPerThread := max(1, topk/len(queries))
 
+	chunksPerThread := max(1, topk/len(queries))
 	results := make([][]dom.Chunk, len(queries))
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -777,11 +738,11 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 		i, query := i, query
 		g.Go(func() error {
 			if query.Vector == nil {
-				return fmt.Errorf("parallel semantic search: %w", dom.ErrInvalidInput)
+				return dom.NewTaggedError(dom.ErrInvalidInput, nil)
 			}
-			rows, err := r.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
-			if err != nil {
-				return fmt.Errorf("parallel semantic search: %w", err)
+			rows, derr := r.SemanticSearch(ctx, query.VectorWithLabel, chunksPerThread)
+			if derr != nil {
+				return derr
 			}
 			results[i] = rows
 			return nil
@@ -789,7 +750,7 @@ func (r *PostgresSearcher) ParallelSemanticSearch(
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return results, nil
 }
@@ -803,31 +764,30 @@ func (r *PostgresSearcher) SemanticSearch(
 
 	rows, err := r.q.SemanticSearch(ctx, params)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("semantic search: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("semantic search: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("semantic search: %w", dom.ErrInternal)
 	}
 
-	returned := make([]dom.Chunk, 0, len(rows))
+	final := make([]dom.Chunk, 0, len(rows))
 	for _, row := range rows {
-		returned = append(returned,
-			dom.Chunk{
-				Document: dom.Document{
-					ID:          int32(row.ID),
-					Source:      row.Source,
-					Content:     row.EmbeddedChunk,
-					SurahNumber: *row.Surah,
-					AyahNumber:  *row.Ayah,
-				},
-				ParentID: row.ParentID,
+		final = append(final, dom.Chunk{
+			Document: dom.Document{
+				ID:          int32(row.ID),
+				Source:      row.Source,
+				Content:     row.EmbeddedChunk,
+				SurahNumber: *row.Surah,
+				AyahNumber:  *row.Ayah,
 			},
-		)
+			ParentID: row.ParentID,
+		})
 	}
-	return returned, nil
+	return final, nil
 }
 
 func (r *PostgresSearcher) ParallelLexicalSearch(
@@ -836,8 +796,9 @@ func (r *PostgresSearcher) ParallelLexicalSearch(
 	topk int,
 ) ([][]dom.Chunk, error) {
 	if len(queries) == 0 {
-		return nil, fmt.Errorf("parallel lexical search: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
+
 	chunksPerThread := max(1, topk/len(queries))
 	results := make([][]dom.Chunk, len(queries))
 
@@ -846,9 +807,9 @@ func (r *PostgresSearcher) ParallelLexicalSearch(
 	for i, query := range queries {
 		i, query := i, query
 		g.Go(func() error {
-			rows, err := r.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
-			if err != nil {
-				return fmt.Errorf("parallel lexical search: %w", err)
+			rows, derr := r.LexicalSearch(ctx, query.QueryWithFilter, chunksPerThread)
+			if derr != nil {
+				return derr
 			}
 			results[i] = rows
 			return nil
@@ -856,7 +817,7 @@ func (r *PostgresSearcher) ParallelLexicalSearch(
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return results, nil
 }
@@ -868,45 +829,43 @@ func (r *PostgresSearcher) LexicalSearch(
 ) ([]dom.Chunk, error) {
 	tokenized, err := tokenizeQuery(query.Query)
 	if err != nil {
-		return nil, fmt.Errorf("lexical search tokenize: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, err)
 	}
 	query.Query = tokenized
 
-	params := db.LexicalSearchParams{
+	rows, err := r.q.LexicalSearch(ctx, db.LexicalSearchParams{
 		NumberOfChunks: int64(topk),
 		Query:          query.Query,
 		ContentTypes:   query.OptionalContentTypes,
 		Sources:        query.OptionalSources,
 		Surahs:         query.OptionalSurahs,
 		Ayahs:          query.OptionalAyahs,
-	}
-	rows, err := r.q.LexicalSearch(ctx, params)
+	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("lexical search: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("lexical search: %w", dom.ErrNoResults)
-		}
-		return nil, fmt.Errorf("lexical search: %w", dom.ErrInternal)
 	}
 
-	returned := make([]dom.Chunk, 0, len(rows))
+	final := make([]dom.Chunk, 0, len(rows))
 	for _, row := range rows {
-		returned = append(returned,
-			dom.Chunk{
-				Document: dom.Document{
-					ID:          int32(row.ID),
-					Source:      row.Source,
-					Content:     row.EmbeddedChunk,
-					SurahNumber: *row.Surah,
-					AyahNumber:  *row.Ayah,
-				},
-				ParentID: row.ParentID,
+		final = append(final, dom.Chunk{
+			Document: dom.Document{
+				ID:          int32(row.ID),
+				Source:      row.Source,
+				Content:     row.EmbeddedChunk,
+				SurahNumber: *row.Surah,
+				AyahNumber:  *row.Ayah,
 			},
-		)
+			ParentID: row.ParentID,
+		})
 	}
-	return returned, nil
+	return final, nil
 }
 
 func tokenizeQuery(query string) (string, error) {
@@ -1002,7 +961,7 @@ func (r *PostgresRefreshTokenRepo) CreateRefreshToken(
 ) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("create refresh token rand: %w", dom.ErrInternal)
+		return "", dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	refreshToken := base64.RawURLEncoding.EncodeToString(raw)
 	hash := sha256.Sum256([]byte(refreshToken))
@@ -1014,10 +973,12 @@ func (r *PostgresRefreshTokenRepo) CreateRefreshToken(
 		TokenHash: hex.EncodeToString(hash[:]),
 		ExpiresAt: expiry,
 	}); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return "", fmt.Errorf("create refresh token: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return "", dom.NewTaggedError(dom.ErrTimeout, err)
+		default:
+			return "", dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		return "", fmt.Errorf("create refresh token: %w", dom.ErrInternal)
 	}
 
 	return refreshToken, nil
@@ -1030,27 +991,29 @@ func (r *PostgresRefreshTokenRepo) ValidateAndRotate(
 	hash := sha256.Sum256([]byte(rawToken))
 	row, err := r.q.GetRefreshTokenByHash(ctx, hex.EncodeToString(hash[:]))
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return uuid.Nil, fmt.Errorf("validate refresh token: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return uuid.Nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return uuid.Nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return uuid.Nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, fmt.Errorf("validate refresh token: %w", dom.ErrNoResults)
-		}
-		return uuid.Nil, fmt.Errorf("validate refresh token: %w", dom.ErrInternal)
 	}
 
 	if row.RevokedAt != nil || time.Now().After(row.ExpiresAt) {
-		return uuid.Nil, fmt.Errorf("validate refresh token: %w", dom.ErrExpired)
+		return uuid.Nil, dom.NewTaggedError(dom.ErrExpired, nil)
 	}
 
 	if err := r.q.RevokeRefreshTokenByID(ctx, row.ID); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return uuid.Nil, fmt.Errorf("revoke refresh token: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return uuid.Nil, dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return uuid.Nil, dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return uuid.Nil, dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return uuid.Nil, fmt.Errorf("revoke refresh token: %w", dom.ErrNoResults)
-		}
-		return uuid.Nil, fmt.Errorf("revoke refresh token: %w", dom.ErrInternal)
 	}
 
 	return row.UserID, nil
@@ -1062,13 +1025,14 @@ func (r *PostgresRefreshTokenRepo) Revoke(
 ) error {
 	hash := sha256.Sum256([]byte(rawToken))
 	if err := r.q.RevokeRefreshTokenByHash(ctx, hex.EncodeToString(hash[:])); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("revoke refresh token: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("revoke refresh token: %w", dom.ErrNoResults)
-		}
-		return fmt.Errorf("revoke refresh token: %w", dom.ErrInternal)
 	}
 	return nil
 }
@@ -1078,13 +1042,14 @@ func (r *PostgresRefreshTokenRepo) RevokeAll(
 	userID uuid.UUID,
 ) error {
 	if err := r.q.RevokeAllUserTokens(ctx, userID); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("revoke all refresh tokens: %w", dom.ErrTimeout)
+		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return dom.NewTaggedError(dom.ErrTimeout, err)
+		case errors.Is(err, sql.ErrNoRows):
+			return dom.NewTaggedError(dom.ErrNoResults, err)
+		default:
+			return dom.NewTaggedError(dom.ErrInternal, err)
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("revoke all refresh tokens: %w", dom.ErrNoResults)
-		}
-		return fmt.Errorf("revoke all refresh tokens: %w", dom.ErrInternal)
 	}
 	return nil
 }

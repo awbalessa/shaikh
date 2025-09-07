@@ -2,7 +2,6 @@ package svc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -33,12 +32,12 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) (*SearchRes
 
 	queries, err := dom.ValidateSearchQuery(arg)
 	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
+		return nil, err
 	}
 
 	hybrid, err := s.hybridSearch(ctx, queries, dom.InitialChunks200)
 	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
+		return nil, err
 	}
 
 	docs := make([]string, 0, len(hybrid.results))
@@ -48,11 +47,14 @@ func (s *SearchSvc) Search(ctx context.Context, arg dom.SearchQuery) (*SearchRes
 
 	ranks, err := s.Reranker.RerankDocuments(ctx, arg.FullQuery, docs, arg.TopK)
 	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
+		return nil, err
 	}
 
 	final := make([]dom.SearchResult, 0, len(ranks))
 	for _, rank := range ranks {
+		if int(rank.Index) < 0 || int(rank.Index) >= len(hybrid.results) {
+			continue
+		}
 		chunk := hybrid.results[rank.Index]
 		final = append(final, dom.SearchResult{
 			Chunk: dom.Chunk{
@@ -94,55 +96,53 @@ func (s *SearchSvc) hybridSearch(
 	queries []dom.FullQueryContext,
 	topk int,
 ) (*hybridSearchResult, error) {
-	semChan := make(chan [][]dom.Chunk, 1)
-	lexChan := make(chan [][]dom.Chunk, 1)
+	if len(queries) == 0 {
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
+	}
+	n := len(queries)
+	chunksPerKind := max(1, topk/2)
 
-	numOfQueries := len(queries)
-	chunksPerKind := topk / 2
+	var (
+		lexRes [][]dom.Chunk
+		semRes [][]dom.Chunk
+	)
 
 	g, ctx := errgroup.WithContext(ctx)
-
 	g.Go(func() error {
-		queriesSlice := make([]string, numOfQueries)
-		for i, q := range queries {
-			queriesSlice[i] = q.Query
-		}
-		vecs, err := s.Embedder.EmbedQueries(ctx, queriesSlice)
+		r, err := s.Searcher.ParallelLexicalSearch(ctx, queries, chunksPerKind)
 		if err != nil {
 			return err
 		}
-
-		for i := range queries {
-			queries[i].Vector = vecs[i]
-		}
-
-		semRes, err := s.Searcher.ParallelSemanticSearch(ctx, queries, chunksPerKind)
-		if err != nil {
-			return err
-		}
-
-		semChan <- semRes
+		lexRes = r
 		return nil
 	})
-
-	g.Go(func() error {
-		lexRes, err := s.Searcher.ParallelLexicalSearch(ctx, queries, chunksPerKind)
-		if err != nil {
-			return err
-		}
-		lexChan <- lexRes
-		return nil
-	})
-
+	qStrings := make([]string, n)
+	for i, q := range queries {
+		qStrings[i] = q.Query
+	}
+	vecs, err := s.Embedder.EmbedQueries(ctx, qStrings)
+	if err != nil {
+		return nil, err
+	}
+	qs := make([]dom.FullQueryContext, n)
+	copy(qs, queries)
+	for i := range qs {
+		qs[i].Vector = vecs[i]
+	}
+	sr, err := s.Searcher.ParallelSemanticSearch(ctx, qs, chunksPerKind)
+	if err != nil {
+		return nil, err
+	}
+	semRes = sr
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	semRes := <-semChan
-	lexRes := <-lexChan
-
+	if len(semRes) != n || len(lexRes) != n {
+		return nil, dom.NewTaggedError(dom.ErrInternal, nil)
+	}
 	var semanticCount, lexicalCount int
-	for i := range queries {
+	for i := range n {
 		semanticCount += len(semRes[i])
 		lexicalCount += len(lexRes[i])
 	}
@@ -154,16 +154,16 @@ func (s *SearchSvc) hybridSearch(
 		fusedCount += len(fused[i])
 	}
 
-	var allChunks []dom.Chunk
+	allChunks := make([]dom.Chunk, 0, fusedCount)
 	for _, group := range fused {
 		allChunks = append(allChunks, group...)
 	}
 
-	seen := make(map[int32]bool)
+	seen := make(map[int32]struct{})
 	deduped := make([]dom.Chunk, 0, len(allChunks))
 	for _, chunk := range allChunks {
-		if !seen[chunk.ID] {
-			seen[chunk.ID] = true
+		if _, ok := seen[chunk.ID]; !ok {
+			seen[chunk.ID] = struct{}{}
 			deduped = append(deduped, chunk)
 		}
 	}

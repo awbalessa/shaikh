@@ -2,22 +2,10 @@ package dom
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrUnavailable  = errors.New("provider unavailable")
-	ErrInternal     = errors.New("internal provider error")
-	ErrNoResults    = errors.New("no results found")
-	ErrConflict     = errors.New("conflict")
-	ErrInvalidInput = errors.New("invalid input")
-	ErrTimeout      = errors.New("timeout")
-	ErrExpired      = errors.New("resource expired or revoked")
-	ErrRateLimit    = errors.New("rate limited")
 )
 
 type Embedder interface {

@@ -110,10 +110,10 @@ func (v *VoyageEmbedderReranker) EmbedQueries(
 	queries []string,
 ) ([]dom.Vector, error) {
 	if len(queries) == 0 {
-		return nil, fmt.Errorf("voyage embed: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 	if v.apiKey == "" {
-		return nil, fmt.Errorf("voyage embed: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 
 	reqBody := voyageEmbeddingRequest{
@@ -127,30 +127,30 @@ func (v *VoyageEmbedderReranker) EmbedQueries(
 
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("voyage embed marshal: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, voyageBaseURL+"/embeddings", payload)
 	if err != nil {
-		return nil, fmt.Errorf("voyage embed request: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+v.apiKey)
 
 	resp, err := v.Cli.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("voyage embed transport: %w", mapNetErr(err))
+		return nil, dom.NewTaggedError(mapNetErr(err), err)
 	}
 	if resp != nil {
 		defer resp.Body.Close()
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("voyage embed http %s: %w", resp.Status, mapHTTPToInfra(resp.StatusCode))
+		return nil, dom.NewTaggedError(mapHTTPToInfra(resp.StatusCode), fmt.Errorf("http status: %s", resp.Status))
 	}
 
 	var result voyageEmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("voyage embed decode: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	vectors := make([]dom.Vector, len(result.Data))
@@ -158,7 +158,7 @@ func (v *VoyageEmbedderReranker) EmbedQueries(
 		vectors[i] = item.Embedding[:]
 	}
 	if len(vectors) != len(queries) {
-		return nil, fmt.Errorf("voyage embed count mismatch: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, fmt.Errorf("expected %d vectors, got %d", len(queries), len(vectors)))
 	}
 
 	return vectors, nil
@@ -171,10 +171,10 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	topk dom.TopK,
 ) ([]dom.Rank, error) {
 	if query == "" || len(docs) == 0 {
-		return nil, fmt.Errorf("voyage rerank: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 	if v.apiKey == "" {
-		return nil, fmt.Errorf("voyage rerank: %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 
 	reqBody := voyageRerankingRequest{
@@ -187,30 +187,30 @@ func (v *VoyageEmbedderReranker) RerankDocuments(
 	}
 	payload, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("voyage rerank marshal: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, voyageBaseURL+"/rerank", payload)
 	if err != nil {
-		return nil, fmt.Errorf("voyage rerank request: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+v.apiKey)
 
 	resp, err := v.Cli.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("voyage rerank transport: %w", mapNetErr(err))
+		return nil, dom.NewTaggedError(mapNetErr(err), err)
 	}
 	if resp != nil {
 		defer resp.Body.Close()
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("voyage rerank http %s: %w", resp.Status, mapHTTPToInfra(resp.StatusCode))
+		return nil, dom.NewTaggedError(mapHTTPToInfra(resp.StatusCode), fmt.Errorf("http status: %s", resp.Status))
 	}
 
 	var result voyageRerankingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("voyage rerank decode: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	ranks := make([]dom.Rank, len(result.Data))
@@ -254,14 +254,12 @@ func mapHTTPToInfra(status int) error {
 }
 
 func mapNetErr(err error) error {
-	// context first
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return dom.ErrTimeout
 	}
-	// net.Error timeouts
 	var nerr net.Error
 	if errors.As(err, &nerr) && nerr.Timeout() {
 		return dom.ErrTimeout
 	}
-	return dom.ErrUnavailable // transport/connectivity issues
+	return dom.ErrUnavailable
 }

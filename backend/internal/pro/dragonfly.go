@@ -41,9 +41,9 @@ func (f *DragonflyCache) Set(
 ) error {
 	if err := f.Fly.Set(ctx, key, value, expr).Err(); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("dragonfly set: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("dragonfly set: %w", dom.ErrInternal)
+		return dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return nil
 }
@@ -58,9 +58,9 @@ func (f *DragonflyCache) Get(
 			return nil, nil // cache miss, not an error
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("dragonfly get: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return nil, fmt.Errorf("dragonfly get: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return bytes, nil
 }
@@ -74,9 +74,9 @@ func (f *DragonflyCache) SetNX(
 	ok, err := f.Fly.SetNX(ctx, key, value, expr).Result()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return false, fmt.Errorf("dragonfly setnx: %w", dom.ErrTimeout)
+			return false, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return false, fmt.Errorf("dragonfly setnx: %w", dom.ErrInternal)
+		return false, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return ok, nil
 }
@@ -88,9 +88,9 @@ func (f *DragonflyCache) Del(
 	n, err := f.Fly.Del(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return 0, fmt.Errorf("dragonfly del: %w", dom.ErrTimeout)
+			return 0, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return 0, fmt.Errorf("dragonfly del: %w", dom.ErrInternal)
+		return 0, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return n, nil
 }
@@ -103,9 +103,9 @@ func (f *DragonflyCache) RefreshTTL(
 	ok, err := f.Fly.Expire(ctx, key, ttl).Result()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return false, fmt.Errorf("dragonfly refresh ttl: %w", dom.ErrTimeout)
+			return false, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return false, fmt.Errorf("dragonfly refresh ttl: %w", dom.ErrInternal)
+		return false, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return ok, nil
 }
@@ -117,9 +117,9 @@ func (f *DragonflyCache) Exists(
 	n, err := f.Fly.Exists(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return false, fmt.Errorf("dragonfly exists: %w", dom.ErrTimeout)
+			return false, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return false, fmt.Errorf("dragonfly exists: %w", dom.ErrInternal)
+		return false, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return n > 0, nil
 }
@@ -128,12 +128,12 @@ func (f *DragonflyCache) Ping(ctx context.Context) error {
 	res, err := f.Fly.Ping(ctx).Result()
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("dragonfly ping: %w", dom.ErrTimeout)
+			return dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return fmt.Errorf("dragonfly ping: %w", dom.ErrUnavailable)
+		return dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
 	if res != "PONG" {
-		return fmt.Errorf("dragonfly ping unexpected: %s", res)
+		return dom.NewTaggedError(dom.ErrInternal, fmt.Errorf("unexpected ping response: %s", res))
 	}
 	return nil
 }

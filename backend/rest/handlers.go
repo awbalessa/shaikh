@@ -8,10 +8,56 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/awbalessa/shaikh/backend/internal/svc"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httplog/v3"
 	"github.com/google/uuid"
 )
+
+func writeError(w http.ResponseWriter, r *http.Request, err error) {
+	httplog.SetError(r.Context(), err)
+	domainErr := dom.ToDomainError(err)
+
+	var statusCode int
+	switch domainErr.Code {
+	case dom.CodeNotFound:
+		statusCode = http.StatusNotFound
+	case dom.CodeConflict:
+		statusCode = http.StatusConflict
+	case dom.CodeInvalidArgument:
+		statusCode = http.StatusUnprocessableEntity
+	case dom.CodeUnauthorized:
+		statusCode = http.StatusUnauthorized
+	case dom.CodeForbidden, dom.CodeOwnershipViolation:
+		statusCode = http.StatusForbidden
+	case dom.CodeTimeout:
+		statusCode = http.StatusGatewayTimeout
+	case dom.CodeUnavailable:
+		statusCode = http.StatusServiceUnavailable
+	default:
+		statusCode = http.StatusInternalServerError
+	}
+
+	userMessage := "An unexpected error occurred. Please try again."
+	switch domainErr.Code {
+	case dom.CodeNotFound:
+		userMessage = "The requested resource was not found."
+	case dom.CodeInvalidArgument:
+		userMessage = "Your request was invalid."
+	case dom.CodeUnauthorized:
+		userMessage = "You are not authorized to perform this action."
+	case dom.CodeForbidden, dom.CodeOwnershipViolation:
+		userMessage = "You do not have permission to access this resource."
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"code":    domainErr.Code,
+		"message": userMessage,
+	})
+}
 
 func healthzHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +70,7 @@ func healthzHandler() http.HandlerFunc {
 
 func readyzHandler(hs *svc.HealthReadinessSvc) http.HandlerFunc {
 	type payload struct {
-		Status string            `json:"status"` // ready | unready
+		Status string            `json:"status"`
 		Checks []svc.CheckResult `json:"checks"`
 		TS     string            `json:"ts"`
 		DurMS  int64             `json:"dur_ms"`
@@ -59,8 +105,29 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			Prompt string `json:"prompt"`
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Prompt) == "" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, err))
+			return
+		}
+		if strings.TrimSpace(body.Prompt) == "" {
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, nil))
+			return
+		}
+
+		userID, err := UserIDFromCtx(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+		sessionID, err := SessionIDFromCtx(r.Context())
+		if err != nil {
+			writeError(w, r, err)
+			return
+		}
+
+		res, err := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
+		if err != nil {
+			writeError(w, r, err)
 			return
 		}
 
@@ -70,29 +137,34 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 		w.Header().Set("X-Accel-Buffering", "no")
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInternal, nil))
 			return
 		}
 
-		userID, err := UserIDFromCtx(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeEvent := func(event string, payload any) bool {
+			b, err := json.Marshal(payload)
+			if err != nil {
+				return false
+			}
+			if _, err = io.WriteString(w, "event: "+event+"\n"); err != nil {
+				return false
+			}
+			if _, err = io.WriteString(w, "data: "); err != nil {
+				return false
+			}
+			if _, err = w.Write(b); err != nil {
+				return false
+			}
+			if _, err = io.WriteString(w, "\n\n"); err != nil {
+				return false
+			}
+			flusher.Flush()
+			return true
+		}
+
+		if !writeEvent("ready", struct{}{}) {
 			return
 		}
-		sessionID, err := SessionIDFromCtx(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		res, derr := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
-		if derr != nil {
-
-		}
-
-		io.WriteString(w, "event: ready\n")
-		io.WriteString(w, "data: {}\n\n")
-		flusher.Flush()
 
 		for token, err := range res.Stream {
 			select {
@@ -102,26 +174,17 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			}
 
 			if err != nil {
-				payload, _ := json.Marshal(map[string]string{"error": err.Error()})
-				io.WriteString(w, "event: error\n")
-				io.WriteString(w, "data: ")
-				w.Write(payload)
-				io.WriteString(w, "\n\n")
-				flusher.Flush()
+				de := dom.ToDomainError(err)
+				_ = writeEvent("error", map[string]string{"code": de.Code, "message": de.Message})
 				return
 			}
 
-			payload, _ := json.Marshal(map[string]string{"token": token})
-			io.WriteString(w, "event: token\n")
-			io.WriteString(w, "data: ")
-			w.Write(payload)
-			io.WriteString(w, "\n\n")
-			flusher.Flush()
+			if !writeEvent("token", map[string]string{"token": token}) {
+				return
+			}
 		}
 
-		io.WriteString(w, "event: done\n")
-		io.WriteString(w, "data: {}\n\n")
-		flusher.Flush()
+		_ = writeEvent("done", struct{}{})
 	}
 }
 
@@ -132,14 +195,14 @@ func registerHandler(u *svc.UserSvc) http.HandlerFunc {
 			Password string `json:"password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, err))
 			return
 		}
 		body.Email = strings.ToLower(strings.TrimSpace(body.Email))
 
 		user, err := u.Register(r.Context(), body.Email, body.Password)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, r, err)
 			return
 		}
 
@@ -159,19 +222,19 @@ func loginHandler(user *svc.UserSvc, au *svc.AuthSvc) http.HandlerFunc {
 			Password string `json:"password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, err))
 			return
 		}
 
 		u, err := user.Login(r.Context(), body.Email, body.Password)
 		if err != nil {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			writeError(w, r, err)
 			return
 		}
 
 		acc, ref, err := au.IssueTokens(r.Context(), u)
 		if err != nil {
-			http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -202,13 +265,13 @@ func refreshHandler(au *svc.AuthSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rt, err := r.Cookie("rt")
 		if err != nil || rt.Value == "" {
-			http.Error(w, "missing refresh token", http.StatusUnauthorized)
+			writeError(w, r, dom.NewTaggedError(dom.ErrUnauthorized, err))
 			return
 		}
 
 		acc, ref, err := au.Refresh(r.Context(), rt.Value)
 		if err != nil {
-			http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+			writeError(w, r, err)
 			return
 		}
 
@@ -256,16 +319,16 @@ func logoutAllHandler(au *svc.AuthSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 		if userID == uuid.Nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			writeError(w, r, dom.NewTaggedError(dom.ErrUnauthorized, nil))
 			return
 		}
 
 		if err := au.RevokeAll(r.Context(), userID); err != nil {
-			http.Error(w, "failed to revoke all sessions", http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -287,13 +350,13 @@ func createSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
 		s, err := sesh.Create(r.Context(), userID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -310,12 +373,12 @@ func archiveSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 		sessionID, err := SessionIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -324,13 +387,13 @@ func archiveSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, err))
 			return
 		}
 
 		s, err := sesh.SetArchive(r.Context(), sessionID, userID, body.Archived)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -347,17 +410,17 @@ func deleteSessionHandler(sesh *svc.SessionSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 		sessionID, err := SessionIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
 		if err := sesh.Delete(r.Context(), sessionID, userID); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -369,12 +432,12 @@ func deleteUserHandler(u *svc.UserSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, err := UserIDFromCtx(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
 		if err := u.Delete(r.Context(), userID); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 
@@ -386,17 +449,17 @@ func adminDeleteUserHandler(u *svc.UserSvc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := chi.URLParam(r, "id")
 		if userID == "" {
-			http.Error(w, "missing user id", http.StatusBadRequest)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, nil))
 			return
 		}
 		uid, err := uuid.Parse(userID)
 		if err != nil {
-			http.Error(w, "invalid user id", http.StatusBadRequest)
+			writeError(w, r, dom.NewTaggedError(dom.ErrInvalidInput, err))
 			return
 		}
 
 		if err := u.Delete(r.Context(), uid); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, r, err)
 			return
 		}
 

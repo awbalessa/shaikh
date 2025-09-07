@@ -3,7 +3,6 @@ package pro
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -49,7 +48,7 @@ func NewGeminiLLM(
 
 	gc, err := genai.NewClient(ctx, cc)
 	if err != nil {
-		return nil, fmt.Errorf("new gemini client: %w", dom.ErrUnavailable)
+		return nil, dom.NewTaggedError(dom.ErrUnavailable, err)
 	}
 
 	return &GeminiLLM{
@@ -110,9 +109,9 @@ func (g *GeminiLLM) Generate(
 	resp, err := g.Cli.Models.GenerateContent(ctx, model, gContents, gCfg)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("generate: %w", dom.ErrTimeout)
+			return nil, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return nil, fmt.Errorf("generate: %w", dom.ErrInternal)
+		return nil, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 
 	return &GeminiLLMOut{
@@ -142,9 +141,9 @@ func (g *GeminiLLM) Stream(
 	for p, err := range g.Cli.Models.GenerateContentStream(ctx, model, gContents, gCfg) {
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				yield(nil, fmt.Errorf("stream: %w", dom.ErrTimeout))
+				yield(nil, dom.NewTaggedError(dom.ErrTimeout, err))
 			} else {
-				yield(nil, fmt.Errorf("stream: %w", dom.ErrInternal))
+				yield(nil, dom.NewTaggedError(dom.ErrInternal, err))
 			}
 			return nil
 		}
@@ -208,9 +207,9 @@ func (g *GeminiLLM) CountTokens(
 	resp, err := g.Cli.Models.CountTokens(ctx, string(model), gWindow, cCfg)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return 0, fmt.Errorf("gemini count tokens: %w", dom.ErrTimeout)
+			return 0, dom.NewTaggedError(dom.ErrTimeout, err)
 		}
-		return 0, fmt.Errorf("gemini count tokens: %w", dom.ErrInternal)
+		return 0, dom.NewTaggedError(dom.ErrInternal, err)
 	}
 	return resp.TotalTokens, nil
 }

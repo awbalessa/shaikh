@@ -52,7 +52,7 @@ func BuildAskSvc(
 }
 
 type AskResult struct {
-	Stream   iter.Seq2[string, *dom.Err]
+	Stream   iter.Seq2[string, error]
 	Metadata func() map[string]any
 }
 
@@ -60,10 +60,10 @@ func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
 	userID, sessionID uuid.UUID,
-) (*AskResult, *dom.Err) {
+) (*AskResult, error) {
 	ccRes, err := a.CtxManager.GetContext(ctx, userID, sessionID)
 	if err != nil {
-		return nil, dom.ToDomErr(err)
+		return nil, dom.ToDomainError(err)
 	}
 	if ccRes.Result.Window == nil {
 		ccRes.Result.Window = &dom.ContextWindow{}
@@ -71,38 +71,34 @@ func (a *AskSvc) Ask(
 
 	win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, ccRes.Result.Window, time.Now())
 	if err != nil {
-		return nil, dom.ToDomErr(err)
+		return nil, dom.ToDomainError(err)
 	}
 
 	var ar *askResult
-	stream := iter.Seq2[string, *dom.Err](func(yield func(string, *dom.Err) bool) {
+	stream := iter.Seq2[string, error](func(yield func(string, error) bool) {
 		if ctx.Err() != nil {
-			_ = yield("", dom.ToDomErr(ctx.Err()))
+			_ = yield("", dom.ToDomainError(ctx.Err()))
 			return
 		}
 		ar = a.ask(ctx, prompt, win, func(str string, err error) bool {
-			var derr *dom.Err
+			var derr error
 			if err != nil {
-				derr = dom.ToDomErr(err)
+				derr = dom.ToDomainError(err)
 			}
-			if !yield(str, derr) {
-				return false
-			}
-			if ctx.Err() != nil {
-				_ = yield("", dom.ToDomErr(ctx.Err()))
-				return false
-			}
-			return true
+			return yield(str, derr)
 		})
-	})
 
-	inter := &dom.Interaction{
-		Inferences: [2]*dom.Inference(ar.infs),
-		TurnNumber: ccRes.Result.Window.Turns + 1,
-	}
-	if err := a.CtxManager.SetContext(ctx, ccRes.Result, inter); err != nil {
-		return nil, dom.ToDomErr(err)
-	}
+		if ar != nil {
+			inter := &dom.Interaction{
+				Inferences: ar.infs,
+				TurnNumber: ccRes.Result.Window.Turns + 1,
+			}
+			if err := a.CtxManager.SetContext(ctx, ccRes.Result, inter); err != nil {
+				_ = yield("", dom.ToDomainError(err))
+				return
+			}
+		}
+	})
 
 	return &AskResult{
 		Stream: stream,
@@ -113,10 +109,10 @@ func (a *AskSvc) Ask(
 				"prompt":    prompt,
 				"context":   ccRes.Metadata,
 			}
-			if ar.metadata != nil {
+			if ar != nil && ar.metadata != nil {
 				maps.Copy(m, ar.metadata)
 			}
-			return m
+			return maps.Clone(m)
 		},
 	}, nil
 }
@@ -175,6 +171,7 @@ func (a *AskSvc) ask(
 		}
 	}
 
+	firstStageMS := time.Since(start).Milliseconds()
 	secondStart := time.Now()
 	res, err := a.handleFn(ctx, infs[0].Output.FunctionCall)
 	if err != nil {
@@ -199,7 +196,7 @@ func (a *AskSvc) ask(
 		infs: infs,
 		metadata: map[string]any{
 			"caller": map[string]any{
-				"duration_ms":    secondStart.Sub(start).Milliseconds(),
+				"duration_ms":    firstStageMS,
 				"input_tokens":   infs[0].InputTokens,
 				"output_tokens":  infs[0].OutputTokens,
 				"finish_message": infs[0].FinishMessage,
@@ -227,12 +224,12 @@ func (a *AskSvc) handleFn(
 ) (*dom.LLMFunctionResponse, error) {
 	function, ok := a.Functions[dom.AgentFnName(fn.Name)]
 	if !ok {
-		return nil, fmt.Errorf("function %s does not exist: %w", fn.Name, dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 
 	res, err := function.Call(ctx, fn.Args)
 	if err != nil {
-		return nil, fmt.Errorf("handleFn: %w", err)
+		return nil, err
 	}
 
 	return &dom.LLMFunctionResponse{
@@ -277,12 +274,15 @@ func (f *FnSearch) Call(
 
 	fullPrompt, ok := args["full_prompt"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'full_prompt': %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 
-	rawPrompts, ok := args["prompts_with_filter"].([]any)
+	rawPrompts, ok := args["prompts_with_filters"].([]any)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'prompts_with_filter': %w", dom.ErrInvalidInput)
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
+	}
+	if len(rawPrompts) == 0 {
+		return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 	}
 
 	prompts := make([]dom.QueryWithFilter, 0, len(rawPrompts))
@@ -291,7 +291,7 @@ func (f *FnSearch) Call(
 	for _, raw := range rawPrompts {
 		pmap, ok := raw.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("invalid prompts_with_filter entry: %w", dom.ErrInvalidInput)
+			return nil, dom.NewTaggedError(dom.ErrInvalidInput, nil)
 		}
 
 		prompt, _ := pmap["prompt"].(string)
@@ -345,7 +345,7 @@ func (f *FnSearch) Call(
 
 	res, err := f.SearchSvc.Search(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("call: %w", err)
+		return nil, err
 	}
 
 	out := make([]map[string]any, 0, len(res.Results))
@@ -442,10 +442,10 @@ func (c *ContextManager) GetContext(ctx context.Context, userID, sessionID uuid.
 		}
 
 		cc = &dom.ContextCache{
-			UserID:    userID,
-			SessionID: sessionID,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			UserID:    &userID,
+			SessionID: &sessionID,
+			CreatedAt: dom.Ptr(time.Now()),
+			UpdatedAt: dom.Ptr(time.Now()),
 			Window:    window,
 		}
 	}
@@ -576,8 +576,10 @@ func (c *ContextManager) getDbContext(
 			}
 
 			has2infs = false
+			i1 := inf1
+			i2 := inf2
 			interactions = append(interactions, &dom.Interaction{
-				Inferences: [2]*dom.Inference{&inf1, &inf2},
+				Inferences: []*dom.Inference{&i1, &i2},
 				TurnNumber: meta.Turn,
 			})
 			inf1 = dom.Inference{}
@@ -603,11 +605,11 @@ func (c *ContextManager) SetContext(
 	cc *dom.ContextCache,
 	interaction *dom.Interaction,
 ) error {
-	if err := c.setContextCache(ctx, cc.UserID, cc.SessionID, cc.Window); err != nil {
+	if err := c.setContextCache(ctx, cc); err != nil {
 		return err
 	}
 
-	if err := c.sendContextUpdate(ctx, cc.UserID, cc.SessionID, interaction); err != nil {
+	if err := c.sendContextUpdate(ctx, cc, interaction); err != nil {
 		return err
 	}
 	return nil
@@ -615,23 +617,27 @@ func (c *ContextManager) SetContext(
 
 func (c *ContextManager) setContextCache(
 	ctx context.Context,
-	userID, sessionID uuid.UUID,
-	win *dom.ContextWindow,
+	cc *dom.ContextCache,
 ) error {
 	now := time.Now()
-	win.Turns += 1
+	var createdAt time.Time = now
+	if cc.CreatedAt != nil {
+		createdAt = *cc.CreatedAt
+	}
+
+	cc.Window.Turns += 1
 	bytes, err := json.Marshal(&dom.ContextCache{
-		UserID:    userID,
-		SessionID: sessionID,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Window:    win,
+		UserID:    cc.UserID,
+		SessionID: cc.SessionID,
+		CreatedAt: &createdAt,
+		UpdatedAt: &now,
+		Window:    cc.Window,
 	})
 	if err != nil {
 		return err
 	}
 
-	key := dom.CreateContextCacheKey(userID, sessionID)
+	key := dom.CreateContextCacheKey(*cc.UserID, *cc.SessionID)
 
 	if err = c.Cache.Set(ctx, key, bytes, ContextCacheTTL6Hrs); err != nil {
 		return err
@@ -642,12 +648,12 @@ func (c *ContextManager) setContextCache(
 
 func (c *ContextManager) sendContextUpdate(
 	ctx context.Context,
-	userID, sessionID uuid.UUID,
+	cc *dom.ContextCache,
 	interaction *dom.Interaction,
 ) error {
 	load := &SyncPayload{
-		UserID:      userID,
-		SessionID:   sessionID,
+		UserID:      *cc.UserID,
+		SessionID:   *cc.SessionID,
 		Interaction: interaction,
 	}
 
@@ -657,14 +663,14 @@ func (c *ContextManager) sendContextUpdate(
 	}
 
 	ack, err := c.Publisher.DurablePublish(ctx, SyncerSubject, data, &dom.DurablePubOptions{
-		MsgID: fmt.Sprintf("sync:%s:%s:%d", userID, sessionID, interaction.TurnNumber),
+		MsgID: fmt.Sprintf("sync:%s:%s:%d", *cc.UserID, *cc.SessionID, interaction.TurnNumber),
 	})
 	if err != nil {
 		return err
 	}
 
 	if ack.Stream != ContextStream {
-		return fmt.Errorf("published to unexpected stream: %s, %w", ack.Stream, dom.ErrInvalidState)
+		return dom.NewTaggedError(dom.ErrInvalidState, nil)
 	}
 
 	return nil

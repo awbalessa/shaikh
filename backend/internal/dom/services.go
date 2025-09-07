@@ -11,10 +11,10 @@ import (
 
 func ValidateSearchQuery(arg SearchQuery) ([]FullQueryContext, error) {
 	if len(arg.QueriesWithFilters) == 0 {
-		return nil, fmt.Errorf("validate search query: no subqueries: %w", ErrInvalidInput)
+		return nil, NewTaggedError(ErrInvalidInput, nil)
 	}
 	if len(arg.QueriesWithFilters) > MaxSubqueries {
-		return nil, fmt.Errorf("validate search query: too many subqueries: %w", ErrInvalidInput)
+		return nil, NewTaggedError(ErrInvalidInput, nil)
 	}
 
 	out := make([]FullQueryContext, 0, len(arg.QueriesWithFilters))
@@ -24,7 +24,7 @@ func ValidateSearchQuery(arg SearchQuery) ([]FullQueryContext, error) {
 
 		switch {
 		case len(f.OptionalAyahs) > 0 && len(f.OptionalSurahs) != 1:
-			return nil, fmt.Errorf("validate search query: ayahs require exactly one surah: %w", ErrInvalidInput)
+			return nil, NewTaggedError(ErrInvalidInput, nil)
 
 		case len(f.OptionalSurahs) > 1:
 			// invalid combo but not fatal — just clear ayahs
@@ -203,8 +203,8 @@ type Inference struct {
 }
 
 type Interaction struct {
-	Inferences [2]*Inference `json:"inferences"`
-	TurnNumber int32         `json:"turn_number"`
+	Inferences []*Inference `json:"inferences"`
+	TurnNumber int32        `json:"turn_number"`
 }
 
 type ContextWindow struct {
@@ -215,10 +215,10 @@ type ContextWindow struct {
 }
 
 type ContextCache struct {
-	UserID    uuid.UUID      `json:"user_id"`
-	SessionID uuid.UUID      `json:"session_id"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	UserID    *uuid.UUID     `json:"user_id"`
+	SessionID *uuid.UUID     `json:"session_id"`
+	CreatedAt *time.Time     `json:"created_at"`
+	UpdatedAt *time.Time     `json:"updated_at"`
 	Window    *ContextWindow `json:"context_window"`
 }
 
@@ -487,7 +487,7 @@ func (a *AgentStruct) BuildContextWindow(
 ) ([]*LLMContent, error) {
 	prof, ok := a.Agents[name]
 	if !ok {
-		return nil, fmt.Errorf("build context window: %w", ErrInvalidInput)
+		return nil, NewTaggedError(ErrInvalidInput, nil)
 	}
 
 	var contents []*LLMContent
@@ -577,7 +577,7 @@ func (a *AgentStruct) BuildContextWindow(
 
 		tokens, err := a.LLM.CountTokens(ctx, prof.Model, fullContext, ctc)
 		if err != nil {
-			return nil, fmt.Errorf("build context window: %w", err)
+			return nil, NewTaggedError(ErrInternal, err)
 		}
 
 		if tokens < TokenLimit {

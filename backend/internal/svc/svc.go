@@ -2,8 +2,6 @@ package svc
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -21,13 +19,19 @@ type JWTIssuer struct {
 	TTL      time.Duration
 }
 
-func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
+func NewJWTIssuer(secret string, ttl time.Duration) (*JWTIssuer, error) {
+	if secret == "" {
+		return nil, dom.NewTaggedError(dom.ErrInvalidState, nil)
+	}
+	if ttl <= 0 {
+		return nil, dom.NewTaggedError(dom.ErrInvalidState, nil)
+	}
 	return &JWTIssuer{
 		secret:   []byte(os.Getenv("JWT_SECRET")),
 		issuer:   "shaikh-api",
 		audience: "shaikh-api",
 		TTL:      ttl,
-	}
+	}, nil
 }
 
 func (j *JWTIssuer) Sign(userID uuid.UUID, role string) (string, error) {
@@ -42,7 +46,12 @@ func (j *JWTIssuer) Sign(userID uuid.UUID, role string) (string, error) {
 		"exp":  now.Add(j.TTL).Unix(),
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return t.SignedString(j.secret)
+	str, err := t.SignedString(j.secret)
+	if err != nil {
+		return "", dom.NewTaggedError(dom.ErrInternal, err)
+	}
+
+	return str, nil
 }
 
 type AuthSvc struct {
@@ -112,6 +121,7 @@ type CheckResult struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
+	Code   string `json:"code,omitempty"`
 }
 
 func (s *HealthReadinessSvc) CheckReadiness(ctx context.Context) (bool, []CheckResult) {
@@ -130,19 +140,25 @@ func (s *HealthReadinessSvc) CheckReadiness(ctx context.Context) (bool, []CheckR
 			err := p.Ping(cctx)
 
 			cr := CheckResult{Name: p.Name()}
-
-			switch {
-			case err == nil:
+			if err == nil {
 				cr.Status = "ok"
-			case errors.Is(err, dom.ErrNotPingable):
+				results[i] = cr
+				return
+			}
+			derr := dom.ToDomainError(err)
+			switch derr.Code {
+			case dom.CodeNotPingable:
 				cr.Status = "skipped"
-				cr.Error = dom.ErrNotPingable.Error()
-			case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+				cr.Error = derr.Message
+			case dom.CodeTimeout:
 				cr.Status = "timeout"
-				cr.Error = err.Error()
+				cr.Error = derr.Message
+			case dom.CodeUnavailable, dom.CodeInternal:
+				cr.Status = "down"
+				cr.Error = derr.Message
 			default:
 				cr.Status = "down"
-				cr.Error = err.Error()
+				cr.Error = derr.Message
 			}
 
 			results[i] = cr
@@ -153,7 +169,7 @@ func (s *HealthReadinessSvc) CheckReadiness(ctx context.Context) (bool, []CheckR
 
 	ready := true
 	for _, cr := range results {
-		if cr.Status == "down" {
+		if cr.Status == "down" || cr.Status == "timeout" {
 			ready = false
 			break
 		}
@@ -177,7 +193,7 @@ func (s *UserSvc) Register(
 ) (*dom.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, dom.ToDomainError(dom.NewTaggedError(dom.ErrInvalidInput, err))
 	}
 
 	user, err := s.UserRepo.CreateUser(ctx, uuid.New(), email, string(hash))
@@ -198,7 +214,7 @@ func (s *UserSvc) Login(
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return nil, err
+		return nil, dom.ToDomainError(dom.NewTaggedError(dom.ErrInvalidInput, err))
 	}
 
 	return user, nil
@@ -223,7 +239,12 @@ func (s *SessionSvc) Create(
 	ctx context.Context,
 	userID uuid.UUID,
 ) (*dom.Session, error) {
-	return s.SessionRepo.CreateSession(ctx, uuid.New(), userID)
+	se, err := s.SessionRepo.CreateSession(ctx, uuid.New(), userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return se, nil
 }
 
 func (s *SessionSvc) BelongsToUser(
@@ -236,7 +257,7 @@ func (s *SessionSvc) BelongsToUser(
 	}
 
 	if se.UserID != userID {
-		return false, dom.ErrOwnershipViolation
+		return false, dom.ToDomainError(dom.NewTaggedError(dom.ErrOwnershipViolation, nil))
 	}
 
 	return true, nil
@@ -252,7 +273,7 @@ func (s *SessionSvc) SetArchive(
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("forbidden resource")
+		return nil, dom.ToDomainError(dom.NewTaggedError(dom.ErrOwnershipViolation, nil))
 	}
 
 	var archived_at *time.Time = nil
@@ -260,7 +281,12 @@ func (s *SessionSvc) SetArchive(
 		archived_at = dom.Ptr(time.Now())
 	}
 
-	return s.SessionRepo.UpdateSessionByID(ctx, id, nil, nil, nil, archived_at)
+	se, err := s.SessionRepo.UpdateSessionByID(ctx, id, nil, nil, nil, archived_at)
+	if err != nil {
+		return nil, err
+	}
+
+	return se, nil
 }
 
 func (s *SessionSvc) Delete(
@@ -272,8 +298,12 @@ func (s *SessionSvc) Delete(
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("forbidden resource")
+		return dom.ToDomainError(dom.NewTaggedError(dom.ErrOwnershipViolation, nil))
 	}
 
-	return s.SessionRepo.DeleteSessionByID(ctx, id)
+	if err := s.SessionRepo.DeleteSessionByID(ctx, id); err != nil {
+		return err
+	}
+
+	return nil
 }
