@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"maps"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -55,14 +56,6 @@ type AskResult struct {
 	Metadata func() map[string]any
 }
 
-type AskResult struct {
-	// Stream yields chunks and boundary-mapped *dom.Err.
-	Stream iter.Seq2[string, *dom.Err]
-	// Metadata returns a snapshot of metrics (safe to call after stream finishes;
-	// can be called during streaming too if you protect updates).
-	Metadata func() map[string]any
-}
-
 func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
@@ -81,7 +74,51 @@ func (a *AskSvc) Ask(
 		return nil, dom.ToDomErr(err)
 	}
 
-	// res := a.ask(ctx, prompt, win, yield func(string, error) bool)
+	var ar *askResult
+	stream := iter.Seq2[string, *dom.Err](func(yield func(string, *dom.Err) bool) {
+		if ctx.Err() != nil {
+			_ = yield("", dom.ToDomErr(ctx.Err()))
+			return
+		}
+		ar = a.ask(ctx, prompt, win, func(str string, err error) bool {
+			var derr *dom.Err
+			if err != nil {
+				derr = dom.ToDomErr(err)
+			}
+			if !yield(str, derr) {
+				return false
+			}
+			if ctx.Err() != nil {
+				_ = yield("", dom.ToDomErr(ctx.Err()))
+				return false
+			}
+			return true
+		})
+	})
+
+	inter := &dom.Interaction{
+		Inferences: [2]*dom.Inference(ar.infs),
+		TurnNumber: ccRes.Result.Window.Turns + 1,
+	}
+	if err := a.CtxManager.SetContext(ctx, ccRes.Result, inter); err != nil {
+		return nil, dom.ToDomErr(err)
+	}
+
+	return &AskResult{
+		Stream: stream,
+		Metadata: func() map[string]any {
+			m := map[string]any{
+				"userID":    userID,
+				"sessionID": sessionID,
+				"prompt":    prompt,
+				"context":   ccRes.Metadata,
+			}
+			if ar.metadata != nil {
+				maps.Copy(m, ar.metadata)
+			}
+			return m
+		},
+	}, nil
 }
 
 type askResult struct {

@@ -85,13 +85,16 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			return
 		}
 
-		stream := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
+		res, derr := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
+		if derr != nil {
+
+		}
 
 		io.WriteString(w, "event: ready\n")
 		io.WriteString(w, "data: {}\n\n")
 		flusher.Flush()
 
-		for token, err := range stream {
+		for token, err := range res.Stream {
 			select {
 			case <-r.Context().Done():
 				return
