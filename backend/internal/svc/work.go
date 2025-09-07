@@ -94,7 +94,7 @@ func (s *Syncer) Consumer() dom.PubSubConsumer {
 func (s *Syncer) Start(ctx context.Context) error {
 	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("syncer failed: %w", err)
+		return fmt.Errorf("syncer failed to start: %w", err)
 	}
 
 	timer := time.NewTimer(SyncMaxIdleTime)
@@ -115,18 +115,37 @@ func (s *Syncer) Start(ctx context.Context) error {
 
 		case <-timer.C:
 			if err := s.IdleProcess(ctx); err != nil {
-				return fmt.Errorf("syncer failed: %w", err)
+				s.handleErr(ctx, err, nil) // Buffer is flushed, so no specific message to Nak/Term
 			}
 			reset()
 
 		case m, ok := <-msgs:
 			if !ok {
-				return nil
+				return nil // Channel closed
 			}
 			if err := s.Process(ctx, m); err != nil {
-				return fmt.Errorf("syncer failed: %w", err)
+				s.handleErr(ctx, err, m)
 			}
 			reset()
+		}
+	}
+}
+
+func (s *Syncer) handleErr(ctx context.Context, err error, msg dom.DurablePubMsg) {
+	domainErr := dom.ToDomainError(err)
+	s.Logger.ErrorContext(ctx, "failed to process message", "err", domainErr)
+
+	if msg == nil {
+		return
+	}
+
+	if dom.IsRetryable(domainErr) {
+		if nakErr := msg.Nak(); nakErr != nil {
+			s.Logger.ErrorContext(ctx, "failed to nak message", "err", nakErr)
+		}
+	} else {
+		if termErr := msg.Term(); termErr != nil {
+			s.Logger.ErrorContext(ctx, "failed to term message", "err", termErr)
 		}
 	}
 }
@@ -176,11 +195,11 @@ func (s *Syncer) flush(ctx context.Context) error {
 	loads := make([]SyncPayload, len(s.Buffer))
 	for i, m := range s.Buffer {
 		if err := json.Unmarshal(m.Data(), &loads[i]); err != nil {
-			m.Term()
-			return err
+			_ = m.Term() // Can't parse, so terminate immediately.
+			return dom.NewTaggedError(dom.ErrInvalidInput, err)
 		}
 		if err := s.sync(ctx, tx, loads[i]); err != nil {
-			return err
+			return err // Propagate to be handled by Start loop
 		}
 
 		if sa, ok := bySession[loads[i].SessionID]; ok {
@@ -239,7 +258,7 @@ func (s *Syncer) flush(ctx context.Context) error {
 			return err
 		}
 		if ack.Stream != ContextStream {
-			return fmt.Errorf("published to unexpected stream: %s", ack.Stream)
+			return dom.NewTaggedError(dom.ErrInvalidState, nil)
 		}
 	}
 
@@ -404,7 +423,7 @@ func (s *Summarizer) Consumer() dom.PubSubConsumer {
 func (s *Summarizer) Start(ctx context.Context) error {
 	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("summarizer failed: %w", err)
+		return fmt.Errorf("summarizer failed to start: %w", err)
 	}
 
 	ticker := time.NewTicker(time.Minute)
@@ -417,7 +436,7 @@ func (s *Summarizer) Start(ctx context.Context) error {
 
 		case <-ticker.C:
 			if err := s.IdleProcess(ctx); err != nil {
-				return fmt.Errorf("summarizer failed: %w", err)
+				s.handleErr(ctx, err, nil)
 			}
 
 		case m, ok := <-msgs:
@@ -425,8 +444,27 @@ func (s *Summarizer) Start(ctx context.Context) error {
 				return nil
 			}
 			if err := s.Process(ctx, m); err != nil {
-				return fmt.Errorf("summarizer failed: %w", err)
+				s.handleErr(ctx, err, m)
 			}
+		}
+	}
+}
+
+func (s *Summarizer) handleErr(ctx context.Context, err error, msg dom.DurablePubMsg) {
+	domainErr := dom.ToDomainError(err)
+	s.Logger.ErrorContext(ctx, "failed to process message", "err", domainErr)
+
+	if msg == nil {
+		return
+	}
+
+	if dom.IsRetryable(domainErr) {
+		if nakErr := msg.Nak(); nakErr != nil {
+			s.Logger.ErrorContext(ctx, "failed to nak message", "err", nakErr)
+		}
+	} else {
+		if termErr := msg.Term(); termErr != nil {
+			s.Logger.ErrorContext(ctx, "failed to term message", "err", termErr)
 		}
 	}
 }
@@ -434,8 +472,8 @@ func (s *Summarizer) Start(ctx context.Context) error {
 func (s *Summarizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 	var load SyncCommitPayload
 	if err := json.Unmarshal(msg.Data(), &load); err != nil {
-		_ = msg.Term()
-		return err
+		_ = msg.Term() // Can't parse, so terminate immediately.
+		return dom.NewTaggedError(dom.ErrInvalidInput, err)
 	}
 
 	sess, err := s.SessionRepo.GetSessionByID(ctx, load.SessionID)
@@ -505,7 +543,7 @@ func (s *Summarizer) summarize(
 		return err
 	}
 	if data == nil {
-		return fmt.Errorf("empty summarizer result")
+		return dom.NewTaggedError(dom.ErrInternal, nil)
 	}
 
 	var resp SummarizerResponse
@@ -588,7 +626,7 @@ func (m *Memorizer) Consumer() dom.PubSubConsumer {
 func (m *Memorizer) Start(ctx context.Context) error {
 	msgs, _, err := m.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("memorizer failed: %w", err)
+		return fmt.Errorf("memorizer failed to start: %w", err)
 	}
 
 	ticker := time.NewTicker(time.Minute)
@@ -601,7 +639,7 @@ func (m *Memorizer) Start(ctx context.Context) error {
 
 		case <-ticker.C:
 			if err := m.IdleProcess(ctx); err != nil {
-				return fmt.Errorf("memorizer failed: %w", err)
+				m.handleErr(ctx, err, nil)
 			}
 
 		case msg, ok := <-msgs:
@@ -609,8 +647,27 @@ func (m *Memorizer) Start(ctx context.Context) error {
 				return nil
 			}
 			if err := m.Process(ctx, msg); err != nil {
-				return fmt.Errorf("memorizer failed: %w", err)
+				m.handleErr(ctx, err, msg)
 			}
+		}
+	}
+}
+
+func (m *Memorizer) handleErr(ctx context.Context, err error, msg dom.DurablePubMsg) {
+	domainErr := dom.ToDomainError(err)
+	m.Logger.ErrorContext(ctx, "failed to process message", "err", domainErr)
+
+	if msg == nil {
+		return
+	}
+
+	if dom.IsRetryable(domainErr) {
+		if nakErr := msg.Nak(); nakErr != nil {
+			m.Logger.ErrorContext(ctx, "failed to nak message", "err", nakErr)
+		}
+	} else {
+		if termErr := msg.Term(); termErr != nil {
+			m.Logger.ErrorContext(ctx, "failed to term message", "err", termErr)
 		}
 	}
 }
@@ -618,8 +675,8 @@ func (m *Memorizer) Start(ctx context.Context) error {
 func (m *Memorizer) Process(ctx context.Context, msg dom.DurablePubMsg) error {
 	var load SyncCommitPayload
 	if err := json.Unmarshal(msg.Data(), &load); err != nil {
-		_ = msg.Term()
-		return err
+		_ = msg.Term() // Can't parse, so terminate immediately.
+		return dom.NewTaggedError(dom.ErrInvalidInput, err)
 	}
 
 	user, err := m.UserRepo.GetUserByID(ctx, load.UserID)
@@ -711,7 +768,7 @@ func (m *Memorizer) memorize(
 	}
 
 	if data == nil {
-		return fmt.Errorf("empty result")
+		return dom.NewTaggedError(dom.ErrInternal, nil)
 	}
 
 	var mr MemorizerResponse
@@ -775,7 +832,7 @@ func (p *WorkerProbe) Ping(ctx context.Context) error {
 	}
 
 	if resp.Status != "ok" {
-		return fmt.Errorf("worker %s down", p.name)
+		return dom.NewTaggedError(dom.ErrUnavailable, nil)
 	}
 
 	return nil

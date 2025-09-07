@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/awbalessa/shaikh/backend/internal/dom"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
@@ -25,7 +26,7 @@ func UserIDFromCtx(ctx context.Context) (uuid.UUID, error) {
 	v := ctx.Value(CtxUserIDKey)
 	id, ok := v.(uuid.UUID)
 	if !ok {
-		return uuid.Nil, fmt.Errorf("missing or invalid userID in context")
+		return uuid.Nil, dom.NewTaggedError(dom.ErrUnauthorized, fmt.Errorf("missing or invalid userID in context"))
 	}
 	return id, nil
 }
@@ -34,7 +35,7 @@ func SessionIDFromCtx(ctx context.Context) (uuid.UUID, error) {
 	v := ctx.Value(CtxSessionIDKey)
 	id, ok := v.(uuid.UUID)
 	if !ok {
-		return uuid.Nil, fmt.Errorf("missing or invalid sessionID in context")
+		return uuid.Nil, dom.NewTaggedError(dom.ErrInvalidInput, fmt.Errorf("missing or invalid sessionID in context"))
 	}
 	return id, nil
 }
@@ -43,7 +44,7 @@ func RequestIDFromCtx(ctx context.Context) (string, error) {
 	v := ctx.Value(middleware.RequestIDKey)
 	str, ok := v.(string)
 	if !ok {
-		return "", fmt.Errorf("missing request id in context")
+		return "", dom.NewTaggedError(dom.ErrInternal, fmt.Errorf("missing request id in context"))
 	}
 	return str, nil
 }

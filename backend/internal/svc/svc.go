@@ -2,6 +2,7 @@ package svc
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -19,13 +20,20 @@ type JWTIssuer struct {
 	TTL      time.Duration
 }
 
-func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
+func NewJWTIssuer(ttl time.Duration) (*JWTIssuer, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return nil, dom.NewTaggedError(dom.ErrInvalidState, fmt.Errorf("jwt secret is empty"))
+	}
+	if ttl <= 0 {
+		return nil, dom.NewTaggedError(dom.ErrInvalidState, fmt.Errorf("jwt ttl must be > 0"))
+	}
 	return &JWTIssuer{
-		secret:   []byte(os.Getenv("JWT_SECRET")),
+		secret:   []byte(secret),
 		issuer:   "shaikh-api",
 		audience: "shaikh-api",
 		TTL:      ttl,
-	}
+	}, nil
 }
 
 func (j *JWTIssuer) Sign(userID uuid.UUID, role string) (string, error) {
