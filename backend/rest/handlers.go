@@ -124,12 +124,13 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			writeError(w, r, err)
 			return
 		}
-
-		res, err := ask.Ask(r.Context(), body.Prompt, userID, sessionID)
+		reqID, err := RequestIDFromCtx(r.Context())
 		if err != nil {
 			writeError(w, r, err)
 			return
 		}
+
+		stream := ask.Ask(r.Context(), body.Prompt, userID, sessionID, reqID)
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -166,7 +167,7 @@ func askHandler(ask *svc.AskSvc) http.HandlerFunc {
 			return
 		}
 
-		for token, err := range res.Stream {
+		for token, err := range stream {
 			select {
 			case <-r.Context().Done():
 				return

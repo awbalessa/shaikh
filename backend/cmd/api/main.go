@@ -107,15 +107,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	iss, err := svc.NewJWTIssuer(os.Getenv("JWT_SECRET"), 30*time.Minute)
-	if err != nil {
-		slog.With(
-			"err", err,
-		).ErrorContext(ctx, "failed to create jwt issuer")
-		os.Exit(1)
-	}
-	authsvc := svc.BuildAuthSvc(iss, pgRefreshRepo)
-
+	authsvc := svc.BuildAuthSvc(svc.NewJWTIssuer(30*time.Minute), pgRefreshRepo)
 	healthsvc := svc.BuildHealthReadinessSvc([]dom.Probe{
 		pg, fly, voy, gem, nc,
 		svc.NewWorkerProbe(svc.SyncerDurableName, svc.SyncerPingSubject, natsps),

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
-	"maps"
+	"log/slog"
 	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -51,70 +51,78 @@ func BuildAskSvc(
 	}, nil
 }
 
-type AskResult struct {
-	Stream   iter.Seq2[string, error]
-	Metadata func() map[string]any
-}
-
 func (a *AskSvc) Ask(
 	ctx context.Context,
 	prompt string,
 	userID, sessionID uuid.UUID,
-) (*AskResult, error) {
-	ccRes, err := a.CtxManager.GetContext(ctx, userID, sessionID)
-	if err != nil {
-		return nil, dom.ToDomainError(err)
-	}
-	if ccRes.Result.Window == nil {
-		ccRes.Result.Window = &dom.ContextWindow{}
-	}
+	reqID string,
+) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		log := slog.Default().With(
+			"service", "ask",
+			"reqID", reqID,
+			"userID", userID,
+			"sessionID", sessionID,
+			"prompt", prompt,
+		)
 
-	win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, ccRes.Result.Window, time.Now())
-	if err != nil {
-		return nil, dom.ToDomainError(err)
-	}
-
-	var ar *askResult
-	stream := iter.Seq2[string, error](func(yield func(string, error) bool) {
-		if ctx.Err() != nil {
-			_ = yield("", dom.ToDomainError(ctx.Err()))
+		// 1. Get context. If it fails, log and yield immediately.
+		ccRes, err := a.CtxManager.GetContext(ctx, userID, sessionID)
+		if err != nil {
+			err = dom.ToDomainError(err)
+			log.ErrorContext(ctx, "ask service error", "err", err)
+			yield("", err)
 			return
 		}
-		ar = a.ask(ctx, prompt, win, func(str string, err error) bool {
-			var derr error
-			if err != nil {
-				derr = dom.ToDomainError(err)
+		if ccRes.Result.Window == nil {
+			ccRes.Result.Window = &dom.ContextWindow{}
+		}
+
+		// 2. Build window. If it fails, log and yield immediately.
+		win, err := a.Agent.BuildContextWindow(ctx, dom.Caller, ccRes.Result.Window, time.Now())
+		if err != nil {
+			err = dom.ToDomainError(err)
+			log.ErrorContext(ctx, "ask service error", "err", err)
+			yield("", err)
+			return
+		}
+
+		// 3. Perform the streaming call.
+		var streamingErr error
+		ar := a.ask(ctx, prompt, win, func(str string, e error) bool {
+			if e != nil {
+				streamingErr = dom.ToDomainError(e) // Capture the error
+				return yield("", streamingErr)      // and yield it.
 			}
-			return yield(str, derr)
+			return yield(str, nil)
 		})
 
+		// 4. Handle post-stream logic and final logging.
+		if streamingErr != nil {
+			// The error was already sent to the client, but we log it here at the boundary.
+			log.ErrorContext(ctx, "ask service stream error", "err", streamingErr)
+			return
+		}
+
 		if ar != nil {
-			inter := &dom.Interaction{
+			// Persist context. If this fails, we can only log it.
+			if err := a.CtxManager.SetContext(ctx, ccRes.Result, &dom.Interaction{
 				Inferences: ar.infs,
 				TurnNumber: ccRes.Result.Window.Turns + 1,
+			}); err != nil {
+				log.ErrorContext(ctx, "failed to persist context after stream", "err", err)
 			}
-			if err := a.CtxManager.SetContext(ctx, ccRes.Result, inter); err != nil {
-				_ = yield("", dom.ToDomainError(err))
-				return
-			}
-		}
-	})
 
-	return &AskResult{
-		Stream: stream,
-		Metadata: func() map[string]any {
-			m := map[string]any{
-				"userID":    userID,
-				"sessionID": sessionID,
-				"prompt":    prompt,
-				"context":   ccRes.Metadata,
-			}
-			if ar != nil && ar.metadata != nil {
-				maps.Copy(m, ar.metadata)
-			}
-			return maps.Clone(m)
-		},
-	}, nil
+			// Finally, log the successful completion with all metadata.
+			log.DebugContext(ctx, "ask service completed",
+				"userID", userID,
+				"sessionID", sessionID,
+				"prompt", prompt,
+				"context", ccRes.Metadata,
+				"pipeline", ar.metadata,
+			)
+		}
+	}
 }
 
 type askResult struct {

@@ -19,19 +19,13 @@ type JWTIssuer struct {
 	TTL      time.Duration
 }
 
-func NewJWTIssuer(secret string, ttl time.Duration) (*JWTIssuer, error) {
-	if secret == "" {
-		return nil, dom.NewTaggedError(dom.ErrInvalidState, nil)
-	}
-	if ttl <= 0 {
-		return nil, dom.NewTaggedError(dom.ErrInvalidState, nil)
-	}
+func NewJWTIssuer(ttl time.Duration) *JWTIssuer {
 	return &JWTIssuer{
 		secret:   []byte(os.Getenv("JWT_SECRET")),
 		issuer:   "shaikh-api",
 		audience: "shaikh-api",
 		TTL:      ttl,
-	}, nil
+	}
 }
 
 func (j *JWTIssuer) Sign(userID uuid.UUID, role string) (string, error) {

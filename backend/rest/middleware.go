@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -36,6 +37,15 @@ func SessionIDFromCtx(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("missing or invalid sessionID in context")
 	}
 	return id, nil
+}
+
+func RequestIDFromCtx(ctx context.Context) (string, error) {
+	v := ctx.Value(middleware.RequestIDKey)
+	str, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("missing request id in context")
+	}
+	return str, nil
 }
 
 type JWTValidator struct {
