@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/awbalessa/shaikh/backend/internal/config"
 	"github.com/awbalessa/shaikh/backend/internal/dom"
@@ -75,6 +76,21 @@ func main() {
 	pgMemoryRepo := pro.NewPostgresMemoryRepo(q)
 
 	agent := dom.BuildAgent(gem)
+
+	cfg := dom.PubSubStreamConfig{
+		Name:      "CONTEXT",
+		Subjects:  []string{"context.*"},
+		Retention: dom.LimitsBased,
+		Storage:   dom.FileStorage,
+		MaxAge:    24 * time.Hour,
+	}
+
+	if err := natsps.CreateStream(ctx, cfg); err != nil {
+		slog.With(
+			"err", err,
+		).ErrorContext(ctx, "failed to create stream")
+		os.Exit(1)
+	}
 
 	syncer, err := svc.BuildSyncer(ctx, natsps, pg, pgSessionRepo, pgUserRepo)
 	if err != nil {

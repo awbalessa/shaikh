@@ -406,7 +406,7 @@ func BuildContextManager(
 	cfg := dom.PubSubStreamConfig{
 		Name:      ContextStream,
 		Subjects:  []string{ContextStreamSubjectStar},
-		Retention: dom.WorkQueue,
+		Retention: dom.LimitsBased,
 		Storage:   dom.FileStorage,
 		MaxAge:    ContextStreamMaxAge,
 	}

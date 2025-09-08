@@ -94,7 +94,8 @@ func (s *Syncer) Consumer() dom.PubSubConsumer {
 func (s *Syncer) Start(ctx context.Context) error {
 	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("syncer failed to start: %w", err)
+		s.Logger.ErrorContext(ctx, "worker failed to start", "err", err)
+		return err
 	}
 
 	timer := time.NewTimer(SyncMaxIdleTime)
@@ -423,7 +424,8 @@ func (s *Summarizer) Consumer() dom.PubSubConsumer {
 func (s *Summarizer) Start(ctx context.Context) error {
 	msgs, _, err := s.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("summarizer failed to start: %w", err)
+		s.Logger.ErrorContext(ctx, "worker failed to start", "err", err)
+		return err
 	}
 
 	ticker := time.NewTicker(time.Minute)
@@ -626,7 +628,8 @@ func (m *Memorizer) Consumer() dom.PubSubConsumer {
 func (m *Memorizer) Start(ctx context.Context) error {
 	msgs, _, err := m.Cons.Messages(ctx)
 	if err != nil {
-		return fmt.Errorf("memorizer failed to start: %w", err)
+		m.Logger.ErrorContext(ctx, "worker failed to start", "err", err)
+		return err
 	}
 
 	ticker := time.NewTicker(time.Minute)

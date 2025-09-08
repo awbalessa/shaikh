@@ -225,19 +225,7 @@ func (n *NatsPubSub) CreateConsumer(
 	var cons jetstream.Consumer
 	var err error
 	if cfg.Durable {
-		cons, err = n.Js.CreateOrUpdateConsumer(ctx, stream, jetstream.ConsumerConfig{
-			Durable:           cfg.Name,
-			InactiveThreshold: cfg.InactiveThreshold,
-			DeliverPolicy:     jetstream.DeliverPolicy(cfg.DeliverPolicy),
-			AckPolicy:         jetstream.AckPolicy(cfg.AckPolicy),
-			AckWait:           cfg.AckWait,
-			MaxDeliver:        cfg.MaxDeliver,
-			BackOff:           cfg.BackOff,
-			FilterSubjects:    cfg.FilterSubjects,
-			ReplayPolicy:      jetstream.ReplayPolicy(cfg.ReplayPolicy),
-			MaxRequestBatch:   cfg.MaxRequestBatch,
-			MaxRequestExpires: cfg.MaxRequestExpires,
-		})
+		cons, err = n.Js.Consumer(ctx, stream, cfg.Name)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, dom.NewTaggedError(dom.ErrTimeout, err)
@@ -246,19 +234,7 @@ func (n *NatsPubSub) CreateConsumer(
 		}
 
 	} else {
-		cons, err = n.Js.CreateOrUpdateConsumer(ctx, stream, jetstream.ConsumerConfig{
-			Name:              cfg.Name,
-			InactiveThreshold: cfg.InactiveThreshold,
-			DeliverPolicy:     jetstream.DeliverPolicy(cfg.DeliverPolicy),
-			AckPolicy:         jetstream.AckPolicy(cfg.AckPolicy),
-			AckWait:           cfg.AckWait,
-			MaxDeliver:        cfg.MaxDeliver,
-			BackOff:           cfg.BackOff,
-			FilterSubjects:    cfg.FilterSubjects,
-			ReplayPolicy:      jetstream.ReplayPolicy(cfg.ReplayPolicy),
-			MaxRequestBatch:   cfg.MaxRequestBatch,
-			MaxRequestExpires: cfg.MaxRequestExpires,
-		})
+		cons, err = n.Js.Consumer(ctx, stream, cfg.Name)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return nil, dom.NewTaggedError(dom.ErrTimeout, err)
