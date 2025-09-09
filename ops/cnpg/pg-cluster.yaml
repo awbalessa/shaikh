@@ -1,0 +1,18 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cluster-example
+spec:
+  instances: 1
+
+  storage:
+    size: 1Gi
+    storageClass: fast-local-ssd
+
+  affinity:
+    nodeSelector:
+      node-role.kubernetes.io/postgres: ""
+      tolerations:
+        - key: "node-role.kubernetes.io/postgres"
+          operator: "Exists"
+          effect: "NoSchedule"
