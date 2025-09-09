@@ -1,7 +1,8 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: cluster-example
+  name: shaikh-db
+  namespace: db
 spec:
   instances: 1
   imageCatalogRef:
@@ -12,10 +13,17 @@ spec:
   bootstrap:
     initdb:
       database: shaikh
-      owner: app
-      secret: do this
+      owner: shaikh
+      secret:
+        name: shaikh-owner-secret
+      postInitSQL:
+        - CREATE SCHEMA IF NOT EXISTS paradedb;
+        - CREATE SCHEMA IF NOT EXISTS rag;
+        - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
+        - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+        - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
   storage:
-    size: 20Gi
+    size: 30Gi
     storageClass: fast-local-ssd
   affinity:
     nodeSelector:
