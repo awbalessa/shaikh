@@ -1,0 +1,9 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: postgres-image-catalog
+  namespace: db
+spec:
+  images:
+    - major: 17
+      image: ghcr.io/awbalessa/shaikh/postgres:17.6-v0.1.0

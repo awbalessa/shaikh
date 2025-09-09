@@ -4,11 +4,19 @@ metadata:
   name: cluster-example
 spec:
   instances: 1
-
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: postgres-image-catalog
+    major: 17
+  bootstrap:
+    initdb:
+      database: shaikh
+      owner: app
+      secret: do this
   storage:
-    size: 1Gi
+    size: 20Gi
     storageClass: fast-local-ssd
-
   affinity:
     nodeSelector:
       node-role.kubernetes.io/postgres: ""
