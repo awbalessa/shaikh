@@ -11,6 +11,9 @@ nodes:
             node-labels: "role=control-plane,env=dev"
 
   - role: worker
+    extraMounts:
+      - hostPath: ./volume/cnpg
+        containerPath: /mnt/disks/cnpg
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration

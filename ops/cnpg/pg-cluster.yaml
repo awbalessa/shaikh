@@ -27,21 +27,39 @@ spec:
         - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
         - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
         - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
-      postgresql:
+    recovery:
+      source: source
+      database: shaikh
+      owner: shaikh
+      secret:
+        name: shaikh-owner-secret
+      postInitSQL:
+        - CREATE SCHEMA IF NOT EXISTS paradedb;
+        - CREATE SCHEMA IF NOT EXISTS rag;
+        - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
+        - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
+        - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
+  externalClusters:
+    - name: source
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
         parameters:
-          shared_buffers: "512MB"
-          work_mem: "4MB"
-          maintenance_work_mem: "64MB"
-      resources:
-        requests:
-          memory: "2Gi"
-          cpu: "1"
-        limits:
-          memory: "2Gi"
-          cpu: "1"
+          barmanObjectStore: gcs-store
+  postgresql:
+    parameters:
+      shared_buffers: "512MB"
+      work_mem: "4MB"
+      maintenance_work_mem: "64MB"
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
   storage:
     size: 20Gi
-    storageClass: fast-local-ssd
+    storageClass: cnpg-local
   affinity:
     nodeSelector:
       node-role.kubernetes.io/postgres: ""

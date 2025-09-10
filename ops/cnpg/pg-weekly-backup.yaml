@@ -1,0 +1,14 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: weekly-backup
+  namespace: db
+spec:
+  schedule: "0 0 2 * * 0" # At 02:00 every Sunday UTC
+  cluster:
+    name: shaikh-db
+  immediate: false
+  suspend: false
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
