@@ -1,0 +1,14 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: gcs-store
+  namespace: db
+spec:
+  configuration:
+    destinationPath: "gs://shaikh-dev-bucket/backups/physical"
+    googleCredentials:
+      applicationCredentials:
+        name: gcs-sa-key
+        key: gcs-sa-key.json
+    wal:
+      compression: gzip

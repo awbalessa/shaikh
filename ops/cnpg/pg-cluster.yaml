@@ -5,6 +5,11 @@ metadata:
   namespace: db
 spec:
   instances: 1
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectStore: gcs-store
   imageCatalogRef:
     apiGroup: postgresql.cnpg.io
     kind: ImageCatalog
@@ -22,8 +27,20 @@ spec:
         - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
         - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
         - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
+      postgresql:
+        parameters:
+          shared_buffers: "512MB"
+          work_mem: "4MB"
+          maintenance_work_mem: "64MB"
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "2Gi"
+          cpu: "1"
   storage:
-    size: 30Gi
+    size: 20Gi
     storageClass: fast-local-ssd
   affinity:
     nodeSelector:
