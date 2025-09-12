@@ -1,0 +1,31 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: shaikh-db-pooler-rw
+  namespace: db
+spec:
+  cluster:
+    name: shaikh-db # must match your Cluster name
+  instances: 3 # 3 pods for HA and load distribution
+  type: rw # pooler routes to primary (for writes)
+  pgbouncer:
+    poolMode: session # safest mode for most apps (Go HTTP, etc.)
+    parameters:
+      max_client_conn: "500" # how many total client connections PgBouncer accepts
+      default_pool_size: "20" # backend connections per user/db pair
+      reserve_pool_size: "5" # extra headroom for spikes
+      reserve_pool_timeout: "5" # seconds to wait before using reserve pool
+      idle_transaction_timeout: "60" # cleanup clients stuck in idle-in-transaction
+  template:
+    spec:
+      containers:
+        - name: pgbouncer
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+  monitoring:
+    enablePodMonitor: true # exposes Prometheus metrics on :9127

@@ -47,7 +47,7 @@ spec:
               PGPASSWORD=$POSTGRES_PASSWORD \
               pg_restore \
                 -U postgres \
-                -h my-cluster-rw.db.svc.cluster.local \
+                -h <figure out> \
                 -d shaikh \
                 -j 4 \
                 /dumps/latest.dump

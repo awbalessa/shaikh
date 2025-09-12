@@ -60,6 +60,8 @@ spec:
   storage:
     size: 20Gi
     storageClass: cnpg-local
+  monitoring:
+    enablePodMonitor: true
   affinity:
     nodeSelector:
       node-role.kubernetes.io/postgres: ""
