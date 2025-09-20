@@ -13,8 +13,7 @@ spec:
         - name: gcs-sa-key
           secret:
             secretName: gcs-sa-key
-      containers:
-        # --- Container 1: Fetch dump from GCS ---
+      initContainers:
         - name: fetch-dump
           image: google/cloud-sdk:slim
           command:
@@ -23,7 +22,7 @@ spec:
             - |
               set -euo pipefail
               echo "🔑 Activating service account..."
-              gcloud auth activate-service-account --key-file=/var/secrets/key.json
+              gcloud auth activate-service-account --key-file=/var/secrets/gcs-sa-key.json
               echo "📥 Downloading dump from GCS..."
               gsutil cp gs://shaikh-dev-bucket/backups/logical/latest.dump /dumps/latest.dump
           volumeMounts:
@@ -32,31 +31,29 @@ spec:
               readOnly: true
             - name: dump-volume
               mountPath: /dumps
-
-        # --- Container 2: Restore into Postgres ---
+      containers:
         - name: restore-dump
-          image: postgres:17.6 # includes pg_restore
+          image: postgres:17.6
           command:
             - /bin/bash
             - -c
             - |
               set -euo pipefail
-              echo "📦 Waiting for dump to appear..."
-              while [ ! -f /dumps/latest.dump ]; do sleep 2; done
               echo "📦 Restoring data into Postgres..."
               PGPASSWORD=$POSTGRES_PASSWORD \
               pg_restore \
-                -U postgres \
-                -h <figure out> \
+                -U shaikh-sudo \
+                -h shaikh-db-rw.db.svc.cluster.local \
                 -d shaikh \
                 -j 4 \
+                --clean --no-owner --no-privileges \
                 /dumps/latest.dump
               echo "✅ Import complete"
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: pg-cluster-superuser
+                  name: shaikh-sudo-secret
                   key: password
           volumeMounts:
             - name: dump-volume

@@ -21,24 +21,6 @@ spec:
       owner: shaikh
       secret:
         name: shaikh-owner-secret
-      postInitSQL:
-        - CREATE SCHEMA IF NOT EXISTS paradedb;
-        - CREATE SCHEMA IF NOT EXISTS rag;
-        - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
-        - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
-        - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
-    recovery:
-      source: source
-      database: shaikh
-      owner: shaikh
-      secret:
-        name: shaikh-owner-secret
-      postInitSQL:
-        - CREATE SCHEMA IF NOT EXISTS paradedb;
-        - CREATE SCHEMA IF NOT EXISTS rag;
-        - CREATE EXTENSION IF NOT EXISTS pg_search WITH SCHEMA paradedb;
-        - CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
-        - CREATE EXTENSION IF NOT EXISTS vectorscale WITH SCHEMA public;
   externalClusters:
     - name: source
       plugin:
@@ -65,7 +47,15 @@ spec:
   affinity:
     nodeSelector:
       node-role.kubernetes.io/postgres: ""
-      tolerations:
-        - key: "node-role.kubernetes.io/postgres"
-          operator: "Exists"
-          effect: "NoSchedule"
+    tolerations:
+      - key: "node-role.kubernetes.io/postgres"
+        operator: "Exists"
+        effect: "NoSchedule"
+  managed:
+    roles:
+      - name: shaikh-sudo
+        ensure: present
+        login: true
+        superuser: true
+        passwordSecret:
+          name: shaikh-sudo-secret
