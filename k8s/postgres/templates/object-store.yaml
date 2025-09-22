@@ -1,0 +1,20 @@
+{{- if .Values.backup.enabled -}}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ .Values.backup.objectStore.name }}
+  labels: {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
+  configuration:
+    destinationPath: {{ .Values.backup.destinationPath | quote }}
+    googleCredentials:
+      applicationCredentials:
+        name: {{ default .Values.gcs.saSecretName .Values.gcs.existingSecret }}
+        key: {{ .Values.gcs.keyFileName }}
+    data:
+      compression: {{ .Values.backup.data.compression | quote }}
+    wal:
+      compression: {{ .Values.backup.wal.compression | quote }}
+      maxParallel: {{ .Values.backup.wal.maxParallel }}
+{{- end }}

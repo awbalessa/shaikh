@@ -1,0 +1,75 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cluster.name }}
+  labels: {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.cluster.instances }}
+
+  {{- if .Values.backup.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectStore: {{ .Values.backup.objectStore.name }}
+  {{- end }}
+
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: {{ .Values.imageCatalog.name }}
+    major: {{ .Values.imageCatalog.major }}
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.bootstrap.database }}
+      owner: {{ .Values.bootstrap.owner }}
+      secret:
+        name: {{ .Values.secrets.owner.name }}
+
+  {{- if .Values.external.enabled }}
+  externalClusters:
+    - name: {{ .Values.external.name }}
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectStore: {{ .Values.backup.objectStore.name }}
+  {{- end }}
+
+  postgresql:
+    parameters:
+      shared_buffers: {{ .Values.postgresqlParameters.shared_buffers | quote }}
+      work_mem: {{ .Values.postgresqlParameters.work_mem | quote }}
+      maintenance_work_mem: {{ .Values.postgresqlParameters.maintenance_work_mem | quote }}
+
+  resources:
+    requests:
+      memory: {{ .Values.resources.requests.memory | quote }}
+      cpu: {{ .Values.resources.requests.cpu | quote }}
+    limits:
+      memory: {{ .Values.resources.limits.memory | quote }}
+      cpu: {{ .Values.resources.limits.cpu | quote }}
+
+  storage:
+    size: {{ .Values.storage.size }}
+    storageClass: {{ .Values.storage.class }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.monitoring.enablePodMonitor }}
+
+  affinity:
+    nodeSelector:
+      node-role.kubernetes.io/postgres: ""
+    tolerations:
+      - key: "node-role.kubernetes.io/postgres"
+        operator: "Exists"
+        effect: "NoSchedule"
+
+  managed:
+    roles:
+      - name: {{ .Values.secrets.sudo.username }}
+        ensure: present
+        login: true
+        superuser: true
+        passwordSecret:
+          name: {{ .Values.secrets.sudo.name }}

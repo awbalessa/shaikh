@@ -12,14 +12,14 @@ nodes:
 
   - role: worker
     extraMounts:
-      - hostPath: ./volume/cnpg
-        containerPath: /mnt/disks/cnpg
+      - hostPath: ./volume/postgres
+        containerPath: /mnt/postgres
     kubeadmConfigPatches:
       - |
         kind: JoinConfiguration
         nodeRegistration:
           kubeletExtraArgs:
-            node-labels: "stateful=true"
+            node-labels: "stateful=true,node-role.kubernetes.io/postgres="
 
   - role: worker
     kubeadmConfigPatches:

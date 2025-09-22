@@ -1,0 +1,74 @@
+imageCatalog:
+  enabled: true
+  name: postgres-image-catalog
+  major: 17
+  image: ghcr.io/awbalessa/shaikh/postgres:17.6-v0.1.1
+
+cluster:
+  name: shaikh-db
+  instances: 1
+
+bootstrap:
+  database: shaikh
+  owner: shaikh
+
+postgresqlParameters:
+  shared_buffers: "512MB"
+  work_mem: "4MB"
+  maintenance_work_mem: "64MB"
+
+resources:
+  requests: { cpu: "1", memory: "2Gi" }
+  limits: { cpu: "1", memory: "2Gi" }
+
+storage:
+  size: 20Gi
+  class: standard
+
+monitoring:
+  enablePodMonitor: true
+
+backup:
+  enabled: true
+  objectStore:
+    name: gcs-store
+  retentionPolicy: "30d"
+  destinationPath: "gs://shaikh-dev-bucket/backups/physical"
+  data:
+    compression: gzip
+  wal:
+    compression: gzip
+    maxParallel: 4
+
+external:
+  enabled: true
+  name: source
+
+pooler:
+  enabled: true
+  instances: 3
+  poolMode: session
+  parameters:
+    max_client_conn: "500"
+    default_pool_size: "20"
+    reserve_pool_size: "5"
+    reserve_pool_timeout: "5"
+    idle_transaction_timeout: "60"
+  resources:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "500m", memory: "256Mi" }
+  monitoring:
+    enablePodMonitor: true
+
+seed:
+  enabled: true
+  gcsDumpPath: gs://shaikh-dev-bucket/backups/logical/latest.dump
+  fetchImage: google/cloud-sdk:slim
+  restoreImage: postgres:17.6
+
+scheduledBackup:
+  enabled: true
+  name: weekly-backup
+  schedule: "0 0 2 * * 0"
+  immediate: false
+  suspend: false

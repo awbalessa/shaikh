@@ -1,0 +1,11 @@
+{{- if .Values.imageCatalog.enabled -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: ImageCatalog
+metadata:
+  name: {{ .Values.imageCatalog.name }}
+  labels: {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  images:
+    - major: {{ .Values.imageCatalog.major }}
+      image: {{ .Values.imageCatalog.image }}
+{{- end }}

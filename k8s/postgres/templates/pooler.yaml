@@ -1,0 +1,33 @@
+{{- if .Values.pooler.enabled -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ printf "%s-pooler-rw" .Values.cluster.name }}
+  labels: {{- include "postgres.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ .Values.cluster.name }}
+  instances: {{ .Values.pooler.instances }}
+  type: rw
+  pgbouncer:
+    poolMode: {{ .Values.pooler.poolMode }}
+    parameters:
+      max_client_conn: {{ .Values.pooler.parameters.max_client_conn | quote }}
+      default_pool_size: {{ .Values.pooler.parameters.default_pool_size | quote }}
+      reserve_pool_size: {{ .Values.pooler.parameters.reserve_pool_size | quote }}
+      reserve_pool_timeout: {{ .Values.pooler.parameters.reserve_pool_timeout | quote }}
+      idle_transaction_timeout: {{ .Values.pooler.parameters.idle_transaction_timeout | quote }}
+  template:
+    spec:
+      containers:
+        - name: pgbouncer
+          resources:
+            requests:
+              cpu: {{ .Values.pooler.resources.requests.cpu | quote }}
+              memory: {{ .Values.pooler.resources.requests.memory | quote }}
+            limits:
+              cpu: {{ .Values.pooler.resources.limits.cpu | quote }}
+              memory: {{ .Values.pooler.resources.limits.memory | quote }}
+  monitoring:
+    enablePodMonitor: {{ .Values.pooler.monitoring.enablePodMonitor }}
+{{- end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: CloudNativePG Cluster + backups, pooler, seed job
+type: application
+version: 0.1.0
+appVersion: "0.1.1"
