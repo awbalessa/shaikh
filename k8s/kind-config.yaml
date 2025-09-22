@@ -20,6 +20,7 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "stateful=true,node-role.kubernetes.io/postgres="
+            register-with-taints: "node-role.kubernetes.io/postgres=:NoSchedule"
 
   - role: worker
     kubeadmConfigPatches:
