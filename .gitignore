@@ -13,5 +13,4 @@ __pycache__/
 **.pyc
 **/*.pyc
 todo.md
-*-secret.yaml
-k8s/volume
+clusters/volume
