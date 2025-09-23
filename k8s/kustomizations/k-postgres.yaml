@@ -14,4 +14,4 @@ spec:
     - name: cnpg
     - name: barman
     - name: cert-manager
-    - name: rancher
+    - name: local-path-storage
