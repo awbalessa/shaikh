@@ -3,5 +3,4 @@ kind: Kustomization
 metadata:
   name: k-root
 resources:
-  - ./k-crd-ghcr-creds.yaml
   - ./kustomizations
