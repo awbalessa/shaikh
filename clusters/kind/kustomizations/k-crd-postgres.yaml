@@ -6,7 +6,7 @@ metadata:
 spec:
   interval: 10m
   prune: true
-  path: ./k8s/postgres
+  path: ./clusters/kind/postgres
   sourceRef:
     kind: GitRepository
     name: flux-system

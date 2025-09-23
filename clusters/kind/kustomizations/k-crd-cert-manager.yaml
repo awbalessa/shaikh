@@ -6,7 +6,7 @@ metadata:
 spec:
   interval: 10m
   prune: true
-  path: ./k8s/cert-manager
+  path: ./clusters/kind/cert-manager
   sourceRef:
     kind: GitRepository
     name: flux-system

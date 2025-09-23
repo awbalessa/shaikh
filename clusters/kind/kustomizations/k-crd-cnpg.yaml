@@ -6,7 +6,7 @@ metadata:
 spec:
   interval: 10m
   prune: true
-  path: ./k8s/cnpg
+  path: ./clusters/kind/cnpg
   sourceRef:
     kind: GitRepository
     name: flux-system

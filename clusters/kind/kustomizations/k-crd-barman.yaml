@@ -6,7 +6,7 @@ metadata:
 spec:
   interval: 10m
   prune: true
-  path: ./k8s/barman
+  path: ./clusters/kind/barman
   sourceRef:
     kind: GitRepository
     name: flux-system
