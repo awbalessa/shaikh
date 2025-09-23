@@ -8,11 +8,15 @@ spec:
   releaseName: shaikh-db
   chart:
     spec:
-      chart: ./k8s/postgres
+      chart: ./charts/postgres
       sourceRef:
         kind: GitRepository
         name: flux-system
         namespace: flux-system
-  valuesFiles:
-    - values.yaml
-    - values.secrets.yaml
+  valuesFrom:
+    - kind: ConfigMap
+      name: shaikh-db-values
+      valuesKey: values.yaml
+    - kind: Secret
+      name: shaikh-db-secrets
+      valuesKey: values.yaml
