@@ -1,20 +1,15 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: postgres
+  name: ghcr-creds
   namespace: flux-system
 spec:
   interval: 10m
   prune: true
-  path: ./clusters/kind/postgres
+  path: ./clusters/kind
   sourceRef:
     kind: GitRepository
     name: flux-system
-  dependsOn:
-    - name: cnpg
-    - name: barman
-    - name: cert-manager
-    - name: local-path-storage
   decryption:
     provider: sops
     secretRef:

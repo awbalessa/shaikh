@@ -14,3 +14,10 @@ spec:
         kind: HelmRepository
         name: ghcr
         namespace: flux-system
+  valuesFrom:
+    - kind: ConfigMap
+      name: shaikh-db-config
+      valuesKey: values.yaml
+    - kind: Secret
+      name: shaikh-db-secrets
+      valuesKey: values.secrets.yaml
