@@ -1,12 +1,13 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
+apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: k-root
-resources:
-  - ./kustomizations/k-crd-namespaces.yaml
-  - ./kustomizations/k-crd-secrets.yaml
-  - ./kustomizations/k-crd-cert-manager.yaml
-  - ./kustomizations/k-crd-local-path-provisioner.yaml
-  - ./kustomizations/k-crd-cnpg.yaml
-  - ./kustomizations/k-crd-barman.yaml
-  - ./kustomizations/k-crd-postgres.yaml
+  namespace: flux-system
+spec:
+  interval: 10m
+  prune: true
+  path: ./clusters/kind/kustomizations
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  wait: true
