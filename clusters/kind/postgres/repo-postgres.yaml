@@ -7,3 +7,5 @@ spec:
   interval: 10m
   url: oci://ghcr.io/awbalessa/shaikh/charts
   type: oci
+  secretRef:
+    name: ghcr-creds
