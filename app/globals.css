@@ -3,50 +3,52 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-    --color-bg: #fafafa;
-    --color-highlight: #ffffff;
-    --color-surface: #f3f2f2;
+    --color-bg: hsl(40, 5%, 98%);
+    --color-surface-light: hsl(40, 5%, 95%);
+    --color-surface-medium: hsl(40, 5%, 80%);
 
-    --color-text: #0d0d0c;
-    --color-text-secondary: #363430;
-    --color-text-muted: #868279;
-    --color-text-on-primary: #fafafa;
+    --color-text: hsl(40, 2%, 5%);
+    --color-text-secondary: hsl(40, 6%, 10%);
+    --color-text-muted: hsl(40, 6%, 50%);
+    --color-text-on-primary: hsl(40, 5%, 98%);
 
-    --color-border: #cfcdc9;
+    --color-border: hsl(40, 5%, 80%);
 
-    --color-primary: #d2642d;
-    --color-primary-hover: #a85024;
-    --color-primary-off: #edc1ab;
+    --color-primary: hsl(20, 65%, 50%);
+    --color-primary-hover: hsl(20, 65%, 40%);
+    --color-primary-off: hsl(20, 65%, 80%);
 
+    --radius-full: 9999px;
     --radius-lg: 16px;
     --radius-md: 12px;
     --radius-sm: 8px;
-    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.16);
+
+    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.16);
 }
 
 .dark {
-    --color-bg: #151513;
-    --color-highlight: #1b1a18;
-    --color-surface: #1b1a18;
+    --color-bg: hsl(40, 4%, 8%);
+    --color-surface-light: hsl(40, 6%, 10%);
+    --color-surface-medium: hsl(40, 6%, 20%);
 
-    --color-text: #fafafa;
-    --color-text-secondary: #cfcdc9;
-    --color-text-muted: #868279;
-    --color-text-on-primary: #fafafa;
+    --color-text: hsl(40, 5%, 98%);
+    --color-text-secondary: hsl(40, 5%, 65%);
+    --color-text-muted: hsl(40, 6%, 50%);
+    --color-text-on-primary: hsl(40, 5%, 98%);
 
-    --color-border: #363430;
+    --color-border: hsl(40, 6%, 20%);
 
-    --color-primary: #bf6a40;
-    --color-primary-hover: #995533;
-    --color-primary-off: #855c47;
+    --color-primary: hsl(20, 65%, 50%);
+    --color-primary-hover: hsl(20, 65%, 40%);
+    --color-primary-off: hsl(20, 65%, 30%);
 
-    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.75);
+    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.75);
 }
 
 @theme inline {
     --color-bg: var(--color-bg);
-    --color-surface: var(--color-surface);
-    --color-highlight: var(--color-highlight);
+    --color-surface-light: var(--color-surface-light);
+    --color-surface-medium: var(--color-surface-medium);
 
     --color-text: var(--color-text);
     --color-text-secondary: var(--color-text-secondary);
@@ -63,6 +65,7 @@
     --radius-sm: var(--radius-sm);
     --radius-md: var(--radius-md);
     --radius-lg: var(--radius-lg);
+    --radius-full: var(--radius-full);
 
     --shadow-md: var(--shadow-md);
 

@@ -1,42 +1,10 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import {
   IconArrowNarrowUp,
   IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
-
-export default function Page() {
-  return (
-    <main className="h-dvh flex bg-bg text-text min-h-0">
-      <section className="basis-7/12 min-w-[590px]">
-        <div className="mx-auto h-full px-8 pb-8 pt-6"></div>
-      </section>
-      <ChatPane className="basis-5/12 border-s-[0.5px] border-border min-w-[390px] max-w-[850px]"></ChatPane>
-    </main>
-  );
-}
-
-type ChatPaneProps = React.ComponentPropsWithoutRef<"section">;
-
-function ChatPane({ className, ...props }: ChatPaneProps) {
-  return (
-    <section
-      {...props}
-      className={["flex flex-col h-full min-h-0", className ?? ""].join(" ")}
-    >
-      <div className="flex flex-col mx-auto w-full h-full px-8 pb-8 pt-6">
-        <ChatMessages className="flex-1 min-h-0 overflow-y-auto pb-4" />
-        <ChatComposer />
-      </div>
-    </section>
-  );
-}
-
-type ChatMessagesProps = React.ComponentPropsWithoutRef<"div">;
-
-function ChatMessages({ className, ...props }: ChatMessagesProps) {
-  return <div {...props} className={className}></div>;
-}
 
 type ChatComposerProps = React.ComponentPropsWithoutRef<"div">;
 
@@ -46,7 +14,10 @@ const APP_LANG: AppLang = "ar";
 type Dir = "rtl" | "ltr";
 const baseDir: Dir = APP_LANG === "ar" ? "rtl" : "ltr";
 
-function ChatComposer({ className, ...props }: ChatComposerProps) {
+export default function ChatComposer({
+  className,
+  ...props
+}: ChatComposerProps) {
   const [value, setValue] = useState<string>("");
   const [isTextAreaFocused, setIsTextAreaFocused] = useState<boolean>(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -67,20 +38,8 @@ function ChatComposer({ className, ...props }: ChatComposerProps) {
     el.style.overflowY = desired > maxHeight ? "auto" : "hidden";
   };
 
-  const autoDir = (): void => {
-    const el = textAreaRef.current;
-    if (!el) return;
-
-    const currentDir = el?.dir;
-    el.dir = el.value === "" ? currentDir : "auto";
-  };
-
   useEffect(() => {
     resize();
-  }, [value]);
-
-  useEffect(() => {
-    autoDir();
   }, [value]);
 
   const send = (): void => {
@@ -115,22 +74,21 @@ function ChatComposer({ className, ...props }: ChatComposerProps) {
           dir={isEmpty ? baseDir : "auto"}
           ref={textAreaRef}
           value={value}
-          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-            setValue(e.target.value)
-          }
+          onChange={(e) => setValue(e.target.value)}
           rows={1}
-          className="w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text  cursor-text placeholder:text-text-muted placeholder:opacity-100"
+          className="w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
           placeholder="اسأل شيخ..."
           onFocus={() => setIsTextAreaFocused(true)}
           onBlur={() => setIsTextAreaFocused(false)}
-          onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+          onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               send();
             }
           }}
-        ></textarea>
+        />
       </div>
+
       <div className="flex flex-row items-center justify-between w-full ps-3 pe-4">
         <button
           type="button"
@@ -143,6 +101,7 @@ function ChatComposer({ className, ...props }: ChatComposerProps) {
             className="text-text-muted"
           />
         </button>
+
         <button
           type="button"
           disabled={isEmpty}

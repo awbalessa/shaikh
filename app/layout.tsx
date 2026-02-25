@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Rubik } from "next/font/google";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 const rubik = Rubik({
   subsets: ["arabic", "latin"],
@@ -19,8 +20,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" className={rubik.variable}>
-      <body>{children}</body>
+    <html
+      lang="ar"
+      dir="rtl"
+      className={rubik.variable}
+      suppressHydrationWarning
+    >
+      <body>
+        <ThemeToggle />
+        {children}
+      </body>
     </html>
   );
 }
