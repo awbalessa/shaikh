@@ -147,6 +147,7 @@ type FileContent struct {
 	MediaType string
 }
 
+func (FileContent) Type() ContentType { return ContentFile }
 
 type ToolCallContent struct {
 	ToolCallID string
@@ -154,6 +155,7 @@ type ToolCallContent struct {
 	Input json.RawMessage
 }
 
+func (ToolCallContent) Type() ContentType { return ContentToolCall }
 
 type ToolResultContent struct {
 	ToolCallID string
@@ -162,6 +164,7 @@ type ToolResultContent struct {
 	IsError bool
 }
 
+func (ToolResultContent) Type() ContentType { return ContentToolResult }
 
 type SourceType string
 
@@ -175,3 +178,5 @@ type SourceContent struct {
 	Title string
 	MediaType string
 }
+
+func (SourceContent) Type() ContentType { return ContentSource }
