@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"io"
 )
 
 type Model interface {
@@ -26,7 +25,8 @@ type CallOptions struct {
 
 type GenerateResult struct {
 	Contents []Content
-	Usage    *Usage
+	FinishReason FinishReason
+	Usage    Usage
 }
 
 type Prompt []Message
@@ -183,13 +183,14 @@ type SourceContent struct {
 
 func (SourceContent) Type() ContentType { return ContentSource }
 
+type StreamResult struct {
+	Stream Stream
+}
 
-type StreamResult interface {
+type Stream interface {
 	Recv() (Event, error)
 	Close() error
 }
-
-var _ = io.EOF
 
 type EventType string
 

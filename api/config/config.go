@@ -9,13 +9,15 @@ import (
 )
 
 type Config struct {
-	Platform string
+	Environment string
+	Port string
 	GeminiAPIKey string
 }
 
 func New() (Config, error) {
 	cfg := Config{
-		Platform: getenv(os.Getenv("ENVIRONMENT"), "prod"),
+		Environment: getenv(os.Getenv("ENVIRONMENT"), "prod"),
+		Port: getenv(os.Getenv("PORT"), "8080"),
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
 	}
 

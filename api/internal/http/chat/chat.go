@@ -11,17 +11,17 @@ import (
 )
 
 type Handler struct {
-	model ai.LModel
+	model ai.Model
 }
 
-func New(model ai.LModel) *Handler {
+func New(model ai.Model) *Handler {
 	return &Handler{
 		model: model,
 	}
 }
 
 type ChatRequest struct {
-	Messages any `json:"messages"`
+	Prompt any `json:"prompt"`
 }
 
 func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream, err := h.model.Stream(r.Context(), nil)
+	res, err := h.model.Stream(r.Context(), ai.CallOptions{})
 	if err != nil {
 		_ = enc.SendJSON(map[string]any{
 			"type": "error",
@@ -55,10 +55,10 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 		_ = enc.Done()
 		return
 	}
-	defer stream.Close()
+	defer res.Stream.Close()
 
 	for {
-		ev, err := stream.Recv()
+		ev, err := res.Stream.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				_ = enc.Done()
@@ -80,7 +80,7 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if ev.Type = ai.EventFinish {
+		if ev.Type == ai.EventFinish {
 			_ = enc.Done()
 			return
 		}
