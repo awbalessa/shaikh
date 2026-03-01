@@ -159,7 +159,7 @@ type ToolResultContent struct {
 	ToolCallID string
 	ToolName string
 	Result json.RawMessage
-	isError bool
+	IsError bool
 }
 
 
