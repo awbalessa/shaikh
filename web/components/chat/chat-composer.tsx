@@ -64,7 +64,7 @@ export default function ChatComposer({
         focusTextArea();
       }}
       className={[
-        "w-full flex flex-col gap-1 py-3 border border-border rounded-md bg-surface-light shadow-md",
+        "w-full flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md",
         isTextAreaFocused ? "border-2 border-primary" : "",
         className ?? "",
       ].join(" ")}

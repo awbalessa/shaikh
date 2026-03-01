@@ -4,6 +4,7 @@
 
 :root {
     --color-bg: hsl(40, 5%, 98%);
+    --color-highlight: hsl(0, 0, 100%);
     --color-surface-light: hsl(40, 5%, 95%);
     --color-surface-medium: hsl(40, 5%, 80%);
 
@@ -27,9 +28,9 @@
 }
 
 .dark {
-    --color-bg: hsl(40, 4%, 8%);
-    --color-surface-light: hsl(40, 6%, 10%);
-    --color-surface-medium: hsl(40, 6%, 20%);
+    --color-bg: hsl(40, 5%, 8%);
+    --color-surface-light: hsl(40, 10%, 10%);
+    --color-surface-medium: hsl(40, 10%, 18%);
 
     --color-text: hsl(40, 5%, 98%);
     --color-text-secondary: hsl(40, 5%, 65%);
@@ -40,13 +41,14 @@
 
     --color-primary: hsl(20, 65%, 50%);
     --color-primary-hover: hsl(20, 65%, 40%);
-    --color-primary-off: hsl(20, 65%, 30%);
+    --color-primary-off: hsl(20, 30%, 40%);
 
     --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.75);
 }
 
 @theme inline {
     --color-bg: var(--color-bg);
+    --color-highlight: var(--color-highlight);
     --color-surface-light: var(--color-surface-light);
     --color-surface-medium: var(--color-surface-medium);
 
