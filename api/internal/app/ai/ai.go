@@ -3,12 +3,8 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"io"
 )
-
-type GenerateResult struct {
-	Contents []Content
-	Usage    *Usage
-}
 
 type Model interface {
 	ID() string
@@ -25,6 +21,12 @@ type CallOptions struct {
 	Temperature *float32
 	PresencePenalty *float32
 	FrequencyPenalty *float32
+}
+
+
+type GenerateResult struct {
+	Contents []Content
+	Usage    *Usage
 }
 
 type Prompt []Message
@@ -180,3 +182,61 @@ type SourceContent struct {
 }
 
 func (SourceContent) Type() ContentType { return ContentSource }
+
+
+type StreamResult interface {
+	Recv() (Event, error)
+	Close() error
+}
+
+var _ = io.EOF
+
+type EventType string
+
+const (
+	EventStreamStart EventType = "stream-start"
+	EventTextDelta   EventType = "text-delta"
+	EventTextStart   EventType = "text-start"
+	EventTextEnd     EventType = "text-end"
+
+	EventResponseMetadata EventType = "response-metadata"
+
+	EventToolCall        EventType = "tool-call"
+	EventToolCallDelta   EventType = "tool-call-delta"
+	EventToolResult      EventType = "tool-result"
+
+	EventFinish EventType = "finish"
+	EventError  EventType = "error"
+)
+
+type FinishReason string
+
+const (
+	FinishReasonStop FinishReason = "stop"
+	FinishReasonLength FinishReason = "length"
+	FinishReasonToolCalls FinishReason = "tool-calls"
+	FinishReasonContentFilter FinishReason = "content-filter"
+	FinishReasonError FinishReason = "error"
+	FinishReasonOther FinishReason = "other"
+)
+
+type Usage struct {
+	InputTokens int
+	OutputTokens int
+	TotalTokens int
+	ReasoningTokens int
+}
+
+type Event struct {
+	Type EventType
+	ID string
+	Delta string
+	Text string
+	ToolName string
+	ToolInput any
+	ToolOutput any
+	ToolError bool
+	Reason FinishReason
+	Usage *Usage
+	Err error
+}
