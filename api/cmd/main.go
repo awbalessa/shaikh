@@ -10,7 +10,7 @@ import (
 
 	"github.com/awbalessa/shaikh/api/config"
 	"github.com/awbalessa/shaikh/api/internal/http/chat"
-	"github.com/awbalessa/shaikh/api/internal/providers/fake"
+	"github.com/awbalessa/shaikh/api/internal/providers/ai/fake"
 	"github.com/go-chi/chi/v5"
 )
 
