@@ -34,7 +34,7 @@ type Prompt []Message
 
 type Message struct {
 	Role Role
-	Content []Part
+	Parts []Part
 }
 
 type Role string

@@ -21,7 +21,7 @@ func New(model ai.Model) *Handler {
 }
 
 type ChatRequest struct {
-	Prompt any `json:"prompt"`
+	Message string `json:"message"`
 }
 
 func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
@@ -37,16 +37,20 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Message == "" {
 		_ = enc.SendJSON(map[string]any{
-			"type": "error",
+			"type":      "error",
 			"errorText": "bad request",
 		})
 		_ = enc.Done()
 		return
 	}
 
-	res, err := h.model.Stream(r.Context(), ai.CallOptions{})
+	prompt := ai.Prompt{
+		{Role: ai.RoleUser, Parts: []ai.Part{ai.TextPart{Text: req.Message}}},
+	}
+
+	res, err := h.model.Stream(r.Context(), ai.CallOptions{Prompt: prompt})
 	if err != nil {
 		_ = enc.SendJSON(map[string]any{
 			"type": "error",

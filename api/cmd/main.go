@@ -10,7 +10,7 @@ import (
 
 	"github.com/awbalessa/shaikh/api/config"
 	"github.com/awbalessa/shaikh/api/internal/http/chat"
-	"github.com/awbalessa/shaikh/api/internal/providers/ai/fake"
+	"github.com/awbalessa/shaikh/api/internal/providers/ai/gemini"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,7 +31,13 @@ func main() {
 	log := config.NewLogger(cfg.Environment)
 	slog.SetDefault(log)
 
-	chatHandler := chat.New(fake.Model{})
+	geminiClient, err := gemini.NewClient(ctx, cfg.GeminiAPIKey)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create gemini client", "err", err)
+		os.Exit(1)
+	}
+
+	chatHandler := chat.New(gemini.NewModel(geminiClient, "gemini-3.1-flash-lite-preview"))
 
 	r := chi.NewRouter()
 	r.Post("/chat", chatHandler.Stream)
