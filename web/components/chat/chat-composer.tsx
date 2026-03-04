@@ -5,8 +5,13 @@ import {
   IconArrowNarrowUp,
   IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
+import { useChat } from "@ai-sdk/react";
+import { cn } from "@/lib/utils";
 
-type ChatComposerProps = React.ComponentPropsWithoutRef<"div">;
+type ChatComposerProps = React.ComponentPropsWithoutRef<"div"> & {
+  sendMessage: ReturnType<typeof useChat>["sendMessage"];
+  status: ReturnType<typeof useChat>["status"];
+};
 
 type AppLang = "ar" | "en";
 const APP_LANG: AppLang = "ar";
@@ -15,6 +20,8 @@ type Dir = "rtl" | "ltr";
 const baseDir: Dir = APP_LANG === "ar" ? "rtl" : "ltr";
 
 export default function ChatComposer({
+  sendMessage,
+  status,
   className,
   ...props
 }: ChatComposerProps) {
@@ -42,11 +49,13 @@ export default function ChatComposer({
     resize();
   }, [value]);
 
+  const isStreaming = status === "streaming" || status === "submitted";
+
   const send = (): void => {
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed || isStreaming) return;
 
-    console.log("send:", trimmed);
+    sendMessage({ text: trimmed });
     setValue("");
   };
 
@@ -63,11 +72,11 @@ export default function ChatComposer({
         e.preventDefault();
         focusTextArea();
       }}
-      className={[
+      className={cn(
         "w-full flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md",
-        isTextAreaFocused ? "border-2 border-primary" : "",
-        className ?? "",
-      ].join(" ")}
+        isTextAreaFocused && "border-2 border-primary",
+        className,
+      )}
     >
       <div className="w-full px-4">
         <textarea
@@ -104,21 +113,21 @@ export default function ChatComposer({
 
         <button
           type="button"
-          disabled={isEmpty}
+          disabled={isEmpty || isStreaming}
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => !isEmpty && send()}
-          className={[
+          onClick={() => !isEmpty && !isStreaming && send()}
+          className={cn(
             "p-1.5 bg-primary rounded-sm transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            isEmpty ? "bg-primary-off" : "hover:bg-primary-hover",
-          ].join(" ")}
+            isEmpty || isStreaming ? "bg-primary-off" : "hover:bg-primary-hover",
+          )}
         >
           <IconArrowNarrowUp
             size={24}
             stroke={2}
-            className={[
+            className={cn(
               "text-text-on-primary",
-              isEmpty ? "dark:text-text-muted" : "dark:text-text-on-primary",
-            ].join(" ")}
+              isEmpty || isStreaming ? "dark:text-text-muted" : "dark:text-text-on-primary",
+            )}
           />
         </button>
       </div>

@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 go run ./cmd/main.go
 
 # Build
-go build ./cmd/main.go
+go build ./...
 
 # Run all tests
 go test ./...
@@ -28,17 +28,17 @@ Requires a `.env` file with `GEMINI_API_KEY` set. `ENVIRONMENT` defaults to `dev
 
 ## About the project
 
-**Shaikh** is an AI-powered Quran app. The backend is in early development — the goal for the current phase is to get AI token streaming working end-to-end between the Go backend and a Next.js frontend using Vercel AI SDK UI.
+**Shaikh** is an AI-powered Quran app. The backend streams AI responses to a Next.js frontend using the Vercel AI SDK UI message stream protocol.
 
 The overall backend architecture follows **Domain-Driven Design (DDD)**. The `internal/domain/` package is reserved for domain models as they emerge.
 
 ## Current status
 
-SSE streaming is working end-to-end with `fake.Model`. `curl -X POST http://localhost:8080/chat` streams Vercel AI UI message stream format events correctly. Next steps: implement `ai.Model` on the Gemini provider, then wire up the Next.js BFF route and `useChat` frontend.
+End-to-end streaming is fully working: Go backend (Gemini) → BFF route at `web/app/api/chat/route.ts` → `useChat` hook in Next.js. Both backend and frontend are connected and streaming tokens in real time.
 
 ## Architecture
 
-`cmd/main.go` starts an HTTP server on `cfg.Port` (default 8080) using chi router. It currently wires `fake.Model` into `chat.Handler`.
+`cmd/main.go` starts an HTTP server on `cfg.Port` (default 8080) using chi router. It wires `gemini.Model` into `chat.Handler`.
 
 ### Key layers
 
@@ -46,12 +46,14 @@ SSE streaming is working end-to-end with `fake.Model`. `curl -X POST http://loca
 
 **`internal/http/`** — HTTP handlers. `chat.Handler` exposes `POST /chat` that streams via SSE in the Vercel AI UI message stream format (`x-vercel-ai-ui-message-stream: v1`). `sse.go` wraps `http.ResponseWriter` with JSON event flushing.
 
-**`internal/providers/fake/`** — `fake.Model` implements `ai.Model`, streaming a hardcoded "Hello world" message across 6 events with 200ms delays. Used for local development without hitting the API.
-
-**`internal/providers/gemini/`** — Google Gemini client initialization only (wraps `google.golang.org/genai`). Does not yet implement `ai.Model`.
+**`internal/providers/gemini/`** — Google Gemini client and `Model` implementation. `Model.Stream` converts `ai.CallOptions` to Gemini API calls and maps response chunks to `ai.Event` values.
 
 **`config/`** — Env loading (`godotenv`) and structured logging setup. Logger uses text format in `dev`, JSON in production.
 
 ### Type system
 
 Messages are `[]Part` (input) or `[]Content` (output). Both are interfaces satisfied by: Text, Reasoning, File, ToolCall, ToolResult, and Source variants. Streaming events use the `Event` struct with an `EventType` discriminator. `Model.Stream` returns `StreamResult{Stream}` — callers use `result.Stream` for the event loop.
+
+### Frontend integration
+
+The Next.js BFF route (`web/app/api/chat/route.ts`) proxies requests from `useChat` to the Go backend. It extracts the user message text from `UIMessage.parts` (AI SDK v3 format) and forwards the SSE response stream directly to the client. The frontend uses `DefaultChatTransport` pointing at `/api/chat`.

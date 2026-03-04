@@ -76,9 +76,9 @@ func (s *stream) Close() error {
 func runStream(ctx context.Context, client *genai.Client, modelID string, contents []*genai.Content, config *genai.GenerateContentConfig, ch chan<- streamResult) {
 	send := func(e ai.Event) bool {
 		select {
-			case ch <- streamResult{event: e}:
+		case ch <- streamResult{event: e}:
 			return true
-			case <-ctx.Done():
+		case <-ctx.Done():
 			return false
 		}
 	}
@@ -153,7 +153,7 @@ func runStream(ctx context.Context, client *genai.Client, modelID string, conten
 
 func convertCallOptions(call ai.CallOptions) ([]*genai.Content, *genai.GenerateContentConfig) {
 	config := &genai.GenerateContentConfig{}
-	if call.MaxOutputTokens != nil 	{
+	if call.MaxOutputTokens != nil {
 		config.MaxOutputTokens = *call.MaxOutputTokens
 	}
 	if call.Temperature != nil {
@@ -192,8 +192,8 @@ func convertTools(tools []*ai.Tool, toolChoice *ai.ToolChoice) ([]*genai.Tool, *
 	gtool := &genai.Tool{}
 	for _, t := range tools {
 		gtool.FunctionDeclarations = append(gtool.FunctionDeclarations, &genai.FunctionDeclaration{
-			Description: t.Description,
-			Name: t.Name,
+			Description:          t.Description,
+			Name:                 t.Name,
 			ParametersJsonSchema: t.InputSchema,
 		})
 	}
@@ -224,7 +224,6 @@ func convertSystemMessage(parts []ai.Part) []*genai.Part {
 		}
 		instructions = append(instructions, genai.NewPartFromText(p.(ai.TextPart).Text))
 	}
-
 	return instructions
 }
 
@@ -232,55 +231,53 @@ func convertParts(parts []ai.Part) []*genai.Part {
 	var gparts []*genai.Part
 	for _, p := range parts {
 		switch v := p.(type) {
-			case ai.TextPart:
+		case ai.TextPart:
 			gparts = append(gparts, genai.NewPartFromText(v.Text))
-			case ai.ToolCallPart:
+		case ai.ToolCallPart:
 			var args map[string]any
 			json.Unmarshal(v.Input, &args)
 			gparts = append(gparts, &genai.Part{
 				FunctionCall: &genai.FunctionCall{
-					ID: v.ToolCallID,
+					ID:   v.ToolCallID,
 					Name: v.ToolName,
 					Args: args,
 				},
 			})
-			case ai.ToolResultPart:
+		case ai.ToolResultPart:
 			var response map[string]any
 			json.Unmarshal(v.Result, &response)
 			gparts = append(gparts, &genai.Part{
 				FunctionResponse: &genai.FunctionResponse{
-					ID: v.ToolCallID,
+					ID:       v.ToolCallID,
 					Name:     v.ToolName,
 					Response: response,
 				},
 			})
-			case ai.FilePart:
+		case ai.FilePart:
 			gparts = append(gparts, genai.NewPartFromBytes(v.Data, v.MediaType))
 		}
 	}
 	return gparts
 }
 
-
 func convertRole(r ai.Role) string {
 	switch r {
-		case ai.RoleUser:
+	case ai.RoleUser:
 		return genai.RoleUser
-		case ai.RoleTool:
+	case ai.RoleTool:
 		return genai.RoleUser
-		default:
+	default:
 		return genai.RoleModel
 	}
 }
 
-
 func convertFinishReason(r genai.FinishReason) ai.FinishReason {
 	switch r {
-		case genai.FinishReasonStop:
+	case genai.FinishReasonStop:
 		return ai.FinishReasonStop
-		case genai.FinishReasonMaxTokens:
+	case genai.FinishReasonMaxTokens:
 		return ai.FinishReasonLength
-		default:
+	default:
 		return ai.FinishReasonOther
 	}
 }

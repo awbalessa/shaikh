@@ -93,34 +93,34 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 
 func toVercelPart(ev ai.Event) (map[string]any, bool) {
 	switch ev.Type {
-		case ai.EventStreamStart:
+	case ai.EventStreamStart:
 		return map[string]any{
-			"type": "start",
+			"type":      "start",
 			"messageId": "msg_server_1",
 		}, true
-		case ai.EventTextStart:
+	case ai.EventTextStart:
 		return map[string]any{
 			"type": "text-start",
-			"id": ev.ID,
+			"id":   ev.ID,
 		}, true
-		case ai.EventTextDelta:
+	case ai.EventTextDelta:
 		return map[string]any{
-			"type": "text-delta",
-			"id": ev.ID,
+			"type":  "text-delta",
+			"id":    ev.ID,
 			"delta": ev.Delta,
 		}, true
-		case ai.EventTextEnd:
+	case ai.EventTextEnd:
 		return map[string]any{
 			"type": "text-end",
-			"id": ev.ID,
+			"id":   ev.ID,
 		}, true
-		case ai.EventFinish:
+	case ai.EventFinish:
 		return map[string]any{
 			"type": "finish",
 		}, true
-		case ai.EventError:
+	case ai.EventError:
 		return map[string]any{
-			"type": "error",
+			"type":      "error",
 			"errorText": safeErrText(ev.Err),
 		}, true
 	}
