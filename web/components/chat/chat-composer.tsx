@@ -73,7 +73,8 @@ export default function ChatComposer({
         focusTextArea();
       }}
       className={cn(
-        "w-full flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md",
+        "w-full flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md transition-colors",
+        !isTextAreaFocused && "hover:border-border-strong",
         isTextAreaFocused && "border-2 border-primary",
         className,
       )}
@@ -117,12 +118,12 @@ export default function ChatComposer({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => !isEmpty && !isStreaming && send()}
           className={cn(
-            "p-1.5 bg-primary rounded-sm transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            isEmpty || isStreaming ? "bg-primary-off" : "hover:bg-primary-hover",
+            "p-1 rounded-full transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            isEmpty || isStreaming ? "bg-surface-light dark:bg-surface-medium" : "bg-primary hover:bg-primary-hover",
           )}
         >
           <IconArrowNarrowUp
-            size={24}
+            size={20}
             stroke={2}
             className={cn(
               "text-text-on-primary",

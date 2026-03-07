@@ -196,19 +196,33 @@ type EventType string
 
 const (
 	EventStreamStart EventType = "stream-start"
-	EventTextDelta   EventType = "text-delta"
-	EventTextStart   EventType = "text-start"
-	EventTextEnd     EventType = "text-end"
 
-	EventResponseMetadata EventType = "response-metadata"
+	EventTextStart   EventType = "text-start"
+	EventTextDelta   EventType = "text-delta"
+	EventTextEnd     EventType = "text-end"
 
 	EventToolCall        EventType = "tool-call"
 	EventToolCallDelta   EventType = "tool-call-delta"
 	EventToolResult      EventType = "tool-result"
 
 	EventFinish EventType = "finish"
+	EventResponseMetadata EventType = "response-metadata"
 	EventError  EventType = "error"
 )
+
+type Event struct {
+	Type EventType
+	ID string
+	Delta string
+	Text string
+	ToolName string
+	ToolInput any
+	ToolOutput any
+	ToolError bool
+	Reason FinishReason
+	Usage *Usage
+	Err error
+}
 
 type FinishReason string
 
@@ -226,18 +240,4 @@ type Usage struct {
 	OutputTokens int
 	TotalTokens int
 	ReasoningTokens int
-}
-
-type Event struct {
-	Type EventType
-	ID string
-	Delta string
-	Text string
-	ToolName string
-	ToolInput any
-	ToolOutput any
-	ToolError bool
-	Reason FinishReason
-	Usage *Usage
-	Err error
 }

@@ -3,21 +3,21 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-    --color-bg: hsl(40, 5%, 98%);
-    --color-highlight: hsl(0, 0, 100%);
-    --color-surface-light: hsl(40, 5%, 95%);
-    --color-surface-medium: hsl(40, 5%, 80%);
+    --color-bg: hsl(35, 20%, 95%);
+    --color-highlight: hsl(35, 2, 98%);
+    --color-surface-light: hsl(35, 15%, 90%);
+    --color-surface-medium: hsl(35, 12%, 80%);
 
-    --color-text: hsl(40, 2%, 5%);
-    --color-text-secondary: hsl(40, 6%, 10%);
-    --color-text-muted: hsl(40, 6%, 50%);
-    --color-text-on-primary: hsl(40, 5%, 98%);
+    --color-text: hsl(35, 2%, 5%);
+    --color-text-neutral: hsl(35, 8%, 50);
+    --color-text-muted: hsl(35, 8%, 65%);
+    --color-text-on-primary: hsl(35, 2%, 98%);
 
-    --color-border: hsl(40, 5%, 80%);
+    --color-border: hsl(35, 12%, 80%);
+    --color-border-strong: hsl(35, 8%, 65%);
 
-    --color-primary: hsl(20, 65%, 50%);
-    --color-primary-hover: hsl(20, 65%, 40%);
-    --color-primary-off: hsl(20, 65%, 80%);
+    --color-primary: hsl(20, 60%, 50%);
+    --color-primary-hover: hsl(20, 60%, 40%);
 
     --radius-full: 9999px;
     --radius-lg: 16px;
@@ -28,20 +28,20 @@
 }
 
 .dark {
-    --color-bg: hsl(40, 5%, 8%);
-    --color-surface-light: hsl(40, 10%, 10%);
-    --color-surface-medium: hsl(40, 10%, 18%);
+    --color-bg: hsl(35, 25%, 6%);
+    --color-surface-light: hsl(35, 18%, 9%);
+    --color-surface-medium: hsl(35, 15%, 15%);
 
-    --color-text: hsl(40, 5%, 98%);
-    --color-text-secondary: hsl(40, 5%, 65%);
-    --color-text-muted: hsl(40, 6%, 50%);
-    --color-text-on-primary: hsl(40, 5%, 98%);
+    --color-text: hsl(35, 2%, 98%);
+    --color-text-neutral: hsl(35, 8%, 50);
+    --color-text-muted: hsl(35, 8%, 35%);
+    --color-text-on-primary: hsl(35, 2%, 98%);
 
-    --color-border: hsl(40, 6%, 20%);
+    --color-border: hsl(35, 15%, 15%);
+    --color-border-strong: hsl(35, 8%, 35%);
 
-    --color-primary: hsl(20, 65%, 50%);
-    --color-primary-hover: hsl(20, 65%, 40%);
-    --color-primary-off: hsl(20, 30%, 40%);
+    --color-primary: hsl(20, 50%, 50%);
+    --color-primary-hover: hsl(20, 50%, 40%);
 
     --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.75);
 }
@@ -58,10 +58,10 @@
     --color-text-on-primary: var(--color-text-on-primary);
 
     --color-border: var(--color-border);
+    --color-border-strong: var(--color-border-strong);
     --color-divider: var(--color-divider);
 
     --color-primary: var(--color-primary);
-    --color-primary-off: var(--color-primary-off);
     --color-primary-hover: var(--color-primary-hover);
 
     --radius-sm: var(--radius-sm);

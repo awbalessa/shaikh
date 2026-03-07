@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-
 	"github.com/awbalessa/shaikh/api/internal/app/ai"
 	"github.com/awbalessa/shaikh/api/internal/http/sse"
 )

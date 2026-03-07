@@ -1,17 +1,22 @@
+type ChatRequestBody = {
+  message: string;
+  conversationId?: string;
+};
+
 export async function POST(req: Request) {
-  const { messages } = await req.json();
-  const last = messages.findLast((m: any) => m.role === "user");
-  const text = (last?.parts ?? [])
-    .filter((p: any) => p.type === "text")
-    .map((p: any) => p.text as string)
-    .join("");
+  const body = (await req.json()) as ChatRequestBody;
+  const { message } = body;
+
+  if (typeof message !== "string" || !message.trim()) {
+    return new Response("bad request", { status: 400 });
+  }
 
   let upstream: Response;
   try {
     upstream = await fetch("http://localhost:8080/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: message.trim() }),
     });
   } catch {
     return new Response("upstream unavailable", { status: 502 });
