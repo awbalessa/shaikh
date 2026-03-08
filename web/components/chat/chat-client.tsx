@@ -34,7 +34,10 @@ export default function ChatClient() {
         status={status}
         className="messages-scroll flex-1 min-h-0 overflow-y-auto pb-4"
       />
+      <div className="composer-zone shrink-0 pt-2">
+        <div className="composer-fade pointer-events-none h-6 w-full" aria-hidden />
         <ChatComposer sendMessage={sendMessage} status={status} />
+      </div>
     </>
   );
 }

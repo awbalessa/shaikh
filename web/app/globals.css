@@ -31,9 +31,9 @@
 }
 
 .dark {
-    --color-bg: hsl(35, 25%, 6%);
+    --color-bg: hsl(35, 15%, 6%);
     --color-bg-inverse: hsl(35, 2%, 98%);
-    --color-surface-light: hsl(35, 18%, 10%);
+    --color-surface-light: hsl(35, 18%, 12%);
     --color-surface-medium: hsl(35, 15%, 15%);
 
     --color-text: hsl(35, 2%, 98%);
@@ -103,6 +103,26 @@ textarea.composer-scroll::-webkit-scrollbar-track {
 textarea.composer-scroll::-webkit-scrollbar-thumb {
     background-color: var(--color-surface-medium);
     border-radius: var(--radius-sm);
+}
+
+/* Word-by-word streaming: new words fade in */
+@keyframes streaming-word-fade-in {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.streaming-word-fade-in {
+  animation: streaming-word-fade-in 0.2s ease-out forwards;
+}
+
+/* Fade above composer so messages soften as they scroll behind */
+.composer-fade {
+    margin-top: -1.5rem;
+    background: linear-gradient(to bottom, transparent, var(--color-bg));
 }
 
 html,

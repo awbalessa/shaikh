@@ -69,7 +69,7 @@ export default function ChatComposer({
         focusTextArea();
       }}
       className={cn(
-        "w-full max-w-[850px] mx-auto flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md transition-colors",
+        "w-full max-w-[850px] mx-auto flex flex-col py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-[0_4px_8px_hsla(0,0%,0%,0.08),0_-6px_20px_-4px_hsla(0,0%,0%,0.06)] dark:shadow-[0_4px_8px_hsla(0,0%,0%,0.3),0_-6px_20px_-4px_hsla(0,0%,0%,0.35)] transition-colors",
         !isTextAreaFocused && "hover:border-border-strong",
         isTextAreaFocused && "border-2 border-primary",
         className,
@@ -81,7 +81,7 @@ export default function ChatComposer({
           ref={textAreaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          rows={1}
+          rows={2}
           className="composer-scroll w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
           placeholder="اسأل شيخ..."
           onFocus={() => setIsTextAreaFocused(true)}

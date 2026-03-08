@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -19,6 +19,7 @@ export default function ChatMessages({
   className,
   ...props
 }: ChatMessagesProps) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastMessageRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,18 +35,25 @@ export default function ChatMessages({
 
   useEffect(() => {
     const last = messages[messages.length - 1];
+
     if (last?.role === "user") {
-      lastMessageRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+      const container = scrollContainerRef.current;
+      const lastEl = lastMessageRef.current;
+      if (container && lastEl) {
+        const scrollToMessageTop = () => {
+          const msgTop = lastEl.getBoundingClientRect().top;
+          const containerTop = container.getBoundingClientRect().top;
+          container.scrollTop += msgTop - containerTop;
+        };
+        requestAnimationFrame(scrollToMessageTop);
+      }
     } else {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
   return (
-    <div {...props} className={className}>
+    <div ref={scrollContainerRef} {...props} className={className}>
       <div className="flex flex-col gap-4 px-6 max-w-[850px] mx-auto">
         {messages.map((message, index) => {
           const text = message.parts
@@ -70,9 +78,13 @@ export default function ChatMessages({
                 }
               >
                 {message.role === "assistant" ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                    {text}
-                  </ReactMarkdown>
+                  isLastMessage ? (
+                    <StreamingWordReveal text={text} isStreaming={status === "streaming"} />
+                  ) : (
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                      {text}
+                    </ReactMarkdown>
+                  )
                 ) : (
                   <span>{text}</span>
                 )}
@@ -91,5 +103,52 @@ export default function ChatMessages({
       </div>
       <div ref={bottomRef} />
     </div>
+  );
+}
+
+function StreamingWordReveal({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const targetRef = useRef(words.length);
+  const [displayedCount, setDisplayedCount] = useState(0);
+
+  useEffect(() => {
+    targetRef.current = words.length;
+  }, [words.length]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setDisplayedCount((c) => Math.min(c + 1, targetRef.current));
+    }, 28);
+    return () => clearInterval(t);
+  }, []);
+
+  const done = displayedCount >= words.length && !isStreaming;
+
+  if (done && text.length > 0) {
+    return (
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+        {text}
+      </ReactMarkdown>
+    );
+  }
+
+  if (words.length === 0) {
+    return null;
+  }
+
+  const visible = words.slice(0, displayedCount);
+
+  return (
+    <span className="inline">
+      {visible.map((word, i) => (
+        <span
+          key={i}
+          className={i === visible.length - 1 ? "streaming-word-fade-in" : undefined}
+        >
+          {i > 0 ? " " : ""}
+          {word}
+        </span>
+      ))}
+    </span>
   );
 }
