@@ -5,6 +5,13 @@ import { DefaultChatTransport, isTextUIPart } from "ai";
 import ChatMessages from "./chat-messages";
 import ChatComposer from "./chat-composer";
 
+
+export type AppLang = "ar" | "en";
+export const APP_LANG: AppLang = "ar";
+
+export type Dir = "rtl" | "ltr";
+export const BaseDir: Dir = APP_LANG === "ar" ? "rtl" : "ltr";
+
 export default function ChatClient() {
   const { messages, status, sendMessage } = useChat({
     transport: new DefaultChatTransport({
@@ -25,9 +32,9 @@ export default function ChatClient() {
       <ChatMessages
         messages={messages}
         status={status}
-        className="flex-1 min-h-0 overflow-y-auto pb-4"
+        className="messages-scroll flex-1 min-h-0 overflow-y-auto pb-4"
       />
-      <ChatComposer sendMessage={sendMessage} status={status} />
+        <ChatComposer sendMessage={sendMessage} status={status} />
     </>
   );
 }

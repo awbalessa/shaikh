@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { isTextUIPart, type UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
-import { cn } from "@/lib/utils";
+import { BaseDir } from "./chat-client";
 
 type ChatMessagesProps = React.ComponentPropsWithoutRef<"div"> & {
   messages: UIMessage[];
@@ -19,34 +20,57 @@ export default function ChatMessages({
   ...props
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastMessageRef = useRef<HTMLDivElement | null>(null);
+
+  const lastMessage = messages[messages.length - 1];
+  const lastIsAssistantEmpty =
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts
+      .filter(isTextUIPart)
+      .map((p) => p.text)
+      .join("") === "";
+  const waitingForFirstToken =
+    status === "submitted" || (status === "streaming" && lastIsAssistantEmpty);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const last = messages[messages.length - 1];
+    if (last?.role === "user") {
+      lastMessageRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   return (
     <div {...props} className={className}>
-      <div className="flex flex-col gap-4 px-4 py-4">
-        {messages.map((message) => {
-          const text = message.parts.filter(isTextUIPart).map((p) => p.text).join("");
+      <div className="flex flex-col gap-4 px-6 max-w-[850px] mx-auto">
+        {messages.map((message, index) => {
+          const text = message.parts
+            .filter(isTextUIPart)
+            .map((p) => p.text)
+            .join("");
+
+          const isLastMessage = index === messages.length - 1;
 
           return (
             <div
               key={message.id}
-              className={cn(
-                message.role === "user" ? "flex justify-end" : "flex justify-start",
-              )}
+              ref={isLastMessage ? lastMessageRef : undefined}
+              dir={message.role === "user" ? BaseDir : "auto"}
+              className={message.role === "user" ? "max-w-[80%]" : ""}
             >
               <div
-                className={cn(
-                  "max-w-[80%] rounded-lg px-4 py-2",
+                className={
                   message.role === "user"
-                    ? "bg-primary text-text-on-primary"
-                    : "bg-surface-light text-text",
-                )}
+                    ? "w-fit justify-start bg-surface-light text-text rounded-lg px-4 py-2"
+                    : ""
+                }
               >
                 {message.role === "assistant" ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                     {text}
                   </ReactMarkdown>
                 ) : (
@@ -56,11 +80,12 @@ export default function ChatMessages({
             </div>
           );
         })}
-        {status === "submitted" && (
+        {waitingForFirstToken && (
           <div className="flex justify-start">
-            <div className="bg-surface-light text-text-muted rounded-lg px-4 py-2 text-sm">
-              ...
-            </div>
+            <span
+              className="h-2 w-2 rounded-full bg-bg-inverse animate-pulse"
+              aria-hidden
+            />
           </div>
         )}
       </div>

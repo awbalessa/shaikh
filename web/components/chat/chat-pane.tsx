@@ -7,9 +7,9 @@ export default function ChatPane({ className, ...props }: ChatPaneProps) {
   return (
     <section
       {...props}
-      className={cn("flex flex-col h-full min-h-0", className)}
+      className={cn("flex flex-col h-full min-h-0 w-full", className)}
     >
-      <div className="flex flex-col mx-auto w-full h-full px-6 pb-8 pt-6 min-w-[390px] max-w-[850px]">
+      <div className="flex flex-col flex-1 min-h-0 w-full py-6">
         <ChatClient />
       </div>
     </section>

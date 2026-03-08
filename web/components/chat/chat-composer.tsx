@@ -7,17 +7,12 @@ import {
 } from "@tabler/icons-react";
 import { useChat } from "@ai-sdk/react";
 import { cn } from "@/lib/utils";
+import { BaseDir } from "./chat-client";
 
 type ChatComposerProps = React.ComponentPropsWithoutRef<"div"> & {
   sendMessage: ReturnType<typeof useChat>["sendMessage"];
   status: ReturnType<typeof useChat>["status"];
 };
-
-type AppLang = "ar" | "en";
-const APP_LANG: AppLang = "ar";
-
-type Dir = "rtl" | "ltr";
-const baseDir: Dir = APP_LANG === "ar" ? "rtl" : "ltr";
 
 export default function ChatComposer({
   sendMessage,
@@ -66,6 +61,7 @@ export default function ChatComposer({
   };
 
   return (
+    <div className="px-6">
     <div
       {...props}
       onMouseDown={(e) => {
@@ -73,7 +69,7 @@ export default function ChatComposer({
         focusTextArea();
       }}
       className={cn(
-        "w-full flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md transition-colors",
+        "w-full max-w-[850px] mx-auto flex flex-col gap-1 py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md transition-colors",
         !isTextAreaFocused && "hover:border-border-strong",
         isTextAreaFocused && "border-2 border-primary",
         className,
@@ -81,12 +77,12 @@ export default function ChatComposer({
     >
       <div className="w-full px-4">
         <textarea
-          dir={isEmpty ? baseDir : "auto"}
+          dir={isEmpty ? BaseDir : "auto"}
           ref={textAreaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           rows={1}
-          className="w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
+          className="composer-scroll w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
           placeholder="اسأل شيخ..."
           onFocus={() => setIsTextAreaFocused(true)}
           onBlur={() => setIsTextAreaFocused(false)}
@@ -99,7 +95,7 @@ export default function ChatComposer({
         />
       </div>
 
-      <div className="flex flex-row items-center justify-between w-full ps-3 pe-4">
+      <div className="flex flex-row items-center justify-between w-full ps-4 pe-4">
         <button
           type="button"
           onMouseDown={(e) => e.stopPropagation()}
@@ -132,6 +128,7 @@ export default function ChatComposer({
           />
         </button>
       </div>
+    </div>
     </div>
   );
 }

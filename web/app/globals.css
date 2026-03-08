@@ -4,6 +4,7 @@
 
 :root {
     --color-bg: hsl(35, 20%, 95%);
+    --color-bg-inverse: hsl(35, 2%, 5%);
     --color-highlight: hsl(35, 2, 98%);
     --color-surface-light: hsl(35, 15%, 90%);
     --color-surface-medium: hsl(35, 12%, 80%);
@@ -15,6 +16,8 @@
 
     --color-border: hsl(35, 12%, 80%);
     --color-border-strong: hsl(35, 8%, 65%);
+    
+    --color-divider: hsl(35, 12%, 80%);
 
     --color-primary: hsl(20, 60%, 50%);
     --color-primary-hover: hsl(20, 60%, 40%);
@@ -29,7 +32,8 @@
 
 .dark {
     --color-bg: hsl(35, 25%, 6%);
-    --color-surface-light: hsl(35, 18%, 9%);
+    --color-bg-inverse: hsl(35, 2%, 98%);
+    --color-surface-light: hsl(35, 18%, 10%);
     --color-surface-medium: hsl(35, 15%, 15%);
 
     --color-text: hsl(35, 2%, 98%);
@@ -40,6 +44,8 @@
     --color-border: hsl(35, 15%, 15%);
     --color-border-strong: hsl(35, 8%, 35%);
 
+    --color-divider: hsl(35, 15%, 15%);
+
     --color-primary: hsl(20, 50%, 50%);
     --color-primary-hover: hsl(20, 50%, 40%);
 
@@ -48,17 +54,19 @@
 
 @theme inline {
     --color-bg: var(--color-bg);
+    --color-bg-inverse: var(--color-bg-inverse);
     --color-highlight: var(--color-highlight);
     --color-surface-light: var(--color-surface-light);
     --color-surface-medium: var(--color-surface-medium);
 
     --color-text: var(--color-text);
-    --color-text-secondary: var(--color-text-secondary);
+    --color-text-neutral: var(--color-text-neutral);
     --color-text-muted: var(--color-text-muted);
     --color-text-on-primary: var(--color-text-on-primary);
 
     --color-border: var(--color-border);
     --color-border-strong: var(--color-border-strong);
+
     --color-divider: var(--color-divider);
 
     --color-primary: var(--color-primary);
@@ -72,7 +80,29 @@
     --shadow-md: var(--shadow-md);
 
     --font-sans: var(--font-sans);
-    --font-mono: var(--font-mono);
+}
+
+.messages-scroll,
+textarea.composer-scroll {
+    scrollbar-width: auto;
+    scrollbar-color: var(--color-surface-medium) transparent;
+}
+
+.messages-scroll::-webkit-scrollbar,
+textarea.composer-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.messages-scroll::-webkit-scrollbar-track,
+textarea.composer-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb,
+textarea.composer-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-medium);
+    border-radius: var(--radius-sm);
 }
 
 html,
