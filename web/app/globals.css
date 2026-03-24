@@ -4,19 +4,19 @@
 
 :root {
     --color-bg: hsl(35, 20%, 95%);
-    --color-bg-inverse: hsl(35, 2%, 5%);
+    --color-bg-inverse: hsl(35, 35%, 6%);
     --color-highlight: hsl(35, 2, 98%);
     --color-surface-light: hsl(35, 15%, 90%);
     --color-surface-medium: hsl(35, 12%, 80%);
 
     --color-text: hsl(35, 2%, 5%);
     --color-text-neutral: hsl(35, 8%, 50);
-    --color-text-muted: hsl(35, 8%, 65%);
+    --color-text-muted: hsl(35, 10%, 65%);
     --color-text-on-primary: hsl(35, 2%, 98%);
 
     --color-border: hsl(35, 12%, 80%);
     --color-border-strong: hsl(35, 8%, 65%);
-    
+
     --color-divider: hsl(35, 12%, 80%);
 
     --color-primary: hsl(20, 60%, 50%);
@@ -27,24 +27,24 @@
     --radius-md: 12px;
     --radius-sm: 8px;
 
-    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.16);
+    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.25);
 }
 
 .dark {
-    --color-bg: hsl(35, 15%, 6%);
+    --color-bg: hsl(35, 35%, 6%);
     --color-bg-inverse: hsl(35, 2%, 98%);
-    --color-surface-light: hsl(35, 18%, 12%);
-    --color-surface-medium: hsl(35, 15%, 15%);
+    --color-surface-light: hsl(35, 20%, 10%);
+    --color-surface-medium: hsl(35, 15%, 20%);
 
     --color-text: hsl(35, 2%, 98%);
     --color-text-neutral: hsl(35, 8%, 50);
-    --color-text-muted: hsl(35, 8%, 35%);
+    --color-text-muted: hsl(35, 10%, 35%);
     --color-text-on-primary: hsl(35, 2%, 98%);
 
-    --color-border: hsl(35, 15%, 15%);
-    --color-border-strong: hsl(35, 8%, 35%);
+    --color-border: hsl(35, 15%, 24%);
+    --color-border-strong: hsl(35, 10%, 35%);
 
-    --color-divider: hsl(35, 15%, 15%);
+    --color-divider: hsl(35, 15%, 24%);
 
     --color-primary: hsl(20, 50%, 50%);
     --color-primary-hover: hsl(20, 50%, 40%);
@@ -103,20 +103,6 @@ textarea.composer-scroll::-webkit-scrollbar-track {
 textarea.composer-scroll::-webkit-scrollbar-thumb {
     background-color: var(--color-surface-medium);
     border-radius: var(--radius-sm);
-}
-
-/* Word-by-word streaming: new words fade in */
-@keyframes streaming-word-fade-in {
-  from {
-    opacity: 0.35;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.streaming-word-fade-in {
-  animation: streaming-word-fade-in 0.2s ease-out forwards;
 }
 
 /* Fade above composer so messages soften as they scroll behind */

@@ -7,7 +7,7 @@ import {
 } from "@tabler/icons-react";
 import { useChat } from "@ai-sdk/react";
 import { cn } from "@/lib/utils";
-import { BaseDir } from "./chat-client";
+import { BASE_DIR } from "@/lib/config";
 
 type ChatComposerProps = React.ComponentPropsWithoutRef<"div"> & {
   sendMessage: ReturnType<typeof useChat>["sendMessage"];
@@ -61,7 +61,6 @@ export default function ChatComposer({
   };
 
   return (
-    <div className="px-6">
     <div
       {...props}
       onMouseDown={(e) => {
@@ -69,15 +68,15 @@ export default function ChatComposer({
         focusTextArea();
       }}
       className={cn(
-        "w-full max-w-[850px] mx-auto flex flex-col py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-[0_4px_8px_hsla(0,0%,0%,0.08),0_-6px_20px_-4px_hsla(0,0%,0%,0.06)] dark:shadow-[0_4px_8px_hsla(0,0%,0%,0.3),0_-6px_20px_-4px_hsla(0,0%,0%,0.35)] transition-colors",
+        "w-full mx-auto flex flex-col py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-shadow-md transition-colors",
         !isTextAreaFocused && "hover:border-border-strong",
-        isTextAreaFocused && "border-2 border-primary",
+        isTextAreaFocused && "ring-2 ring-inset ring-primary",
         className,
       )}
     >
       <div className="w-full px-4">
         <textarea
-          dir={isEmpty ? BaseDir : "auto"}
+          dir={isEmpty ? BASE_DIR : "auto"}
           ref={textAreaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -115,7 +114,9 @@ export default function ChatComposer({
           onClick={() => !isEmpty && !isStreaming && send()}
           className={cn(
             "p-1 rounded-full transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-            isEmpty || isStreaming ? "bg-surface-light dark:bg-surface-medium" : "bg-primary hover:bg-primary-hover",
+            isEmpty || isStreaming
+              ? "bg-surface-light dark:bg-surface-medium"
+              : "bg-primary hover:bg-primary-hover",
           )}
         >
           <IconArrowNarrowUp
@@ -123,12 +124,13 @@ export default function ChatComposer({
             stroke={2}
             className={cn(
               "text-text-on-primary",
-              isEmpty || isStreaming ? "dark:text-text-muted" : "dark:text-text-on-primary",
+              isEmpty || isStreaming
+                ? "dark:text-text-muted"
+                : "dark:text-text-on-primary",
             )}
           />
         </button>
       </div>
-    </div>
     </div>
   );
 }
