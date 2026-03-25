@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { isTextUIPart, type UIMessage } from "ai";
 import { useChat } from "@ai-sdk/react";
 import { Streamdown } from "streamdown";
+import {
+  IconCopy,
+  IconThumbUp,
+  IconThumbDown,
+  IconRepeat,
+} from "@tabler/icons-react";
+import { getIconStroke } from "@/lib/utils";
 
 type ChatMessagesProps = React.ComponentPropsWithoutRef<"div"> & {
   messages: UIMessage[];
@@ -43,8 +50,32 @@ const md: React.ComponentProps<typeof Streamdown>["components"] = {
       <span>{children}</span>
     </li>
   ),
-  hr: () => <hr className="border-t border-divider mt-8" />,
+  hr: () => <hr className="border-t border-divider mt-6" />,
 };
+
+function MessageActions() {
+  return (
+    <div className="flex gap-1 pt-3">
+      {(
+        [
+          [IconCopy, "Copy"],
+          [IconThumbUp, "Share feedback"],
+          [IconThumbDown, "Share feedback"],
+          [IconRepeat, "Regenerate"],
+        ] as const
+      ).map(([Icon, label]) => (
+        <button
+          key={label}
+          type="button"
+          aria-label={label}
+          className="p-1 rounded-full text-text-muted hover:bg-surface-light transition-colors cursor-pointer"
+        >
+          <Icon size={16} stroke={getIconStroke(16)} />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function ChatMessages({
   messages,
@@ -52,5 +83,84 @@ export default function ChatMessages({
   className,
   ...props
 }: ChatMessagesProps) {
-  return <div></div>;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
+
+  const isGenerating = status === "submitted" || status === "streaming";
+
+  const lastUserIndex = messages.reduce(
+    (acc, m, i) => (m.role === "user" ? i : acc),
+    -1,
+  );
+
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last?.role !== "user") return;
+
+    requestAnimationFrame(() => {
+      lastUserMessageRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [messages.length]);
+
+  const waitingForFirstToken =
+    status === "submitted" ||
+    (status === "streaming" &&
+      messages[messages.length - 1]?.role === "assistant" &&
+      messages[messages.length - 1]?.parts
+        .filter(isTextUIPart)
+        .map((p) => p.text)
+        .join("") === "");
+
+  return (
+    <div ref={scrollContainerRef} {...props} className={className}>
+      <div className="flex flex-col px-6">
+        {messages.map((message, index) => {
+          const text = message.parts
+            .filter(isTextUIPart)
+            .map((p) => p.text)
+            .join("");
+
+          const isLastUser = message.role === "user" && index === lastUserIndex;
+
+          const isLast = index === messages.length - 1;
+
+          return (
+            <div
+              key={message.id}
+              ref={isLastUser ? lastUserMessageRef : undefined}
+              className="pt-4"
+            >
+              {message.role === "user" ? (
+                <div
+                  dir="auto"
+                  className="w-fit max-w-[80%] bg-surface-medium text-text rounded-lg px-3 py-2 text-base leading-6"
+                >
+                  {text}
+                </div>
+              ) : (
+                <div dir="auto">
+                  <Streamdown components={md}>{text}</Streamdown>
+                  {(!isLast || (isLast && !isGenerating)) && <MessageActions />}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {waitingForFirstToken && (
+          <div className="pt-4">
+            <span
+              className="block h-2 w-2 rounded-full bg-bg-inverse animate-pulse"
+              aria-hidden
+            />
+          </div>
+        )}
+
+        <div aria-hidden className="h-4" />
+      </div>
+    </div>
+  );
 }

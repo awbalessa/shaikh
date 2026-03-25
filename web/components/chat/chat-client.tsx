@@ -22,19 +22,17 @@ export default function ChatClient() {
   });
 
   return (
-    <>
+    <div className="w-full max-w-[600px] mx-auto flex-1 flex flex-col">
       <ChatMessages
         messages={messages}
         status={status}
         className="messages-scroll flex-1 min-h-0 overflow-y-auto pb-4"
       />
-      <div className="composer-zone shrink-0">
-        <div
-          className="composer-fade pointer-events-none h-6 w-full"
-          aria-hidden
-        />
-        <ChatComposer sendMessage={sendMessage} status={status} />
-      </div>
-    </>
+      <div
+        className="composer-fade pointer-events-none h-6 w-full"
+        aria-hidden
+      />
+      <ChatComposer sendMessage={sendMessage} status={status} />
+    </div>
   );
 }
