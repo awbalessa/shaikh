@@ -7,7 +7,6 @@ import ChatComposer from "./chat-composer";
 
 export default function ChatClient() {
   const { messages, status, sendMessage } = useChat({
-    experimental_throttle: 50,
     transport: new DefaultChatTransport({
       api: "/api/chat",
       prepareSendMessagesRequest: ({ messages: msgs }) => {
@@ -22,7 +21,7 @@ export default function ChatClient() {
   });
 
   return (
-    <div className="w-full max-w-[600px] mx-auto flex-1 flex flex-col">
+    <div className="w-full h-full max-w-150 mx-auto flex flex-col">
       <ChatMessages
         messages={messages}
         status={status}

@@ -1,35 +1,30 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { isTextUIPart, type UIMessage } from "ai";
-import { useChat } from "@ai-sdk/react";
+import { ChatStatus, isTextUIPart, type UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 import {
   IconCopy,
+  IconEdit,
   IconThumbUp,
   IconThumbDown,
   IconRepeat,
 } from "@tabler/icons-react";
-import { getIconStroke } from "@/lib/utils";
-
-type ChatMessagesProps = React.ComponentPropsWithoutRef<"div"> & {
-  messages: UIMessage[];
-  status: ReturnType<typeof useChat>["status"];
-};
+import { cn } from "@/lib/utils";
 
 const md: React.ComponentProps<typeof Streamdown>["components"] = {
   h1: ({ children, ...props }) => (
-    <h1 className="text-4xl leading-12 font-semibold pt-10" {...props}>
+    <h1 className="text-4xl leading-12 font-semibold pt-8" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
-    <h2 className="text-2xl leading-9 font-semibold pt-8" {...props}>
+    <h2 className="text-2xl leading-9 font-semibold pt-6" {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }) => (
-    <h3 className="text-lg leading-7 font-semibold pt-6" {...props}>
+    <h3 className="text-lg leading-7 font-semibold pt-4" {...props}>
       {children}
     </h3>
   ),
@@ -53,29 +48,63 @@ const md: React.ComponentProps<typeof Streamdown>["components"] = {
   hr: () => <hr className="border-t border-divider mt-6" />,
 };
 
-function MessageActions() {
+type MessageActionsProps = React.ComponentPropsWithoutRef<"div"> & {
+  role: UIMessage["role"];
+};
+
+function MessageActions({ role, className }: MessageActionsProps) {
   return (
-    <div className="flex gap-1 pt-3">
-      {(
-        [
-          [IconCopy, "Copy"],
-          [IconThumbUp, "Share feedback"],
-          [IconThumbDown, "Share feedback"],
-          [IconRepeat, "Regenerate"],
-        ] as const
-      ).map(([Icon, label]) => (
-        <button
-          key={label}
-          type="button"
-          aria-label={label}
-          className="p-1 rounded-full text-text-muted hover:bg-surface-light transition-colors cursor-pointer"
-        >
-          <Icon size={16} stroke={getIconStroke(16)} />
-        </button>
-      ))}
+    <div dir="ltr" className={cn(className, "text-text-neutral")}>
+      {role === "user" ? (
+        <div className="flex gap-2 pt-2 items-center">
+          <p className="text-xs">{}</p>
+          <div className="flex gap-1">
+            {(
+              [
+                [IconCopy, "Copy"],
+                [IconEdit, "Edit"],
+              ] as const
+            ).map(([Icon, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-label={label}
+                className="p-1 rounded-full hover:bg-surface-light dark:hover:bg-surface-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
+              >
+                <Icon size={16} stroke={2} />
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-1 pt-2">
+          {(
+            [
+              [IconCopy, "Copy"],
+              [IconThumbUp, "Share feedback"],
+              [IconThumbDown, "Share feedback"],
+              [IconRepeat, "Regenerate"],
+            ] as const
+          ).map(([Icon, label]) => (
+            <button
+              key={label}
+              type="button"
+              aria-label={label}
+              className="p-1 rounded-full hover:bg-surface-light dark:hover:bg-surface-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
+            >
+              <Icon size={16} stroke={2} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+type ChatMessagesProps = React.ComponentPropsWithoutRef<"div"> & {
+  messages: UIMessage[];
+  status: ChatStatus;
+};
 
 export default function ChatMessages({
   messages,
@@ -131,19 +160,32 @@ export default function ChatMessages({
             <div
               key={message.id}
               ref={isLastUser ? lastUserMessageRef : undefined}
-              className="pt-4"
+              className={message.role === "user" ? "pt-8 first:pt-0" : ""}
             >
               {message.role === "user" ? (
-                <div
-                  dir="auto"
-                  className="w-fit max-w-[80%] bg-surface-medium text-text rounded-lg px-3 py-2 text-base leading-6"
-                >
-                  {text}
+                <div className="group">
+                  <div
+                    dir="auto"
+                    className="w-fit max-w-[80%] bg-surface-light dark:bg-surface-medium text-text rounded-lg px-3 py-2 text-base leading-6"
+                  >
+                    {text}
+                  </div>
+                  <div className="flex justify-start">
+                    <MessageActions
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      role={message.role}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div dir="auto">
                   <Streamdown components={md}>{text}</Streamdown>
-                  {(!isLast || (isLast && !isGenerating)) && <MessageActions />}
+
+                  {(!isLast || !isGenerating) && (
+                    <div className="flex justify-start">
+                      <MessageActions role={message.role} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -151,7 +193,7 @@ export default function ChatMessages({
         })}
 
         {waitingForFirstToken && (
-          <div className="pt-4">
+          <div className="pt-2">
             <span
               className="block h-2 w-2 rounded-full bg-bg-inverse animate-pulse"
               aria-hidden
@@ -163,4 +205,24 @@ export default function ChatMessages({
       </div>
     </div>
   );
+}
+
+function formatMessageTime(date: Date): string {
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    return new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
 }

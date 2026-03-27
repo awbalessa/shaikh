@@ -6,7 +6,7 @@ import {
   IconAdjustmentsHorizontal,
 } from "@tabler/icons-react";
 import { useChat } from "@ai-sdk/react";
-import { cn, getIconStroke } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { BASE_DIR } from "@/lib/config";
 
 type ChatComposerProps = React.ComponentPropsWithoutRef<"div"> & {
@@ -97,11 +97,11 @@ export default function ChatComposer({
           <button
             type="button"
             onMouseDown={(e) => e.stopPropagation()}
-            className="inline-flex items-center justify-center p-1 rounded-lg transition-colors cursor-pointer hover:bg-surface-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="inline-flex items-center justify-center p-1 rounded-lg transition-colors cursor-pointer hover:bg-surface-light dark:hover:bg-surface-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
           >
             <IconAdjustmentsHorizontal
               size={20}
-              stroke={getIconStroke(20)}
+              stroke={2}
               className="text-text-muted"
             />
           </button>
@@ -120,7 +120,7 @@ export default function ChatComposer({
           >
             <IconArrowNarrowUp
               size={20}
-              stroke={getIconStroke(20)}
+              stroke={2}
               className={cn(
                 "text-text-on-primary",
                 isEmpty || isStreaming

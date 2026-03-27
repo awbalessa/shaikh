@@ -1,53 +1,46 @@
 @import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-    --color-bg: hsl(35, 20%, 95%);
-    --color-bg-inverse: hsl(35, 35%, 6%);
-    --color-highlight: hsl(35, 2, 98%);
+    --color-highlight: hsl(0, 0%, 100%);
+    --color-bg: hsl(35, 12%, 98%);
+    --color-bg-inverse: hsl(35, 5%, 8%);
     --color-surface-light: hsl(35, 15%, 90%);
     --color-surface-medium: hsl(35, 12%, 80%);
+    --color-surface-strong: hsl(35, 8%, 50%);
 
-    --color-text: hsl(35, 2%, 5%);
-    --color-text-neutral: hsl(35, 8%, 50);
+    --color-text: hsl(35, 5%, 8%);
+    --color-text-neutral: hsl(35, 8%, 50%);
     --color-text-muted: hsl(35, 10%, 65%);
-    --color-text-on-primary: hsl(35, 2%, 98%);
+    --color-text-on-primary: hsl(35, 12%, 98%);
 
     --color-border: hsl(35, 12%, 80%);
     --color-border-strong: hsl(35, 8%, 65%);
 
-    --color-divider: hsl(35, 12%, 80%);
+    --color-primary: hsl(24, 67%, 50%);
+    --color-primary-hover: hsl(25, 77%, 40%);
 
-    --color-primary: hsl(20, 60%, 50%);
-    --color-primary-hover: hsl(20, 60%, 40%);
+    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.25);
 
     --radius-full: 9999px;
     --radius-lg: 16px;
     --radius-md: 12px;
     --radius-sm: 8px;
-
-    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.16);
 }
 
 .dark {
-    --color-bg: hsl(35, 12%, 8%);
+    --color-bg: hsl(35, 5%, 8%);
     --color-bg-inverse: hsl(35, 2%, 98%);
-    --color-surface-light: hsl(35, 15%, 10%);
-    --color-surface-medium: hsl(35, 8%, 20%);
+    --color-surface-light: hsl(35, 10%, 10%);
+    --color-surface-medium: hsl(35, 10%, 18%);
 
     --color-text: hsl(35, 2%, 98%);
-    --color-text-neutral: hsl(35, 8%, 50);
     --color-text-muted: hsl(35, 10%, 35%);
-    --color-text-on-primary: hsl(35, 2%, 98%);
 
-    --color-border: hsl(35, 15%, 24%);
+    --color-border: hsl(35, 10%, 18%);
     --color-border-strong: hsl(35, 10%, 35%);
-
-    --color-divider: hsl(35, 15%, 24%);
-
-    --color-primary: hsl(20, 50%, 50%);
-    --color-primary-hover: hsl(20, 50%, 40%);
 
     --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.75);
 }
@@ -58,6 +51,7 @@
     --color-highlight: var(--color-highlight);
     --color-surface-light: var(--color-surface-light);
     --color-surface-medium: var(--color-surface-medium);
+    --color-surface-strong: var(--color-surface-strong);
 
     --color-text: var(--color-text);
     --color-text-neutral: var(--color-text-neutral);
@@ -67,7 +61,7 @@
     --color-border: var(--color-border);
     --color-border-strong: var(--color-border-strong);
 
-    --color-divider: var(--color-divider);
+    --color-divider: var(--color-border);
 
     --color-primary: var(--color-primary);
     --color-primary-hover: var(--color-primary-hover);

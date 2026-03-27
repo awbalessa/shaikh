@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Rubik } from "next/font/google";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import "streamdown/styles.css";
 
 const rubik = Rubik({
   subsets: ["arabic", "latin"],
