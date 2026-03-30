@@ -73,7 +73,7 @@
 
     --shadow-md: var(--shadow-md);
 
-    --font-sans: var(--font-sans);
+    --font-sans: system-ui;
 }
 
 .messages-scroll,
@@ -113,5 +113,5 @@ body {
 body {
     background: var(--color-bg);
     color: var(--color-text);
-    font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+    font-family: var(--font-sans);
 }

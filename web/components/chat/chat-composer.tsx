@@ -20,7 +20,7 @@ export default function ChatComposer({
   className,
   ...props
 }: ChatComposerProps) {
-  const [value, setValue] = useState<string>("");
+  const [input, setInput] = useState<string>("");
   const [isTextAreaFocused, setIsTextAreaFocused] = useState<boolean>(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -42,19 +42,18 @@ export default function ChatComposer({
 
   useEffect(() => {
     resize();
-  }, [value]);
+  }, [input]);
 
+  const isEmpty = input.trim().length === 0;
   const isStreaming = status === "streaming" || status === "submitted";
 
   const send = (): void => {
-    const trimmed = value.trim();
-    if (!trimmed || isStreaming) return;
+    if (isEmpty || isStreaming) return;
+    const trimmed = input.trim();
 
     sendMessage({ text: trimmed });
-    setValue("");
+    setInput("");
   };
-
-  const isEmpty = value.trim().length === 0;
 
   const focusTextArea = (): void => {
     textAreaRef.current?.focus();
@@ -78,10 +77,10 @@ export default function ChatComposer({
         <textarea
           dir={isEmpty ? BASE_DIR : "auto"}
           ref={textAreaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
           rows={2}
-          className="px-4 composer-scroll w-full text-text text-base leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
+          className="px-4 composer-scroll w-full leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
           placeholder="اسأل شيخ..."
           onFocus={() => setIsTextAreaFocused(true)}
           onBlur={() => setIsTextAreaFocused(false)}
@@ -102,7 +101,7 @@ export default function ChatComposer({
             <IconAdjustmentsHorizontal
               size={20}
               stroke={2}
-              className="text-text-muted"
+              className="text-text-neutral"
             />
           </button>
 
@@ -110,7 +109,7 @@ export default function ChatComposer({
             type="button"
             disabled={isEmpty || isStreaming}
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => !isEmpty && !isStreaming && send()}
+            onClick={() => send()}
             className={cn(
               "p-1 rounded-full transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
               isEmpty || isStreaming

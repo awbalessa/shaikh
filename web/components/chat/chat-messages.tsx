@@ -14,38 +14,43 @@ import { cn } from "@/lib/utils";
 
 const md: React.ComponentProps<typeof Streamdown>["components"] = {
   h1: ({ children, ...props }) => (
-    <h1 className="text-4xl leading-12 font-semibold pt-8" {...props}>
+    <h1 className="text-3xl leading-12 font-semibold pt-10 m-0" {...props}>
       {children}
     </h1>
   ),
   h2: ({ children, ...props }) => (
-    <h2 className="text-2xl leading-9 font-semibold pt-6" {...props}>
+    <h2 className="text-2xl leading-9 font-semibold pt-8 m-0" {...props}>
       {children}
     </h2>
   ),
   h3: ({ children, ...props }) => (
-    <h3 className="text-lg leading-7 font-semibold pt-4" {...props}>
+    <h3 className="text-xl leading-7 font-semibold pt-6 m-0" {...props}>
       {children}
     </h3>
   ),
+  h4: ({ children, ...props }) => (
+    <h4 className="text-lg leading-7 font-semibold pt-6 m-0" {...props}>
+      {children}
+    </h4>
+  ),
   p: ({ children, ...props }) => (
-    <p className="text-base leading-6 pt-4 first:pt-0" {...props}>
+    <p className="text-base pt-5 first:pt-0 m-0 leading-6.5" {...props}>
       {children}
     </p>
   ),
   ul: ({ children }) => (
-    <ul className="pt-4 gap-3 flex flex-col list-none">{children}</ul>
+    <ul className="flex flex-col gap-4 pt-5 ps-5 list-disc m-0">{children}</ul>
   ),
+
   ol: ({ children }) => (
-    <ol className="pt-4 gap-3 flex flex-col list-none">{children}</ol>
+    <ol className="flex flex-col gap-4 pt-5 ps-5 list-decimal m-0">
+      {children}
+    </ol>
   ),
-  li: ({ children }) => (
-    <li className="flex items-baseline gap-1 text-base leading-6">
-      <span aria-hidden>·</span>
-      <span>{children}</span>
-    </li>
-  ),
-  hr: () => <hr className="border-t border-divider mt-6" />,
+
+  li: ({ children }) => <li className="leading-6 text-base m-0">{children}</li>,
+
+  hr: () => <hr className="border-t border-divider m-0 mt-6" />,
 };
 
 type MessageActionsProps = React.ComponentPropsWithoutRef<"div"> & {
