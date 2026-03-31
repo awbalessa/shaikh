@@ -18,73 +18,69 @@ The user implements. Claude explains everything.
 **Always use context7 MCP for any external SDK docs. Never rely on training data.**
 
 - Vercel AI SDK → context7 library ID: `/vercel/ai`
-- Gemini SDK, or any other SDK → resolve via `mcp__context7__resolve-library-id` first
+- AI Elements → context7 or invoke `ai-elements` skill before working with its components
+- Any other SDK → resolve via `mcp__context7__resolve-library-id` first
 
-This is especially important for Vercel AI SDK because this project mirrors its abstractions closely. When in doubt about an API, event format, hook option, or protocol detail — query context7 before writing any code.
+When in doubt about any API, hook option, component prop, or protocol detail — query context7 before writing any code.
 
 ## AI Feature Design Principle
 
-**All AI features — frontend and backend — must mirror the Vercel AI SDK paradigm.**
+**All AI features must follow the Vercel AI SDK paradigm end-to-end.**
 
-The backend is in Go, so Vercel AI SDK Core concepts are ported manually. Any new AI feature should:
-1. Follow the Vercel AI SDK Core abstraction layer (`internal/app/ai/`) for the Go side
-2. Use Vercel AI SDK UI (`@ai-sdk/react`, `useChat`, etc.) for the frontend
-3. Stream via the **UI message stream protocol** (`x-vercel-ai-ui-message-stream: v1`)
-4. Use `smoothStream` or equivalent word-boundary buffering on the **backend** — never on the frontend
-5. Use `streamdown` for rendering streaming markdown — not `react-markdown` with custom word-reveal hacks
+The stack is: **AI Elements UI → `useChat` → BFF route → `streamText` + Vercel Gateway → Gemini**
+
+Any new AI feature should:
+1. Use Vercel AI SDK UI (`@ai-sdk/react`, `useChat`, etc.) for hook-level state
+2. Use AI Elements components for all chat/AI UI — not custom-built alternatives
+3. Route through the BFF at `app/api/chat/route.ts` using `streamText().toUIMessageStreamResponse()`
+4. Use `streamdown` for rendering streaming markdown inside AI Elements message slots
+5. Use `smoothStream` word-boundary buffering in `streamText` options — never on the frontend
 
 ## Commands
 
 ```bash
-# Run the server (from api/)
-go run ./cmd/api/main.go
+# Dev server (from project root)
+bun run dev
 
 # Build
-go build ./...
+bun run build
 
-# Run all tests
-go test ./...
-
-# Run tests for a specific package
-go test ./internal/app/ai/...
-
-# Run a single test
-go test ./internal/app/ai/... -run TestName
-
-# Vet and check for issues
-go vet ./...
+# Lint
+bun run lint
 ```
-
-Requires a `.env` file with `GEMINI_API_KEY` set. `ENVIRONMENT` defaults to `dev`. `PORT` defaults to `8080`.
 
 ## About the project
 
-**Shaikh** is an AI-powered Quran app. The backend streams AI responses to a Next.js frontend using the Vercel AI SDK UI message stream protocol.
+**Shaikh** is an AI-powered Quran app. The frontend is a root-level Next.js 16 app using the App Router.
 
-The overall backend architecture follows **Domain-Driven Design (DDD)**. The `internal/domain/` package is reserved for domain models as they emerge.
+No separate backend. All AI routing goes through the Vercel AI Gateway via `streamText` in the BFF route.
 
 ## Current status
 
-End-to-end streaming is fully working: Go backend (Gemini) → BFF route at `web/app/api/chat/route.ts` → `useChat` hook in Next.js. Both backend and frontend are connected and streaming tokens in real time.
+Rewriting to use **AI Elements** as the UI foundation. The stack is fully Vercel: AI Elements components + `useChat` + Vercel AI Gateway + Gemini. The old Go backend has been removed.
 
 ## Architecture
 
-`cmd/main.go` starts an HTTP server on `cfg.Port` (default 8080) using chi router. It wires `gemini.Model` into `chat.Handler`.
+The project is a single Next.js app at the repository root.
 
 ### Key layers
 
-**`internal/app/ai/`** — A deliberate port of **Vercel AI SDK Core** concepts into Go. The `Model` interface, `CallOptions`, `Part`/`Content` type hierarchy, `StreamResult`, and `Event` types mirror the Vercel AI SDK Core abstractions so that the backend streaming protocol is compatible with **Vercel AI SDK UI** on the frontend.
+**`app/api/chat/route.ts`** — BFF route. Accepts `UIMessage[]` from `useChat`, calls `services/chat.ts`, returns SSE via `.toUIMessageStreamResponse()`.
 
-**`internal/http/`** — HTTP handlers. `chat.Handler` exposes `POST /chat` that streams via SSE in the Vercel AI UI message stream format (`x-vercel-ai-ui-message-stream: v1`). `sse.go` wraps `http.ResponseWriter` with JSON event flushing.
+**`services/chat.ts`** — AI logic. Calls `streamText` with the Vercel Gateway model string. This is where system prompts, tools, and model selection live.
 
-**`internal/providers/gemini/`** — Google Gemini client and `Model` implementation. `Model.Stream` converts `ai.CallOptions` to Gemini API calls and maps response chunks to `ai.Event` values.
+**`components/ai-elements/`** — AI Elements component library (scaffolded as source files, shadcn-style). This is the UI foundation for all chat and AI interfaces.
 
-**`config/`** — Env loading (`godotenv`) and structured logging setup. Logger uses text format in `dev`, JSON in production.
+**`components/chat/`** — App-specific chat components wired to `useChat`. Being refactored to use AI Elements as the base.
 
-### Type system
+**`components/ui/`** — shadcn/Radix primitives. AI Elements builds on these.
 
-Messages are `[]Part` (input) or `[]Content` (output). Both are interfaces satisfied by: Text, Reasoning, File, ToolCall, ToolResult, and Source variants. Streaming events use the `Event` struct with an `EventType` discriminator. `Model.Stream` returns `StreamResult{Stream}` — callers use `result.Stream` for the event loop.
+**`lib/`** — Utilities (`utils.ts`, `config.ts`).
 
 ### Frontend integration
 
-The Next.js BFF route (`web/app/api/chat/route.ts`) proxies requests from `useChat` to the Go backend. It extracts the user message text from `UIMessage.parts` (AI SDK v3 format) and forwards the SSE response stream directly to the client. The frontend uses `DefaultChatTransport` pointing at `/api/chat`.
+`useChat` in `components/chat/chat-client.tsx` points at `/api/chat` via `DefaultChatTransport`. The BFF route streams back using the Vercel AI UI message stream protocol. AI Elements components consume the `messages` and `status` from `useChat`.
+
+### Rendering
+
+Streaming markdown is rendered with `streamdown` inside AI Elements message slots. Never use `react-markdown` with custom word-reveal hacks.

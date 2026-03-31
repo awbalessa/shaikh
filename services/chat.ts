@@ -1,12 +1,8 @@
 import { convertToModelMessages, streamText, UIMessage } from "ai";
-import { models, ModelTier } from "@/lib/ai";
 
-export async function streamReply(
-  tier: ModelTier = "medium",
-  messages: UIMessage[],
-) {
+export async function Chat(messages: UIMessage[]) {
   return streamText({
-    model: models[tier],
+    model: "google/gemini-3-flash",
     messages: await convertToModelMessages(messages),
   });
 }

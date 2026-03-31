@@ -1,2 +1,1 @@
-web: cd ./web && bun dev
-api: cd ./api && air
+web: rm -rf .next && bun dev
