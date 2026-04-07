@@ -3,13 +3,6 @@
 import { useEffect, useRef } from "react";
 import { ChatStatus, isTextUIPart, type UIMessage } from "ai";
 import { Streamdown } from "streamdown";
-import {
-  IconCopy,
-  IconEdit,
-  IconThumbUp,
-  IconThumbDown,
-  IconRepeat,
-} from "@tabler/icons-react";
 import { cn } from "@/lib/utils";
 
 const md: React.ComponentProps<typeof Streamdown>["components"] = {
@@ -53,59 +46,6 @@ const md: React.ComponentProps<typeof Streamdown>["components"] = {
   hr: () => <hr className="border-t border-divider m-0 mt-6" />,
 };
 
-type MessageActionsProps = React.ComponentPropsWithoutRef<"div"> & {
-  role: UIMessage["role"];
-};
-
-function MessageActions({ role, className }: MessageActionsProps) {
-  return (
-    <div dir="ltr" className={cn(className, "text-text-neutral")}>
-      {role === "user" ? (
-        <div className="flex gap-2 pt-2 items-center">
-          <p className="text-xs">{}</p>
-          <div className="flex gap-1">
-            {(
-              [
-                [IconCopy, "Copy"],
-                [IconEdit, "Edit"],
-              ] as const
-            ).map(([Icon, label]) => (
-              <button
-                key={label}
-                type="button"
-                aria-label={label}
-                className="p-1 rounded-full hover:bg-surface-light dark:hover:bg-surface-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
-              >
-                <Icon size={16} stroke={2} />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="flex gap-1 pt-2">
-          {(
-            [
-              [IconCopy, "Copy"],
-              [IconThumbUp, "Share feedback"],
-              [IconThumbDown, "Share feedback"],
-              [IconRepeat, "Regenerate"],
-            ] as const
-          ).map(([Icon, label]) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={label}
-              className="p-1 rounded-full hover:bg-surface-light dark:hover:bg-surface-medium transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
-            >
-              <Icon size={16} stroke={2} />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 type ChatMessagesProps = React.ComponentPropsWithoutRef<"div"> & {
   messages: UIMessage[];
   status: ChatStatus;
@@ -126,18 +66,6 @@ export default function ChatMessages({
     (acc, m, i) => (m.role === "user" ? i : acc),
     -1,
   );
-
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (last?.role !== "user") return;
-
-    requestAnimationFrame(() => {
-      lastUserMessageRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-  }, [messages.length]);
 
   const waitingForFirstToken =
     status === "submitted" ||
@@ -175,22 +103,10 @@ export default function ChatMessages({
                   >
                     {text}
                   </div>
-                  <div className="flex justify-start">
-                    <MessageActions
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      role={message.role}
-                    />
-                  </div>
                 </div>
               ) : (
                 <div dir="auto">
                   <Streamdown components={md}>{text}</Streamdown>
-
-                  {(!isLast || !isGenerating) && (
-                    <div className="flex justify-start">
-                      <MessageActions role={message.role} />
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -210,24 +126,4 @@ export default function ChatMessages({
       </div>
     </div>
   );
-}
-
-function formatMessageTime(date: Date): string {
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
-
-  if (isToday) {
-    return new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(date);
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
 }

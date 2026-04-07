@@ -20,7 +20,7 @@ function QuranPane() {
 function ChatPane() {
   return (
     <section
-      className="shrink-0 basis-5/12 min-w-97.5 border-s border-border h-full py-6"
+      className="shrink-0 basis-5/12 min-w-97.5 border-s border-border size-full"
       aria-label="Chat"
     >
       <ChatClient />

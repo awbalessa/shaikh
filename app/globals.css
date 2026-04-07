@@ -25,11 +25,6 @@
 
     --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.25);
 
-    --radius-full: 9999px;
-    --radius-lg: 16px;
-    --radius-md: 12px;
-    --radius-sm: 8px;
-
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
@@ -86,8 +81,6 @@
     --popover: oklch(0.205 0 0);
 
     --popover-foreground: oklch(0.985 0 0);
-
-    --primary: oklch(0.922 0 0);
 
     --primary-foreground: oklch(0.205 0 0);
 
@@ -159,11 +152,6 @@
     --color-primary: var(--primary);
     --color-primary-hover: var(--color-primary-hover);
 
-    --radius-sm: var(--radius-sm);
-    --radius-md: var(--radius-md);
-    --radius-lg: var(--radius-lg);
-    --radius-full: var(--radius-full);
-
     --shadow-md: var(--shadow-md);
 
     --font-sans:
@@ -229,6 +217,12 @@
 
     --color-background: var(--background);
 
+    --radius-sm: calc(var(--radius) * 0.6);
+
+    --radius-md: calc(var(--radius) * 0.8);
+
+    --radius-lg: var(--radius);
+
     --radius-xl: calc(var(--radius) * 1.4);
 
     --radius-2xl: calc(var(--radius) * 1.8);
@@ -236,6 +230,8 @@
     --radius-3xl: calc(var(--radius) * 2.2);
 
     --radius-4xl: calc(var(--radius) * 2.6);
+
+    --radius-full: calc(var(--radius) * 1000);
 }
 
 .messages-scroll,
