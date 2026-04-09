@@ -1,135 +1,172 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+import { ChatStatus } from "ai";
+import { createContext, useContext, useRef } from "react";
 import {
   IconArrowNarrowUp,
-  IconAdjustmentsHorizontal,
+  IconPlayerStopFilled,
+  IconRefresh,
 } from "@tabler/icons-react";
-import { useChat } from "@ai-sdk/react";
-import { cn } from "@/lib/utils";
-import { BASE_DIR } from "@/lib/config";
+import { AnimatePresence, motion } from "motion/react";
 
-type ChatComposerProps = React.ComponentPropsWithoutRef<"div"> & {
-  sendMessage: ReturnType<typeof useChat>["sendMessage"];
-  status: ReturnType<typeof useChat>["status"];
+type ComposerContextValue = {
+  value: string;
+  status: ChatStatus;
+  onValueChange: (v: string) => void;
+  onStop: () => Promise<void>;
+  onRetry: () => Promise<void>;
 };
 
-export default function ChatComposer({
-  sendMessage,
+const ComposerContext = createContext<ComposerContextValue | null>(null);
+
+function useComposer() {
+  const ctx = useContext(ComposerContext);
+  if (!ctx) throw new Error("useComposer must be within <ChatComposer>");
+  return ctx;
+}
+
+type ChatComposerProps = React.ComponentPropsWithoutRef<"form"> & {
+  value: string;
+  status: ChatStatus;
+  onValueChange: (v: string) => void;
+  onStop: () => Promise<void>;
+  onRetry: () => Promise<void>;
+};
+
+function ChatComposer({
+  value,
   status,
+  onValueChange,
+  onStop,
+  onRetry,
+  children,
   className,
   ...props
 }: ChatComposerProps) {
-  const [input, setInput] = useState<string>("");
-  const [isTextAreaFocused, setIsTextAreaFocused] = useState<boolean>(false);
-  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  return (
+    <ComposerContext.Provider
+      value={{ value, status, onValueChange, onStop, onRetry }}
+    >
+      <form
+        className={cn(
+          "border border-border rounded-xl flex flex-col",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </form>
+    </ComposerContext.Provider>
+  );
+}
 
-  const MAX_LINES = 10;
-  const LINE_HEIGHT_PX = 24;
-  const maxHeight = MAX_LINES * LINE_HEIGHT_PX;
+function ChatComposerInput({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<"textarea">) {
+  const { value, onValueChange } = useComposer();
 
-  const resize = (): void => {
-    const el = textAreaRef.current;
-    if (!el) return;
-
-    el.style.height = "auto";
-    const desired = el.scrollHeight;
-    const next = Math.min(desired, maxHeight);
-
-    el.style.height = `${next}px`;
-    el.style.overflowY = desired > maxHeight ? "auto" : "hidden";
-  };
-
-  useEffect(() => {
-    resize();
-  }, [input]);
-
-  const isEmpty = input.trim().length === 0;
-  const isStreaming = status === "streaming" || status === "submitted";
-
-  const send = (): void => {
-    if (isEmpty || isStreaming) return;
-    const trimmed = input.trim();
-
-    sendMessage({ text: trimmed });
-    setInput("");
-  };
-
-  const focusTextArea = (): void => {
-    textAreaRef.current?.focus();
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
+    }
   };
 
   return (
-    <div className="w-full px-6">
-      <div
-        {...props}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          focusTextArea();
-        }}
-        className={cn(
-          "w-full flex flex-col py-3 border border-border rounded-lg bg-highlight dark:bg-surface-light shadow-md transition-colors",
-          !isTextAreaFocused && "hover:border-border-strong",
-          isTextAreaFocused && "ring-2 ring-inset ring-primary",
-          className,
-        )}
-      >
-        <textarea
-          dir={isEmpty ? BASE_DIR : "auto"}
-          ref={textAreaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          rows={2}
-          className="px-4 composer-scroll w-full leading-6 bg-transparent resize-none outline-none caret-text cursor-text placeholder:text-text-muted placeholder:opacity-100"
-          placeholder="اسأل شيخ..."
-          onFocus={() => setIsTextAreaFocused(true)}
-          onBlur={() => setIsTextAreaFocused(false)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
+    <textarea
+      value={value}
+      onChange={(e) => onValueChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      rows={2}
+      className={cn(
+        "w-full resize-none bg-transparent outline-none",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
-        <div className="flex flex-row items-center justify-between w-full ps-4 pe-4">
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            className="inline-flex items-center justify-center p-1 rounded-lg transition-colors cursor-pointer hover:bg-surface-light dark:hover:bg-surface-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-surface-strong"
-          >
-            <IconAdjustmentsHorizontal
-              size={20}
-              stroke={2}
-              className="text-text-neutral"
-            />
-          </button>
-
-          <button
-            type="button"
-            disabled={isEmpty || isStreaming}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => send()}
-            className={cn(
-              "p-1 rounded-full transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-              isEmpty || isStreaming
-                ? "bg-surface-light dark:bg-surface-medium"
-                : "bg-primary hover:bg-primary-hover",
-            )}
-          >
-            <IconArrowNarrowUp
-              size={20}
-              stroke={2}
-              className={cn(
-                "text-text-on-primary",
-                isEmpty || isStreaming
-                  ? "dark:text-text-muted"
-                  : "dark:text-text-on-primary",
-              )}
-            />
-          </button>
-        </div>
-      </div>
+function ChatComposerFooter({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
+  return (
+    <div className="flex flex-row justify-between" {...props}>
+      {children}
     </div>
   );
 }
+
+function ChatComposerAction({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<"button">) {
+  const { value, status, onStop, onRetry } = useComposer();
+  const ref = useRef<HTMLButtonElement>(null);
+
+  const isStreaming = status === "streaming" || status === "submitted";
+  const isError = status === "error";
+  const isReady = !isStreaming && !isError;
+  const isEmpty = !value.trim();
+
+  const actionKey = isStreaming ? "stop" : isError ? "retry" : "send";
+
+  const icons = {
+    send: <IconArrowNarrowUp className="size-5" />,
+    stop: <IconPlayerStopFilled className="size-5" />,
+    retry: <IconRefresh className="size-5" />,
+  };
+
+  const handleClick = () => {
+    if (isStreaming) {
+      onStop();
+      return;
+    }
+    if (isError) {
+      onRetry();
+      return;
+    }
+    ref.current?.form?.requestSubmit();
+  };
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={handleClick}
+      disabled={isReady && isEmpty}
+      className={cn(
+        "flex items-center justify-center p-1 rounded-full transition-colors duration-200 shrink-0",
+        isStreaming && "bg-foreground text-background",
+        isError && "bg-destructive text-destructive-foreground",
+        isReady && !isEmpty && "bg-foreground text-background",
+        isReady && isEmpty && "bg-muted text-muted-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={actionKey}
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.6 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+          className="flex items-center justify-center"
+        >
+          {icons[actionKey]}
+        </motion.span>
+      </AnimatePresence>
+    </button>
+  );
+}
+
+export {
+  ChatComposer,
+  ChatComposerFooter,
+  ChatComposerInput,
+  ChatComposerAction,
+};
