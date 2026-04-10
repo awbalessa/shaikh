@@ -2,20 +2,24 @@
 
 import { cn } from "@/lib/utils";
 import { ChatStatus } from "ai";
-import { createContext, useContext, useRef } from "react";
-import {
-  IconArrowNarrowUp,
-  IconPlayerStopFilled,
-  IconRefresh,
-} from "@tabler/icons-react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useDirection } from "../ui/direction";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import { text } from "stream/consumers";
+
+type ComposerDict =
+  (typeof dictionaries)[keyof typeof dictionaries]["chat"]["composer"];
 
 type ComposerContextValue = {
   value: string;
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  onRetry: () => Promise<void>;
+  dict: ComposerDict;
+  textAreaRef: React.RefObject<HTMLTextAreaElement | null>;
+  setFocused: (v: boolean) => void;
 };
 
 const ComposerContext = createContext<ComposerContextValue | null>(null);
@@ -31,27 +35,46 @@ type ChatComposerProps = React.ComponentPropsWithoutRef<"form"> & {
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  onRetry: () => Promise<void>;
+  dict: ComposerDict;
 };
 
-function ChatComposer({
+export default function ChatComposer({
   value,
   status,
   onValueChange,
   onStop,
-  onRetry,
+  dict,
   children,
-  className,
   ...props
 }: ChatComposerProps) {
+  const [focused, setFocused] = useState(false);
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLFormElement>) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    textAreaRef.current?.focus();
+  };
+
   return (
     <ComposerContext.Provider
-      value={{ value, status, onValueChange, onStop, onRetry }}
+      value={{
+        value,
+        status,
+        onValueChange,
+        onStop,
+        dict,
+        textAreaRef,
+        setFocused,
+      }}
     >
       <form
+        onMouseDown={handleMouseDown}
         className={cn(
-          "border border-border rounded-xl flex flex-col",
-          className,
+          "transition-colors rounded-xl flex flex-col gap-1 shadow-md",
+          focused
+            ? "border border-transparent ring-2 ring-primary"
+            : "border border-border hover:border-border-strong",
         )}
         {...props}
       >
@@ -65,7 +88,9 @@ function ChatComposerInput({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"textarea">) {
-  const { value, onValueChange } = useComposer();
+  const { value, onValueChange, dict, textAreaRef, setFocused } = useComposer();
+  const baseDir = useDirection();
+  const isEmpty = !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -74,14 +99,28 @@ function ChatComposerInput({
     }
   };
 
+  useEffect(() => {
+    const el = textAreaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const lineHeight = parseInt(getComputedStyle(el).lineHeight);
+    const maxHeight = lineHeight * 10;
+    el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
+  }, [value]);
+
   return (
     <textarea
+      dir={isEmpty ? baseDir : "auto"}
+      ref={textAreaRef}
       value={value}
       onChange={(e) => onValueChange(e.target.value)}
       onKeyDown={handleKeyDown}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       rows={2}
+      placeholder={dict.placeholder}
       className={cn(
-        "w-full resize-none bg-transparent outline-none",
+        "w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral",
         className,
       )}
       {...props}
@@ -94,7 +133,29 @@ function ChatComposerFooter({
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
   return (
-    <div className="flex flex-row justify-between" {...props}>
+    <div className="flex flex-row justify-between pb-3 px-3" {...props}>
+      {children}
+    </div>
+  );
+}
+
+function ChatComposerFooterStart({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
+  return (
+    <div className="flex flex-row" {...props}>
+      {children}
+    </div>
+  );
+}
+
+function ChatComposerFooterEnd({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"div">) {
+  return (
+    <div className="flex flex-row" {...props}>
       {children}
     </div>
   );
@@ -104,29 +165,23 @@ function ChatComposerAction({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"button">) {
-  const { value, status, onStop, onRetry } = useComposer();
+  const { value, status, onStop } = useComposer();
   const ref = useRef<HTMLButtonElement>(null);
 
   const isStreaming = status === "streaming" || status === "submitted";
-  const isError = status === "error";
-  const isReady = !isStreaming && !isError;
+  const isReady = !isStreaming;
   const isEmpty = !value.trim();
 
-  const actionKey = isStreaming ? "stop" : isError ? "retry" : "send";
+  const actionKey = isStreaming ? "stop" : "send";
 
   const icons = {
     send: <IconArrowNarrowUp className="size-5" />,
     stop: <IconPlayerStopFilled className="size-5" />,
-    retry: <IconRefresh className="size-5" />,
   };
 
   const handleClick = () => {
     if (isStreaming) {
       onStop();
-      return;
-    }
-    if (isError) {
-      onRetry();
       return;
     }
     ref.current?.form?.requestSubmit();
@@ -141,7 +196,6 @@ function ChatComposerAction({
       className={cn(
         "flex items-center justify-center p-1 rounded-full transition-colors duration-200 shrink-0",
         isStreaming && "bg-foreground text-background",
-        isError && "bg-destructive text-destructive-foreground",
         isReady && !isEmpty && "bg-foreground text-background",
         isReady && isEmpty && "bg-muted text-muted-foreground",
         className,
@@ -164,9 +218,8 @@ function ChatComposerAction({
   );
 }
 
-export {
-  ChatComposer,
-  ChatComposerFooter,
-  ChatComposerInput,
-  ChatComposerAction,
-};
+ChatComposer.Input = ChatComposerInput;
+ChatComposer.Footer = ChatComposerFooter;
+ChatComposerFooter.Start = ChatComposerFooterStart;
+ChatComposerFooter.End = ChatComposerFooterEnd;
+ChatComposer.Action = ChatComposerAction;

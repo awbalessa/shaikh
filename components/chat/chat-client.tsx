@@ -6,19 +6,14 @@ import { useDirection } from "../ui/direction";
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
 import ChatMessages from "./chat-messages";
-import {
-  ChatComposer,
-  ChatComposerFooter,
-  ChatComposerInput,
-  ChatComposerAction,
-} from "./chat-composer";
+import ChatComposer from "./chat-composer";
 
 export default function ChatClient() {
+  const dir = useDirection();
   const { locale } = useLocale();
   const dict = dictionaries[locale];
-  const dir = useDirection();
 
-  const { messages, status, sendMessage, stop, regenerate } = useChat();
+  const { messages, status, sendMessage, stop } = useChat();
   const [input, setInput] = useState("");
 
   const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
@@ -31,22 +26,31 @@ export default function ChatClient() {
   };
 
   return (
-    <div dir={dir} className="flex flex-col h-full max-w-2xl mx-auto p-2 pb-4">
-      <ChatMessages messages={messages} status={status} className="flex-1" />
-      <ChatComposer
-        onSubmit={handleSubmit}
-        onStop={stop}
-        onRetry={regenerate}
-        value={input}
-        onValueChange={setInput}
+    <div dir={dir} className="flex flex-col h-full">
+      <ChatMessages
+        messages={messages}
         status={status}
-      >
-        <ChatComposerInput placeholder={dict.chat.composer.placeholder} />
-        <ChatComposerFooter>
-          <div></div>
-          <ChatComposerAction />
-        </ChatComposerFooter>
-      </ChatComposer>
+        className="flex-1 px-4"
+      />
+      <div className="composer-fade h-6" />
+      <div className="px-4 pb-4">
+        <ChatComposer
+          value={input}
+          status={status}
+          onSubmit={handleSubmit}
+          onStop={stop}
+          onValueChange={setInput}
+          dict={dict.chat.composer}
+        >
+          <ChatComposer.Input />
+          <ChatComposer.Footer>
+            <ChatComposer.Footer.Start />
+            <ChatComposer.Footer.End>
+              <ChatComposer.Action />
+            </ChatComposer.Footer.End>
+          </ChatComposer.Footer>
+        </ChatComposer>
+      </div>
     </div>
   );
 }

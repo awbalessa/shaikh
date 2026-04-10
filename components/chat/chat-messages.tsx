@@ -18,7 +18,10 @@ export default function ChatMessages({
   const isWaiting = status === "submitted" && messages.at(-1)?.role === "user";
 
   return (
-    <div className={cn("flex-1 overflow-y-auto", className)} {...props}>
+    <div
+      className={cn("overflow-y-auto messages-scroll", className)}
+      {...props}
+    >
       {messages.map((message) => (
         <div
           key={message.id}

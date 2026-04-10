@@ -132,7 +132,7 @@
 }
 
 @theme inline {
-    --color-bg: var(--color-bg);
+    --color-background: var(--background);
     --color-bg-inverse: var(--color-bg-inverse);
     --color-highlight: var(--color-highlight);
     --color-surface-light: var(--color-surface-light);
@@ -237,6 +237,11 @@
 .messages-scroll,
 textarea.composer-scroll {
     scrollbar-width: auto;
+    scrollbar-color: transparent transparent;
+}
+
+.messages-scroll:hover,
+textarea.composer-scroll:hover {
     scrollbar-color: var(--color-surface-medium) transparent;
 }
 
@@ -253,14 +258,23 @@ textarea.composer-scroll::-webkit-scrollbar-track {
 
 .messages-scroll::-webkit-scrollbar-thumb,
 textarea.composer-scroll::-webkit-scrollbar-thumb {
-    background-color: var(--color-surface-medium);
-    border-radius: var(--radius-sm);
+    background-color: transparent;
+    border-radius: var(--radius-full);
+    transition: background-color 0.2s ease;
 }
 
-/* Fade above composer so messages soften as they scroll behind */
+.messages-scroll:hover::-webkit-scrollbar-thumb,
+textarea.composer-scroll:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-medium);
+}
+
 .composer-fade {
     margin-top: -1.5rem;
-    background: linear-gradient(to bottom, transparent, var(--color-bg));
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        var(--color-background)
+    );
 }
 
 @layer base {
