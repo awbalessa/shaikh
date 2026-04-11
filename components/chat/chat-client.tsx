@@ -27,11 +27,7 @@ export default function ChatClient() {
 
   return (
     <div dir={dir} className="flex flex-col h-full">
-      <ChatMessages
-        messages={messages}
-        status={status}
-        className="flex-1 px-4"
-      />
+      <ChatMessages messages={messages} status={status} className="px-4" />
       <div className="composer-fade h-6" />
       <div className="px-4 pb-4">
         <ChatComposer

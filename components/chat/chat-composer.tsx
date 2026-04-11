@@ -7,7 +7,6 @@ import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useDirection } from "../ui/direction";
 import { dictionaries } from "@/lib/i18n/dictionaries";
-import { text } from "stream/consumers";
 
 type ComposerDict =
   (typeof dictionaries)[keyof typeof dictionaries]["chat"]["composer"];
@@ -73,7 +72,7 @@ export default function ChatComposer({
         className={cn(
           "transition-colors rounded-xl flex flex-col gap-1 shadow-md",
           focused
-            ? "border border-transparent ring-2 ring-primary"
+            ? "border border-transparent ring-3 ring-primary"
             : "border border-border hover:border-border-strong",
         )}
         {...props}
@@ -106,7 +105,7 @@ function ChatComposerInput({
     const lineHeight = parseInt(getComputedStyle(el).lineHeight);
     const maxHeight = lineHeight * 10;
     el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-  }, [value]);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <textarea
@@ -176,7 +175,7 @@ function ChatComposerAction({
 
   const icons = {
     send: <IconArrowNarrowUp className="size-5" />,
-    stop: <IconPlayerStopFilled className="size-5" />,
+    stop: <IconPlayerStopFilled className="size-4" />,
   };
 
   const handleClick = () => {
@@ -194,7 +193,7 @@ function ChatComposerAction({
       onClick={handleClick}
       disabled={isReady && isEmpty}
       className={cn(
-        "flex items-center justify-center p-1 rounded-full transition-colors duration-200 shrink-0",
+        "flex items-center justify-center size-7 rounded-full transition-colors duration-200 shrink-0",
         isStreaming && "bg-foreground text-background",
         isReady && !isEmpty && "bg-foreground text-background",
         isReady && isEmpty && "bg-muted text-muted-foreground",
