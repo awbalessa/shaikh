@@ -1,17 +1,13 @@
 "use client";
 
-import { dictionaries } from "@/lib/i18n/dictionaries";
-import { useLocale } from "@/lib/i18n/locale-context";
-import { useDirection } from "../ui/direction";
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
 import ChatMessages from "./chat-messages";
 import ChatComposer from "./chat-composer";
+import { useDictionary } from "@/lib/i18n/dictionaries";
 
 export default function ChatClient() {
-  const dir = useDirection();
-  const { locale } = useLocale();
-  const dict = dictionaries[locale];
+  const dict = useDictionary();
 
   const { messages, status, sendMessage, stop } = useChat();
   const [input, setInput] = useState("");
@@ -26,7 +22,7 @@ export default function ChatClient() {
   };
 
   return (
-    <div dir={dir} className="flex flex-col h-full">
+    <div className="flex flex-col h-full">
       <ChatMessages messages={messages} status={status} className="px-4" />
       <div className="composer-fade h-6" />
       <div className="px-4 pb-4">

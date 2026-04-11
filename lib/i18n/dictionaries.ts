@@ -1,3 +1,5 @@
+import { useLocale } from "@/components/providers/locale-provider";
+
 export const dictionaries = {
   en: {
     chat: {
@@ -16,3 +18,8 @@ export const dictionaries = {
 } as const;
 
 export type Dictionary = (typeof dictionaries)[keyof typeof dictionaries];
+
+export function useDictionary() {
+  const { locale } = useLocale();
+  return dictionaries[locale];
+}

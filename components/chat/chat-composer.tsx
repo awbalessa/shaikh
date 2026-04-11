@@ -5,7 +5,6 @@ import { ChatStatus } from "ai";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useDirection } from "../ui/direction";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 
 type ComposerDict =
@@ -88,7 +87,6 @@ function ChatComposerInput({
   ...props
 }: React.ComponentPropsWithoutRef<"textarea">) {
   const { value, onValueChange, dict, textAreaRef, setFocused } = useComposer();
-  const baseDir = useDirection();
   const isEmpty = !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -109,7 +107,7 @@ function ChatComposerInput({
 
   return (
     <textarea
-      dir={isEmpty ? baseDir : "auto"}
+      dir={isEmpty ? "" : "auto"}
       ref={textAreaRef}
       value={value}
       onChange={(e) => onValueChange(e.target.value)}

@@ -1,11 +1,9 @@
 import "../globals.css";
-import type { Metadata } from "next";
-import { DirectionProvider } from "@/components/ui/direction";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
 import "streamdown/styles.css";
+import type { Metadata } from "next";
+import { AppProviders } from "@/components/providers";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { isLocale, locales } from "@/lib/i18n/locale";
-import { LocaleProvider } from "@/lib/i18n/locale-context";
 import { notFound } from "next/navigation";
 
 export function generateStaticParams() {
@@ -30,14 +28,10 @@ export default async function RootLayout({
   return (
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <body>
-        <LocaleProvider locale={locale}>
-          <DirectionProvider dir={dir}>
-            <TooltipProvider>
-              <ThemeToggle />
-              {children}
-            </TooltipProvider>
-          </DirectionProvider>
-        </LocaleProvider>
+        <AppProviders locale={locale} dir={dir}>
+          <ThemeToggle />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );
