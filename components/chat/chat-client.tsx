@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
-import ChatMessages from "./chat-messages";
+import ChatThread from "./chat-thread";
 import ChatComposer from "./chat-composer";
 import { useDictionary } from "@/lib/i18n/dictionaries";
 
@@ -23,7 +23,7 @@ export default function ChatClient() {
 
   return (
     <div className="flex flex-col h-full">
-      <ChatMessages messages={messages} status={status} className="px-4" />
+      <ChatThread messages={messages} status={status} className="px-4" />
       <div className="composer-fade h-6" />
       <div className="px-4 pb-4">
         <ChatComposer

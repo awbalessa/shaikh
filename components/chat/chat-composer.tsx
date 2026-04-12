@@ -2,7 +2,14 @@
 
 import { cn } from "@/lib/utils";
 import { ChatStatus } from "ai";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
 import { dictionaries } from "@/lib/i18n/dictionaries";
@@ -48,6 +55,19 @@ export default function ChatComposer({
   const [focused, setFocused] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const contextValue = useMemo(
+    () => ({
+      value,
+      status,
+      onValueChange,
+      onStop,
+      dict,
+      textAreaRef,
+      setFocused,
+    }),
+    [value, status, onValueChange, onStop, dict],
+  );
+
   const handleMouseDown = (e: React.MouseEvent<HTMLFormElement>) => {
     if ((e.target as HTMLElement).closest("button")) return;
     e.preventDefault();
@@ -55,17 +75,7 @@ export default function ChatComposer({
   };
 
   return (
-    <ComposerContext.Provider
-      value={{
-        value,
-        status,
-        onValueChange,
-        onStop,
-        dict,
-        textAreaRef,
-        setFocused,
-      }}
-    >
+    <ComposerContext.Provider value={contextValue}>
       <form
         onMouseDown={handleMouseDown}
         className={cn(
@@ -158,6 +168,11 @@ function ChatComposerFooterEnd({
   );
 }
 
+const ChatComposerActionIcons = {
+  send: <IconArrowNarrowUp className="size-5" />,
+  stop: <IconPlayerStopFilled className="size-4" />,
+};
+
 function ChatComposerAction({
   className,
   ...props
@@ -170,11 +185,6 @@ function ChatComposerAction({
   const isEmpty = !value.trim();
 
   const actionKey = isStreaming ? "stop" : "send";
-
-  const icons = {
-    send: <IconArrowNarrowUp className="size-5" />,
-    stop: <IconPlayerStopFilled className="size-4" />,
-  };
 
   const handleClick = () => {
     if (isStreaming) {
@@ -208,7 +218,7 @@ function ChatComposerAction({
           transition={{ duration: 0.15, ease: "easeOut" }}
           className="flex items-center justify-center"
         >
-          {icons[actionKey]}
+          {ChatComposerActionIcons[actionKey]}
         </motion.span>
       </AnimatePresence>
     </button>
