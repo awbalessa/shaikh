@@ -269,7 +269,6 @@ textarea.composer-scroll:hover::-webkit-scrollbar-thumb {
 }
 
 .composer-fade {
-    margin-top: -1.5rem;
     background: linear-gradient(
         to bottom,
         transparent,

@@ -24,7 +24,6 @@ export default function ChatClient() {
   return (
     <div className="flex flex-col h-full">
       <ChatThread messages={messages} status={status} className="px-4" />
-      <div className="composer-fade h-6" />
       <div className="px-4 pb-4">
         <ChatComposer
           value={input}

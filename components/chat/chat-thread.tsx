@@ -87,20 +87,15 @@ export default function ChatThread({
     const lastUser = lastUserRef.current;
     if (!container || !spacer || !lastUser) return;
 
-    // Where are we right now?
     const prevScrollTop = container.scrollTop;
 
-    // Reset spacer so we measure real content height
     spacer.style.minHeight = "0px";
 
-    // Height from last user message down to the spacer
     const lastExchangeHeight = spacer.offsetTop - lastUser.offsetTop;
     const remaining = container.clientHeight - lastExchangeHeight;
 
-    // Spacer fills remaining space but not less than MIN_SPACER
     spacer.style.minHeight = `${Math.max(MIN_SPACER, remaining)}px`;
 
-    // Restore scroll position so the user doesn’t get yanked
     container.scrollTop = prevScrollTop;
   }, [status]);
 
@@ -138,13 +133,14 @@ export default function ChatThread({
 
         <ThreadWaitingIndicator isWaiting={isWaiting} />
 
-        <div ref={spacerRef} className="flex-1 shrink-0" />
+        <ThreadSpacer ref={spacerRef} />
       </div>
 
       <ThreadScrollButton
         showButton={showButton}
         onClick={onScrollButtonClick}
       />
+      <div className="absolute bottom-0 inset-x-0 h-6 pointer-events-none composer-fade" />
     </div>
   );
 }
@@ -191,11 +187,11 @@ const ThreadAssistantMessage = memo(function ThreadAssistantMessage({
   );
 });
 
-type ThreadWaitingIndicatorProps = React.ComponentPropsWithoutRef<"div"> & {
+type ThreadWaitingIndicatorProps = HTMLMotionProps<"div"> & {
   isWaiting: boolean;
 };
 
-const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
+export const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
   isWaiting,
   className,
   ...props
@@ -203,11 +199,24 @@ const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
   if (!isWaiting) return null;
 
   return (
-    <div className={cn("py-2 opacity-40 text-sm", className)} {...props}>
-      ...
-    </div>
+    <motion.div
+      animate={{ opacity: [0.4, 1, 0.4] }}
+      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+      className={cn("w-3 h-3 rounded-full bg-foreground my-2", className)}
+      {...props}
+    />
   );
 });
+
+function ThreadSpacer({
+  ref,
+  className,
+  ...props
+}: React.ComponentPropsWithRef<"div">) {
+  return (
+    <div ref={ref} className={cn("flex-1 shrink-0", className)} {...props} />
+  );
+}
 
 type ThreadScrollButtonProps = HTMLMotionProps<"button"> & {
   showButton: boolean;

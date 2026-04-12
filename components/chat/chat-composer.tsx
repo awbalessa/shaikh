@@ -79,7 +79,7 @@ export default function ChatComposer({
       <form
         onMouseDown={handleMouseDown}
         className={cn(
-          "transition-colors rounded-xl flex flex-col gap-1 shadow-md",
+          "relative transition-colors rounded-xl flex flex-col gap-1 shadow-md",
           focused
             ? "border border-transparent ring-3 ring-primary"
             : "border border-border hover:border-border-strong",
