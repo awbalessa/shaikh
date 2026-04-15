@@ -200,11 +200,20 @@ export const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
 
   return (
     <motion.div
-      animate={{ opacity: [0.4, 1, 0.4] }}
-      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-      className={cn("w-3 h-3 rounded-full bg-foreground my-2", className)}
+      initial={{ opacity: 1, scale: 1 }}
+      animate={{ opacity: 0.6, scale: 0.8 }}
+      transition={{
+        duration: 1.2,
+        repeat: Infinity,
+        repeatType: "mirror",
+        ease: "easeInOut",
+      }}
+      className={cn(
+        "size-3 shrink-0 rounded-full bg-foreground my-2",
+        className,
+      )}
       {...props}
-    />
+    ></motion.div>
   );
 });
 
@@ -213,9 +222,7 @@ function ThreadSpacer({
   className,
   ...props
 }: React.ComponentPropsWithRef<"div">) {
-  return (
-    <div ref={ref} className={cn("flex-1 shrink-0", className)} {...props} />
-  );
+  return <div ref={ref} className={cn("flex-1", className)} {...props} />;
 }
 
 type ThreadScrollButtonProps = HTMLMotionProps<"button"> & {

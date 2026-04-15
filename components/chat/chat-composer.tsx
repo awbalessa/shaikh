@@ -169,8 +169,8 @@ function ChatComposerFooterEnd({
 }
 
 const ChatComposerActionIcons = {
-  send: <IconArrowNarrowUp className="size-5" />,
-  stop: <IconPlayerStopFilled className="size-4" />,
+  send: <IconArrowNarrowUp className="size-4.5" />,
+  stop: <IconPlayerStopFilled className="size-4.5" />,
 };
 
 function ChatComposerAction({
