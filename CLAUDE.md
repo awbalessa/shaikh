@@ -27,13 +27,13 @@ When in doubt about any API, hook option, component prop, or protocol detail —
 
 **All AI features must follow the Vercel AI SDK paradigm end-to-end.**
 
-The stack is: **AI Elements UI → `useChat` → BFF route → `streamText` + Vercel Gateway → Gemini**
+The stack is: **custom chat UI → `useChat` → BFF route → `streamText` + Vercel Gateway → Gemini**
 
 Any new AI feature should:
 1. Use Vercel AI SDK UI (`@ai-sdk/react`, `useChat`, etc.) for hook-level state
-2. Use AI Elements components for all chat/AI UI — not custom-built alternatives
+2. Build chat UI as custom components in `components/chat/` — no UI framework dependency
 3. Route through the BFF at `app/api/chat/route.ts` using `streamText().toUIMessageStreamResponse()`
-4. Use `streamdown` for rendering streaming markdown inside AI Elements message slots
+4. Use `streamdown` for rendering streaming markdown in assistant messages
 5. Use `smoothStream` word-boundary buffering in `streamText` options — never on the frontend
 
 ## Commands
@@ -57,7 +57,7 @@ No separate backend. All AI routing goes through the Vercel AI Gateway via `stre
 
 ## Current status
 
-Rewriting to use **AI Elements** as the UI foundation. The stack is fully Vercel: AI Elements components + `useChat` + Vercel AI Gateway + Gemini. The old Go backend has been removed.
+Building a custom chat UI from scratch. No shadcn, no AI Elements. The stack is fully Vercel: custom components + `useChat` + Vercel AI Gateway + Gemini. The old Go backend has been removed.
 
 ## Architecture
 
@@ -69,11 +69,11 @@ The project is a single Next.js app at the repository root.
 
 **`services/chat.ts`** — AI logic. Calls `streamText` with the Vercel Gateway model string. This is where system prompts, tools, and model selection live.
 
-**`components/ai-elements/`** — AI Elements component library (scaffolded as source files, shadcn-style). This is the UI foundation for all chat and AI interfaces.
+**`components/chat/`** — All chat UI components wired to `useChat`. Custom-built, no UI framework dependency.
 
-**`components/chat/`** — App-specific chat components wired to `useChat`. Being refactored to use AI Elements as the base.
+**`components/ui/`** — Custom Radix UI wrappers (hand-written, not shadcn-scaffolded). Uses the `radix-ui` unified package. Build primitives here as needed (Tooltip, Popover, Dialog, etc.).
 
-**`components/ui/`** — shadcn/Radix primitives. AI Elements builds on these.
+**`components/providers/`** — App-level providers (theme, locale, direction).
 
 **`lib/`** — Utilities (`utils.ts`, `config.ts`).
 

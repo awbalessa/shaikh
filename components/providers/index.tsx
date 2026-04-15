@@ -4,6 +4,7 @@ import { ThemeProvider } from "./theme-provider";
 import { DirectionProvider } from "./direction-provider";
 import { LocaleProvider } from "./locale-provider";
 import type { Locale } from "@/lib/i18n/locale";
+import { Tooltip } from "radix-ui";
 
 export function AppProviders({
   locale,
@@ -17,7 +18,9 @@ export function AppProviders({
   return (
     <LocaleProvider locale={locale}>
       <DirectionProvider dir={dir}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <Tooltip.Provider delayDuration={100}>{children}</Tooltip.Provider>
+        </ThemeProvider>
       </DirectionProvider>
     </LocaleProvider>
   );

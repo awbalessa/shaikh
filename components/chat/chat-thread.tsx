@@ -11,19 +11,31 @@ import {
   useRef,
   useState,
 } from "react";
-import { IconArrowNarrowDown } from "@tabler/icons-react";
+import {
+  IconArrowNarrowDown,
+  IconCheck,
+  IconCopy,
+  IconEdit,
+} from "@tabler/icons-react";
 import { AnimatePresence, HTMLMotionProps, motion } from "motion/react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 const MIN_SPACER = 64;
+
+type ThreadDict =
+  (typeof dictionaries)[keyof typeof dictionaries]["chat"]["thread"];
 
 type ChatThreadProps = React.ComponentPropsWithoutRef<"div"> & {
   messages: UIMessage[];
   status: ChatStatus;
+  dict: ThreadDict;
 };
 
 export default function ChatThread({
   messages,
   status,
+  dict,
   className,
   ...props
 }: ChatThreadProps) {
@@ -113,73 +125,80 @@ export default function ChatThread({
           <div
             key={message.id}
             ref={message.id === lastUserMessageId ? lastUserRef : undefined}
-            className="py-2"
           >
             {message.role === "user" ? (
-              <ThreadUserMessage
+              <UserMessage
                 message={message}
-                onCopy={onCopy}
-                onEdit={onEdit}
+                onMessageCopy={onCopy}
+                onMessageEdit={onEdit}
+                dict={dict}
               />
             ) : (
-              <ThreadAssistantMessage
+              <AssistantMessage
                 message={message}
-                onCopy={onCopy}
-                onRetry={onRetry}
+                onMessageCopy={onCopy}
+                onMessageRetry={onRetry}
               />
             )}
           </div>
         ))}
 
-        <ThreadWaitingIndicator isWaiting={isWaiting} />
+        <WaitingIndicator isWaiting={isWaiting} />
 
-        <ThreadSpacer ref={spacerRef} />
+        <Spacer ref={spacerRef} />
       </div>
 
-      <ThreadScrollButton
-        showButton={showButton}
-        onClick={onScrollButtonClick}
-      />
+      <ScrollButton showButton={showButton} onClick={onScrollButtonClick} />
       <div className="absolute bottom-0 inset-x-0 h-6 pointer-events-none composer-fade" />
     </div>
   );
 }
 
-type ThreadUserMessageProps = {
+type UserMessageProps = React.ComponentPropsWithoutRef<"div"> & {
   message: UIMessage;
-  onCopy: (text: string) => void;
-  onEdit: (message: UIMessage) => void;
+  onMessageCopy: (text: string) => void;
+  onMessageEdit: (message: UIMessage) => void;
+  dict: ThreadDict;
 };
 
-const ThreadUserMessage = memo(function ThreadUserMessage({
+const UserMessage = memo(function UserMessage({
   message,
-  onCopy,
-  onEdit,
-}: ThreadUserMessageProps) {
+  onMessageCopy,
+  onMessageEdit,
+  dict,
+  className,
+}: UserMessageProps) {
   return (
-    <div className="flex justify-start">
-      <div dir="auto" className="bg-muted rounded-2xl px-3 py-2 max-w-[80%]">
+    <div className={cn("group flex flex-col items-start gap-1", className)}>
+      <div dir="auto" className="bg-muted rounded-2xl px-4 py-2 max-w-[80%]">
         {message.parts.filter(isTextUIPart).map((part, i) => (
           <span key={i}>{part.text}</span>
         ))}
       </div>
+      <ThreadUserMessageActions
+        message={message}
+        onMessageCopy={onMessageCopy}
+        onMessageEdit={onMessageEdit}
+        dict={dict}
+      />
     </div>
   );
 });
 
-type ThreadAssistantMessageProps = {
+type AssistantMessageProps = React.ComponentPropsWithoutRef<"div"> & {
   message: UIMessage;
-  onCopy: (text: string) => void;
-  onRetry: (messageID: string) => void;
+  onMessageCopy: (text: string) => void;
+  onMessageRetry: (messageID: string) => void;
 };
 
-const ThreadAssistantMessage = memo(function ThreadAssistantMessage({
+const AssistantMessage = memo(function AssistantMessage({
   message,
-  onCopy,
-  onRetry,
-}: ThreadAssistantMessageProps) {
+  onMessageCopy,
+  onMessageRetry,
+  className,
+}: AssistantMessageProps) {
   return (
-    <div dir="auto">
+    <div dir="auto" className={cn("", className)}>
       {message.parts.filter(isTextUIPart).map((part, i) => (
         <Streamdown key={i}>{part.text}</Streamdown>
       ))}
@@ -187,15 +206,116 @@ const ThreadAssistantMessage = memo(function ThreadAssistantMessage({
   );
 });
 
-type ThreadWaitingIndicatorProps = HTMLMotionProps<"div"> & {
+type MessageActionButtonProps = React.ComponentPropsWithoutRef<"button"> & {
+  label: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children: React.ReactNode;
+};
+
+function MessageActionButton({
+  label,
+  open,
+  onOpenChange,
+  children,
+  ...buttonProps
+}: MessageActionButtonProps) {
+  return (
+    <Tooltip open={open} onOpenChange={onOpenChange}>
+      <TooltipTrigger asChild>
+        <button
+          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted
+          transition-colors"
+          {...buttonProps}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ThreadUserMessageActions({
+  message,
+  onMessageCopy,
+  onMessageEdit,
+  dict,
+}: UserMessageProps) {
+  const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    const text = message.parts
+      .filter(isTextUIPart)
+      .map((p) => p.text)
+      .join("");
+    onMessageCopy(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [message.parts, onMessageCopy]);
+
+  return (
+    <div
+      className="flex items-center gap-0.5 py-1 opacity-0 group-hover:opacity-100
+transition-opacity duration-100"
+    >
+      <MessageActionButton
+        label={
+          copied
+            ? dict.userMessage.actions.copied
+            : dict.userMessage.actions.copy
+        }
+        open={hovered || copied}
+        onOpenChange={setHovered}
+        onClick={handleCopy}
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          {copied ? (
+            <motion.span
+              key="check"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0 }}
+              transition={{ duration: 0.1 }}
+              className="block"
+            >
+              <IconCheck className="size-4" />
+            </motion.span>
+          ) : (
+            <motion.span
+              key="copy"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0 }}
+              transition={{ duration: 0.1 }}
+              className="block"
+            >
+              <IconCopy className="size-4" />
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </MessageActionButton>
+
+      <MessageActionButton
+        label={dict.userMessage.actions.edit}
+        onClick={() => onMessageEdit(message)}
+      >
+        <IconEdit className="size-4" />
+      </MessageActionButton>
+    </div>
+  );
+}
+
+type WaitingIndicatorProps = HTMLMotionProps<"div"> & {
   isWaiting: boolean;
 };
 
-export const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
+export const WaitingIndicator = memo(function WaitingIndicator({
   isWaiting,
   className,
   ...props
-}: ThreadWaitingIndicatorProps) {
+}: WaitingIndicatorProps) {
   if (!isWaiting) return null;
 
   return (
@@ -217,7 +337,7 @@ export const ThreadWaitingIndicator = memo(function ThreadWaitingIndicator({
   );
 });
 
-function ThreadSpacer({
+function Spacer({
   ref,
   className,
   ...props
@@ -225,17 +345,17 @@ function ThreadSpacer({
   return <div ref={ref} className={cn("flex-1", className)} {...props} />;
 }
 
-type ThreadScrollButtonProps = HTMLMotionProps<"button"> & {
+type ScrollButtonProps = HTMLMotionProps<"button"> & {
   showButton: boolean;
   onClick: () => void;
 };
 
-const ThreadScrollButton = memo(function ThreadScrollButton({
+const ScrollButton = memo(function ScrollButton({
   showButton,
   onClick,
   className,
   ...props
-}: ThreadScrollButtonProps) {
+}: ScrollButtonProps) {
   return (
     <AnimatePresence>
       {showButton && (

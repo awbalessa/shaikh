@@ -14,6 +14,12 @@ import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
 import { dictionaries } from "@/lib/i18n/dictionaries";
 
+ChatComposer.Input = ChatComposerInput;
+ChatComposer.Footer = ChatComposerFooter;
+ChatComposerFooter.Start = ChatComposerFooterStart;
+ChatComposerFooter.End = ChatComposerFooterEnd;
+ChatComposer.Action = ChatComposerAction;
+
 type ComposerDict =
   (typeof dictionaries)[keyof typeof dictionaries]["chat"]["composer"];
 
@@ -224,9 +230,3 @@ function ChatComposerAction({
     </button>
   );
 }
-
-ChatComposer.Input = ChatComposerInput;
-ChatComposer.Footer = ChatComposerFooter;
-ChatComposerFooter.Start = ChatComposerFooterStart;
-ChatComposerFooter.End = ChatComposerFooterEnd;
-ChatComposer.Action = ChatComposerAction;

@@ -7,7 +7,7 @@ import ChatComposer from "./chat-composer";
 import { useDictionary } from "@/lib/i18n/dictionaries";
 
 export default function ChatClient() {
-  const dict = useDictionary();
+  const dict = useDictionary().chat;
 
   const { messages, status, sendMessage, stop } = useChat();
   const [input, setInput] = useState("");
@@ -23,7 +23,12 @@ export default function ChatClient() {
 
   return (
     <div className="flex flex-col h-full">
-      <ChatThread messages={messages} status={status} className="px-4" />
+      <ChatThread
+        messages={messages}
+        status={status}
+        dict={dict.thread}
+        className="px-4"
+      />
       <div className="px-4 pb-4">
         <ChatComposer
           value={input}
@@ -31,7 +36,7 @@ export default function ChatClient() {
           onSubmit={handleSubmit}
           onStop={stop}
           onValueChange={setInput}
-          dict={dict.chat.composer}
+          dict={dict.composer}
         >
           <ChatComposer.Input />
           <ChatComposer.Footer>
