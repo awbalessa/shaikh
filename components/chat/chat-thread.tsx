@@ -116,7 +116,7 @@ export default function ChatThread({
       <div
         ref={containerRef}
         className={cn(
-          "h-full overflow-y-auto messages-scroll flex flex-col",
+          "h-full overflow-y-auto outline-none focus-visible:outline-none messages-scroll flex flex-col",
           className,
         )}
         {...props}
@@ -169,13 +169,16 @@ const UserMessage = memo(function UserMessage({
   className,
 }: UserMessageProps) {
   return (
-    <div className={cn("group flex flex-col items-start gap-1", className)}>
+    <div
+      dir="ltr"
+      className={cn("group flex flex-col w-full items-end gap-1", className)}
+    >
       <div dir="auto" className="bg-muted rounded-2xl px-4 py-2 max-w-[80%]">
         {message.parts.filter(isTextUIPart).map((part, i) => (
           <span key={i}>{part.text}</span>
         ))}
       </div>
-      <ThreadUserMessageActions
+      <UserMessageActions
         message={message}
         onMessageCopy={onMessageCopy}
         onMessageEdit={onMessageEdit}
@@ -236,7 +239,7 @@ function MessageActionButton({
   );
 }
 
-function ThreadUserMessageActions({
+function UserMessageActions({
   message,
   onMessageCopy,
   onMessageEdit,
@@ -252,7 +255,7 @@ function ThreadUserMessageActions({
       .join("");
     onMessageCopy(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1000);
   }, [message.parts, onMessageCopy]);
 
   return (
@@ -269,6 +272,7 @@ transition-opacity duration-100"
         open={hovered || copied}
         onOpenChange={setHovered}
         onClick={handleCopy}
+        tabIndex={-1}
       >
         <AnimatePresence mode="wait" initial={false}>
           {copied ? (
@@ -300,6 +304,7 @@ transition-opacity duration-100"
       <MessageActionButton
         label={dict.userMessage.actions.edit}
         onClick={() => onMessageEdit(message)}
+        tabIndex={-1}
       >
         <IconEdit className="size-4" />
       </MessageActionButton>
