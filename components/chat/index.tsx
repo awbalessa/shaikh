@@ -2,13 +2,10 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useState } from "react";
-import ChatThread from "./chat-thread";
-import ChatComposer from "./chat-composer";
-import { useDictionary } from "@/lib/i18n/dictionaries";
+import Thread from "./thread";
+import Composer from "./composer";
 
-export default function ChatClient() {
-  const dict = useDictionary().chat;
-
+export default function Client() {
   const { messages, status, sendMessage, stop } = useChat();
   const [input, setInput] = useState("");
 
@@ -16,36 +13,30 @@ export default function ChatClient() {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed || status === "streaming" || status === "submitted") return;
-
     sendMessage({ text: trimmed });
     setInput("");
   };
 
   return (
     <div className="flex flex-col h-full">
-      <ChatThread
-        messages={messages}
-        status={status}
-        dict={dict.thread}
-        className="px-4"
-      />
+      <Thread messages={messages} status={status} className="px-4" />
+
       <div className="px-4 pb-4">
-        <ChatComposer
+        <Composer
           value={input}
           status={status}
           onSubmit={handleSubmit}
           onStop={stop}
           onValueChange={setInput}
-          dict={dict.composer}
         >
-          <ChatComposer.Input />
-          <ChatComposer.Footer>
-            <ChatComposer.Footer.Start />
-            <ChatComposer.Footer.End>
-              <ChatComposer.Action />
-            </ChatComposer.Footer.End>
-          </ChatComposer.Footer>
-        </ChatComposer>
+          <Composer.Input />
+          <Composer.Footer>
+            <Composer.FooterStart />
+            <Composer.FooterEnd>
+              <Composer.Action />
+            </Composer.FooterEnd>
+          </Composer.Footer>
+        </Composer>
       </div>
     </div>
   );

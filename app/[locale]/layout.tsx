@@ -1,38 +1,27 @@
-import "../globals.css";
-import "streamdown/styles.css";
-import type { Metadata } from "next";
+import { getHTMLTextDir } from "intlayer";
+import { IntlayerClientProvider, NextLayoutIntlayer } from "next-intlayer";
+export { generateStaticParams } from "next-intlayer";
 import { AppProviders } from "@/components/providers";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { isLocale, locales } from "@/lib/i18n/locale";
-import { notFound } from "next/navigation";
-
-export function generateStaticParams() {
-  return locales.map((locale) => ({ locale }));
-}
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Shaikh",
   description: "Ask Shaikh",
 };
 
-export default async function RootLayout({
-  children,
-  params,
-}: LayoutProps<"/[locale]">) {
+const LocaleLayout: NextLayoutIntlayer = async ({ children, params }) => {
   const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
-  const isRTL = locale === "ar";
-  const dir = isRTL ? "rtl" : "ltr";
+  const dir = getHTMLTextDir(locale);
 
   return (
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <body>
-        <AppProviders locale={locale} dir={dir}>
-          <ThemeToggle />
-          {children}
-        </AppProviders>
+        <IntlayerClientProvider locale={locale}>
+          <AppProviders dir={dir as "ltr" | "rtl"}>{children}</AppProviders>
+        </IntlayerClientProvider>
       </body>
     </html>
   );
-}
+};
+
+export default LocaleLayout;

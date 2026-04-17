@@ -12,23 +12,22 @@ import {
 } from "react";
 import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
-import { dictionaries } from "@/lib/i18n/dictionaries";
+import { useIntlayer } from "next-intlayer";
 
-ChatComposer.Input = ChatComposerInput;
-ChatComposer.Footer = ChatComposerFooter;
-ChatComposerFooter.Start = ChatComposerFooterStart;
-ChatComposerFooter.End = ChatComposerFooterEnd;
-ChatComposer.Action = ChatComposerAction;
+Composer.Input = ComposerInput;
+Composer.Footer = ComposerFooter;
+Composer.FooterStart = ComposerFooterStart;
+Composer.FooterEnd = ComposerFooterEnd;
+Composer.Action = ComposerAction;
 
-type ComposerDict =
-  (typeof dictionaries)[keyof typeof dictionaries]["chat"]["composer"];
+type ComposerContent = ReturnType<typeof useIntlayer<"chat-composer">>;
 
 type ComposerContextValue = {
   value: string;
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  dict: ComposerDict;
+  content: ComposerContent;
   textAreaRef: React.RefObject<HTMLTextAreaElement | null>;
   setFocused: (v: boolean) => void;
 };
@@ -41,23 +40,23 @@ function useComposer() {
   return ctx;
 }
 
-type ChatComposerProps = React.ComponentPropsWithoutRef<"form"> & {
+type ComposerProps = React.ComponentPropsWithoutRef<"form"> & {
   value: string;
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  dict: ComposerDict;
 };
 
-export default function ChatComposer({
+export default function Composer({
   value,
   status,
   onValueChange,
   onStop,
-  dict,
   children,
   ...props
-}: ChatComposerProps) {
+}: ComposerProps) {
+  const content = useIntlayer("chat-composer");
+
   const [focused, setFocused] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -67,11 +66,11 @@ export default function ChatComposer({
       status,
       onValueChange,
       onStop,
-      dict,
+      content,
       textAreaRef,
       setFocused,
     }),
-    [value, status, onValueChange, onStop, dict],
+    [value, status, onValueChange, onStop, content],
   );
 
   const handleMouseDown = (e: React.MouseEvent<HTMLFormElement>) => {
@@ -98,11 +97,12 @@ export default function ChatComposer({
   );
 }
 
-function ChatComposerInput({
+function ComposerInput({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"textarea">) {
-  const { value, onValueChange, dict, textAreaRef, setFocused } = useComposer();
+  const { value, onValueChange, content, textAreaRef, setFocused } =
+    useComposer();
   const isEmpty = !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -131,7 +131,7 @@ function ChatComposerInput({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       rows={2}
-      placeholder={dict.placeholder}
+      placeholder={content.placeholder}
       className={cn(
         "w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral",
         className,
@@ -141,7 +141,7 @@ function ChatComposerInput({
   );
 }
 
-function ChatComposerFooter({
+function ComposerFooter({
   children,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
@@ -152,7 +152,7 @@ function ChatComposerFooter({
   );
 }
 
-function ChatComposerFooterStart({
+function ComposerFooterStart({
   children,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
@@ -163,7 +163,7 @@ function ChatComposerFooterStart({
   );
 }
 
-function ChatComposerFooterEnd({
+function ComposerFooterEnd({
   children,
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
@@ -174,12 +174,12 @@ function ChatComposerFooterEnd({
   );
 }
 
-const ChatComposerActionIcons = {
+const ComposerActionIcons = {
   send: <IconArrowNarrowUp className="size-4.5" />,
   stop: <IconPlayerStopFilled className="size-4.5" />,
 };
 
-function ChatComposerAction({
+function ComposerAction({
   className,
   ...props
 }: React.ComponentPropsWithoutRef<"button">) {
@@ -224,7 +224,7 @@ function ChatComposerAction({
           transition={{ duration: 0.15, ease: "easeOut" }}
           className="flex items-center justify-center"
         >
-          {ChatComposerActionIcons[actionKey]}
+          {ComposerActionIcons[actionKey]}
         </motion.span>
       </AnimatePresence>
     </button>

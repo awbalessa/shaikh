@@ -1,4 +1,4 @@
-import ChatClient from "@/components/chat/chat-client";
+import ChatClient from "@/components/chat";
 
 export default function Page() {
   return (
