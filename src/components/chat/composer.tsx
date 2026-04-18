@@ -123,7 +123,7 @@ function ComposerInput({
 
   return (
     <textarea
-      dir={isEmpty ? "" : "auto"}
+      dir={isEmpty ? undefined : "auto"}
       ref={textAreaRef}
       value={value}
       onChange={(e) => onValueChange(e.target.value)}

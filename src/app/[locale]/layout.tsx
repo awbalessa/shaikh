@@ -2,10 +2,12 @@ import { getHTMLTextDir } from "intlayer";
 import { IntlayerClientProvider, NextLayoutIntlayer } from "next-intlayer";
 export { generateStaticParams } from "next-intlayer";
 import type { Metadata } from "next";
-import { DirectionProvider } from "@/components/providers/direction-provider";
-import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Tooltip } from "radix-ui";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeProvider } from "next-themes";
+import DirectionProvider from "@/components/direction-provider";
+import "../globals.css";
+import "streamdown/styles.css";
 
 export const metadata: Metadata = {
   title: "Shaikh",
@@ -21,7 +23,7 @@ const LocaleLayout: NextLayoutIntlayer = async ({ children, params }) => {
       <body>
         <IntlayerClientProvider locale={locale}>
           <DirectionProvider dir={dir as "rtl" | "ltr"}>
-            <ThemeProvider>
+            <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
               <ThemeToggle />
               <Tooltip.Provider delayDuration={100}>
                 {children}

@@ -1,13 +1,11 @@
 "use client";
 
 import { Direction } from "radix-ui";
+import { PropsWithChildren } from "react";
 
-export function DirectionProvider({
+export default function DirectionProvider({
   dir,
   children,
-}: {
-  dir: "rtl" | "ltr";
-  children: React.ReactNode;
-}) {
+}: PropsWithChildren<{ dir: "rtl" | "ltr" }>) {
   return <Direction.Provider dir={dir}>{children}</Direction.Provider>;
 }
