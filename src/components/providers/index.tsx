@@ -1,5 +1,3 @@
-"use client";
-
 import { ThemeProvider } from "./theme-provider";
 import { DirectionProvider } from "./direction-provider";
 import { Tooltip } from "radix-ui";

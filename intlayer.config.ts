@@ -8,9 +8,8 @@ const config: IntlayerConfig = {
   content: {
     contentDir: ["src"],
   },
-  routing: {
-    mode: "prefix-no-default",
-    storage: [{ type: "cookie" }],
+  log: {
+    mode: "verbose",
   },
 };
 

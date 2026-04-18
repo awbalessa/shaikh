@@ -1,7 +1,6 @@
 import ChatClient from "@/components/chat";
 import { NextPageIntlayer } from "next-intlayer";
 import { IntlayerServerProvider } from "next-intlayer/server";
-import { FC } from "react";
 
 const Page: NextPageIntlayer = async ({ params }) => {
   const { locale } = await params;
@@ -15,14 +14,14 @@ const Page: NextPageIntlayer = async ({ params }) => {
 
 export default Page;
 
-const PageContent: FC = () => {
+function PageContent() {
   return (
     <main className="h-dvh flex flex-row bg-bg text-text overflow-hidden">
       <QuranPane />
       <ChatPane />
     </main>
   );
-};
+}
 
 function QuranPane() {
   return (

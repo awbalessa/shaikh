@@ -6,7 +6,7 @@ export function DirectionProvider({
   dir,
   children,
 }: {
-  dir: "ltr" | "rtl";
+  dir: "rtl" | "ltr";
   children: React.ReactNode;
 }) {
   return <Direction.Provider dir={dir}>{children}</Direction.Provider>;
