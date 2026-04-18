@@ -2,15 +2,15 @@ import { Locales, type IntlayerConfig } from "intlayer";
 
 const config: IntlayerConfig = {
   internationalization: {
-    locales: [Locales.ENGLISH, Locales.ARABIC],
+    locales: [Locales.ARABIC, Locales.ENGLISH],
     defaultLocale: Locales.ARABIC,
   },
   content: {
-    contentDir: ["src", "components", "app"],
+    contentDir: ["src"],
   },
   routing: {
     mode: "prefix-no-default",
-    storage: [{ type: "cookie", name: "INTLAYER_LOCALE" }],
+    storage: [{ type: "cookie" }],
   },
 };
 

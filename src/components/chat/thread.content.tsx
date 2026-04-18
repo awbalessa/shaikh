@@ -1,5 +1,13 @@
 import { t, type Dictionary } from "intlayer";
 
+interface Content {
+  messageActions: {
+    copy: string;
+    copied: string;
+    edit: string;
+  };
+}
+
 export default {
   key: "chat-thread",
   content: {
@@ -9,4 +17,4 @@ export default {
       edit: t({ en: "Edit", ar: "عدّل" }),
     },
   },
-} satisfies Dictionary;
+} satisfies Dictionary<Content>;

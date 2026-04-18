@@ -27,9 +27,9 @@ type ComposerContextValue = {
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  content: ComposerContent;
   textAreaRef: React.RefObject<HTMLTextAreaElement | null>;
   setFocused: (v: boolean) => void;
+  content: ComposerContent;
 };
 
 const ComposerContext = createContext<ComposerContextValue | null>(null);
@@ -66,9 +66,9 @@ export default function Composer({
       status,
       onValueChange,
       onStop,
-      content,
       textAreaRef,
       setFocused,
+      content,
     }),
     [value, status, onValueChange, onStop, content],
   );
@@ -131,7 +131,7 @@ function ComposerInput({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       rows={2}
-      placeholder={content.placeholder}
+      placeholder={content.placeholder.value}
       className={cn(
         "w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral",
         className,

@@ -1,13 +1,28 @@
 import ChatClient from "@/components/chat";
+import { NextPageIntlayer } from "next-intlayer";
+import { IntlayerServerProvider } from "next-intlayer/server";
+import { FC } from "react";
 
-export default function Page() {
+const Page: NextPageIntlayer = async ({ params }) => {
+  const { locale } = await params;
+
+  return (
+    <IntlayerServerProvider locale={locale}>
+      <PageContent />
+    </IntlayerServerProvider>
+  );
+};
+
+export default Page;
+
+const PageContent: FC = () => {
   return (
     <main className="h-dvh flex flex-row bg-bg text-text overflow-hidden">
       <QuranPane />
       <ChatPane />
     </main>
   );
-}
+};
 
 function QuranPane() {
   return (

@@ -1,4 +1,4 @@
-import { Chat } from "@/services/chat";
+import { Chat } from "@/src/services/chat";
 import { UIMessage } from "ai";
 
 export async function POST(req: Request) {
