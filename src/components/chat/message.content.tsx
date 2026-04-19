@@ -1,7 +1,7 @@
 import { t, type Dictionary } from "intlayer";
 
 interface Content {
-  messageActions: {
+  actions: {
     copy: string;
     copied: string;
     edit: string;
@@ -9,9 +9,9 @@ interface Content {
 }
 
 export default {
-  key: "chat-thread",
+  key: "chat-message",
   content: {
-    messageActions: {
+    actions: {
       copy: t({ en: "Copy", ar: "إنسخ" }),
       copied: t({ en: "Copied!", ar: "تم النسخ!" }),
       edit: t({ en: "Edit", ar: "عدّل" }),

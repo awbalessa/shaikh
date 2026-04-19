@@ -2,49 +2,20 @@
 
 import { cn } from "@/lib/utils";
 import { ChatStatus } from "ai";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconArrowNarrowUp, IconPlayerStopFilled } from "@tabler/icons-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useIntlayer } from "next-intlayer";
 
-Composer.Input = ComposerInput;
-Composer.Footer = ComposerFooter;
-Composer.FooterStart = ComposerFooterStart;
-Composer.FooterEnd = ComposerFooterEnd;
-Composer.Action = ComposerAction;
-
-type ComposerContent = ReturnType<typeof useIntlayer<"chat-composer">>;
-
-type ComposerContextValue = {
+type ComposerProps = Omit<
+  React.ComponentPropsWithoutRef<"form">,
+  "onSubmit"
+> & {
   value: string;
   status: ChatStatus;
   onValueChange: (v: string) => void;
   onStop: () => Promise<void>;
-  textAreaRef: React.RefObject<HTMLTextAreaElement | null>;
-  setFocused: (v: boolean) => void;
-  content: ComposerContent;
-};
-
-const ComposerContext = createContext<ComposerContextValue | null>(null);
-
-function useComposer() {
-  const ctx = useContext(ComposerContext);
-  if (!ctx) throw new Error("useComposer must be within <ChatComposer>");
-  return ctx;
-}
-
-type ComposerProps = React.ComponentPropsWithoutRef<"form"> & {
-  value: string;
-  status: ChatStatus;
-  onValueChange: (v: string) => void;
-  onStop: () => Promise<void>;
+  onSubmit: (e: React.SubmitEvent<HTMLFormElement>) => void;
 };
 
 export default function Composer({
@@ -52,26 +23,15 @@ export default function Composer({
   status,
   onValueChange,
   onStop,
-  children,
+  onSubmit,
+  className,
   ...props
 }: ComposerProps) {
   const content = useIntlayer("chat-composer");
-
   const [focused, setFocused] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const contextValue = useMemo(
-    () => ({
-      value,
-      status,
-      onValueChange,
-      onStop,
-      textAreaRef,
-      setFocused,
-      content,
-    }),
-    [value, status, onValueChange, onStop, content],
-  );
+  const isStreaming = status === "streaming" || status === "submitted";
 
   const handleMouseDown = (e: React.MouseEvent<HTMLFormElement>) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -79,37 +39,12 @@ export default function Composer({
     textAreaRef.current?.focus();
   };
 
-  return (
-    <ComposerContext.Provider value={contextValue}>
-      <form
-        onMouseDown={handleMouseDown}
-        className={cn(
-          "relative transition-colors rounded-xl flex flex-col gap-1 shadow-md",
-          focused
-            ? "border border-transparent ring-3 ring-primary"
-            : "border border-border hover:border-border-strong",
-        )}
-        {...props}
-      >
-        {children}
-      </form>
-    </ComposerContext.Provider>
-  );
-}
-
-function ComposerInput({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"textarea">) {
-  const { value, onValueChange, content, textAreaRef, setFocused } =
-    useComposer();
-  const isEmpty = !value.trim();
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      e.currentTarget.form?.requestSubmit();
+  const handleActionClick = () => {
+    if (isStreaming) {
+      onStop();
+      return;
     }
+    textAreaRef.current?.form?.requestSubmit();
   };
 
   useEffect(() => {
@@ -119,101 +54,111 @@ function ComposerInput({
     const lineHeight = parseInt(getComputedStyle(el).lineHeight);
     const maxHeight = lineHeight * 10;
     el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return (
+    <form
+      onMouseDown={handleMouseDown}
+      onSubmit={onSubmit}
+      className={cn(
+        "dark:bg-surface relative transition-colors rounded-xl flex flex-col gap-1 shadow-md",
+        focused
+          ? "border border-transparent ring-3 ring-primary"
+          : "border border-border hover:border-border-strong",
+        className,
+      )}
+      {...props}
+    >
+      <Input
+        ref={textAreaRef}
+        value={value}
+        onValueChange={onValueChange}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={content.placeholder.value}
+      />
+      <Footer>
+        <div />
+        <Action
+          isStreaming={isStreaming}
+          isEmpty={!value.trim()}
+          onClick={handleActionClick}
+        />
+      </Footer>
+    </form>
+  );
+}
+
+type InputProps = {
+  ref: React.RefObject<HTMLTextAreaElement | null>;
+  value: string;
+  onValueChange: (v: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  placeholder: string;
+};
+
+function Input({
+  ref,
+  value,
+  onValueChange,
+  onFocus,
+  onBlur,
+  placeholder,
+}: InputProps) {
+  const isEmpty = !value.trim();
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
+    }
+  };
 
   return (
     <textarea
       dir={isEmpty ? undefined : "auto"}
-      ref={textAreaRef}
+      ref={ref}
       value={value}
       onChange={(e) => onValueChange(e.target.value)}
       onKeyDown={handleKeyDown}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onFocus={onFocus}
+      onBlur={onBlur}
       rows={2}
-      placeholder={content.placeholder.value}
-      className={cn(
-        "w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral",
-        className,
-      )}
-      {...props}
+      placeholder={placeholder}
+      className="w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral"
     />
   );
 }
 
-function ComposerFooter({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
+function Footer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-row justify-between pb-3 px-3" {...props}>
-      {children}
-    </div>
+    <div className="flex flex-row justify-between pb-3 px-3">{children}</div>
   );
 }
 
-function ComposerFooterStart({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div className="flex flex-row" {...props}>
-      {children}
-    </div>
-  );
-}
-
-function ComposerFooterEnd({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div className="flex flex-row" {...props}>
-      {children}
-    </div>
-  );
-}
-
-const ComposerActionIcons = {
-  send: <IconArrowNarrowUp className="size-4.5" />,
-  stop: <IconPlayerStopFilled className="size-4.5" />,
+type ActionProps = {
+  isStreaming: boolean;
+  isEmpty: boolean;
+  onClick: () => void;
 };
 
-function ComposerAction({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"button">) {
-  const { value, status, onStop } = useComposer();
-  const ref = useRef<HTMLButtonElement>(null);
-
-  const isStreaming = status === "streaming" || status === "submitted";
-  const isReady = !isStreaming;
-  const isEmpty = !value.trim();
-
+function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
   const actionKey = isStreaming ? "stop" : "send";
-
-  const handleClick = () => {
-    if (isStreaming) {
-      onStop();
-      return;
-    }
-    ref.current?.form?.requestSubmit();
-  };
 
   return (
     <button
-      ref={ref}
       type="button"
-      onClick={handleClick}
-      disabled={isReady && isEmpty}
+      onClick={onClick}
+      disabled={!isStreaming && isEmpty}
       className={cn(
         "flex items-center justify-center size-7 rounded-full transition-colors duration-200 shrink-0",
-        isStreaming && "bg-foreground text-background",
-        isReady && !isEmpty && "bg-foreground text-background",
-        isReady && isEmpty && "bg-muted text-muted-foreground",
-        className,
+        isStreaming && "bg-primary text-on-primary",
+        !isStreaming && !isEmpty && "bg-primary text-on-primary",
+        !isStreaming &&
+          isEmpty &&
+          "bg-muted dark:bg-surface-raised text-muted-foreground",
       )}
-      {...props}
     >
       <AnimatePresence mode="wait">
         <motion.span
@@ -224,7 +169,11 @@ function ComposerAction({
           transition={{ duration: 0.15, ease: "easeOut" }}
           className="flex items-center justify-center"
         >
-          {ComposerActionIcons[actionKey]}
+          {isStreaming ? (
+            <IconPlayerStopFilled className="size-4.5" />
+          ) : (
+            <IconArrowNarrowUp className="size-4.5" />
+          )}
         </motion.span>
       </AnimatePresence>
     </button>

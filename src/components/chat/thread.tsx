@@ -1,8 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ChatStatus, isTextUIPart, UIMessage } from "ai";
-import { Streamdown } from "streamdown";
+import { ChatStatus, UIMessage } from "ai";
 import {
   forwardRef,
   memo,
@@ -10,13 +9,11 @@ import {
   useDeferredValue,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { IconArrowNarrowDown, IconCopy, IconEdit } from "@tabler/icons-react";
+import { IconArrowNarrowDown } from "@tabler/icons-react";
 import { AnimatePresence, HTMLMotionProps, motion } from "motion/react";
-import { useIntlayer } from "next-intlayer";
 import Message from "./message";
 
 const MIN_SPACER = 64;
@@ -32,8 +29,6 @@ export default function Thread({
   className,
   ...props
 }: ChatThreadProps) {
-  const content = useIntlayer("chat-thread");
-
   const deferredMessages = useDeferredValue(messages);
 
   const isWaiting = status === "submitted" && messages.at(-1)?.role === "user";
@@ -80,7 +75,7 @@ export default function Thread({
         behavior: "smooth",
       });
     });
-  }, [messages.length]); // eslint-disable-line
+  }, [deferredMessages.length]); // eslint-disable-line
 
   useLayoutEffect(() => {
     if (status !== "ready" && status !== "error") return;
@@ -111,7 +106,7 @@ export default function Thread({
             key={message.id}
             ref={message.id === lastUserMessageId ? lastUserRef : undefined}
           >
-            <MessageItem message={message} content={content} />
+            <Message message={message} />
           </div>
         ))}
         <WaitingIndicator isWaiting={isWaiting} />
@@ -119,57 +114,10 @@ export default function Thread({
       </div>
 
       <ScrollButton showButton={showButton} onClick={onScrollButtonClick} />
-      <div className="absolute bottom-0 inset-x-0 h-6 pointer-events-none composer-fade" />
+      <div className="absolute bottom-0 inset-x-0 h-6 pointer-events-none thread-fade" />
     </div>
   );
 }
-
-type MessageItemProps = {
-  message: UIMessage;
-  content: ReturnType<typeof useIntlayer<"chat-thread">>;
-};
-
-const MessageItem = memo(function MessageItem({
-  message,
-  content,
-}: MessageItemProps) {
-  const isUser = message.role === "user";
-  const parts = useMemo(
-    () => message.parts.filter(isTextUIPart),
-    [message.parts],
-  );
-
-  const getText = useCallback(() => parts.map((p) => p.text).join(""), [parts]);
-
-  return (
-    <Message from={message.role}>
-      <Message.Content>
-        {isUser
-          ? parts.map((part, i) => <span key={i}>{part.text}</span>)
-          : parts.map((part, i) => (
-              <Streamdown key={i}>{part.text}</Streamdown>
-            ))}
-      </Message.Content>
-      {isUser && (
-        <Message.Actions>
-          <Message.CopyAction
-            label={content.messageActions.copy}
-            copiedLabel={content.messageActions.copied}
-            getText={getText}
-          >
-            <IconCopy className="size-4" />
-          </Message.CopyAction>
-          <Message.Action
-            label={content.messageActions.edit}
-            onClick={() => {}}
-          >
-            <IconEdit className="size-4" />
-          </Message.Action>
-        </Message.Actions>
-      )}
-    </Message>
-  );
-});
 
 type WaitingIndicatorProps = HTMLMotionProps<"div"> & {
   isWaiting: boolean;
@@ -229,7 +177,7 @@ const ScrollButton = memo(function ScrollButton({
           transition={{ duration: 0.15, ease: "easeOut" }}
           onClick={onClick}
           className={cn(
-            "absolute bottom-2 left-1/2 -translate-x-1/2 bg-background border border-border rounded-full p-1 shadow-md",
+            "absolute z-50 bottom-2 left-1/2 -translate-x-1/2 bg-background dark:bg-surface-raised border border-border rounded-full p-1.5",
             className,
           )}
           {...props}

@@ -28,15 +28,7 @@ export default function Client() {
           onSubmit={handleSubmit}
           onStop={stop}
           onValueChange={setInput}
-        >
-          <Composer.Input />
-          <Composer.Footer>
-            <Composer.FooterStart />
-            <Composer.FooterEnd>
-              <Composer.Action />
-            </Composer.FooterEnd>
-          </Composer.Footer>
-        </Composer>
+        />
       </div>
     </div>
   );

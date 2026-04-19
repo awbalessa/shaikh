@@ -1,86 +1,64 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
+import { isTextUIPart, UIMessage } from "ai";
+import { Streamdown } from "streamdown";
+import { memo, useCallback, useMemo, useState } from "react";
+import { IconCheck, IconCopy, IconEdit } from "@tabler/icons-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useIntlayer } from "next-intlayer";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { motion, AnimatePresence } from "motion/react";
-import { IconCheck } from "@tabler/icons-react";
 
-Message.Content = MessageContent;
-Message.Actions = MessageActions;
-Message.Action = MessageAction;
-Message.CopyAction = MessageCopyAction;
-
-type MessageContextValue = { from: "system" | "user" | "assistant" };
-
-const MessageContext = createContext<MessageContextValue | null>(null);
-
-function useMessage() {
-  const ctx = useContext(MessageContext);
-  if (!ctx) throw new Error("useMessage must be within <Message>");
-  return ctx;
-}
-
-type MessageProps = React.ComponentPropsWithoutRef<"div"> & {
-  from: "system" | "user" | "assistant";
+type MessageProps = {
+  message: UIMessage;
 };
 
-export default function Message({
-  from,
-  children,
-  className,
-  ...props
-}: MessageProps) {
-  const contextValue = useMemo(() => ({ from }), [from]);
-
-  return (
-    <MessageContext.Provider value={contextValue}>
-      <div
-        dir={from === "user" ? "ltr" : "auto"}
-        className={cn(
-          "group flex flex-col w-full",
-          from === "user" && "items-end",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    </MessageContext.Provider>
+const Message = memo(function Message({ message }: MessageProps) {
+  const content = useIntlayer("chat-message");
+  const isUser = message.role === "user";
+  const parts = useMemo(
+    () => message.parts.filter(isTextUIPart),
+    [message.parts],
   );
-}
+  const getText = useCallback(() => parts.map((p) => p.text).join(""), [parts]);
 
-function MessageContent({
-  children,
-  className,
-}: React.ComponentPropsWithoutRef<"div">) {
-  const { from } = useMessage();
   return (
     <div
-      dir="auto"
-      className={cn(
-        from === "user" && "bg-muted rounded-2xl px-4 py-2 max-w-[80%]",
-        className,
-      )}
+      dir={isUser ? "ltr" : "auto"}
+      className={cn("group flex flex-col w-full", isUser && "items-end")}
     >
-      {children}
+      <div
+        dir="auto"
+        className={cn(
+          isUser &&
+            "bg-surface dark:bg-surface-raised rounded-2xl px-4 py-2 max-w-[80%]",
+        )}
+      >
+        {isUser
+          ? parts.map((part, i) => <span key={i}>{part.text}</span>)
+          : parts.map((part, i) => (
+              <Streamdown key={i}>{part.text}</Streamdown>
+            ))}
+      </div>
+      {isUser && (
+        <div className="flex items-center gap-0.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+          <MessageCopyAction
+            label={content.actions.copy}
+            copiedLabel={content.actions.copied}
+            getText={getText}
+          >
+            <IconCopy className="size-4" />
+          </MessageCopyAction>
+          <MessageAction label={content.actions.edit} onClick={() => {}}>
+            <IconEdit className="size-4" />
+          </MessageAction>
+        </div>
+      )}
     </div>
   );
-}
+});
 
-function MessageActions({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-0.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-      {children}
-    </div>
-  );
-}
+export default Message;
 
 type MessageActionProps = {
   label: React.ReactNode;

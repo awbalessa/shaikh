@@ -16,7 +16,7 @@ export default Page;
 
 function PageContent() {
   return (
-    <main className="h-dvh flex flex-row bg-bg text-text overflow-hidden">
+    <main className="h-dvh flex flex-row overflow-hidden">
       <QuranPane />
       <ChatPane />
     </main>
@@ -34,7 +34,7 @@ function QuranPane() {
 function ChatPane() {
   return (
     <section
-      className="shrink-0 basis-5/12 min-w-97.5 border-s border-border size-full"
+      className="shrink-0 basis-5/12 min-w-97.5 border-s border-border-light size-full"
       aria-label="Chat"
     >
       <ChatClient />
