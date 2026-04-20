@@ -5,92 +5,178 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+    /* ── Neutral ramp ─────────────────────────────────── */
     --neutral-50: oklch(1 0 70);
     --neutral-100: oklch(0.96 0.0035 70);
-    --neutral-200: oklch(0.92, 0.005, 70);
-    --neutral-300: oklch(0.85, 0.005, 70);
-    --neutral-600: oklch(0.4 0.005 70);
-    --neutral-700: oklch(0.32 0.005 70);
-    --neutral-800: oklch(0.22 0.005 70);
+    --neutral-200: oklch(0.91 0.005 70);
+    --neutral-300: oklch(0.82 0.005 70);
+    --neutral-400: oklch(0.7 0.005 70);
+    --neutral-500: oklch(0.58 0.005 70);
+    --neutral-600: oklch(0.45 0.005 70);
+    --neutral-700: oklch(0.34 0.005 70);
+    --neutral-800: oklch(0.25 0.005 70);
     --neutral-900: oklch(0.18 0.005 70);
-    --neutral-950: oklch(0.14 0.0035 70);
+    --neutral-950: oklch(0.13 0.0035 70);
 
+    /* ── Primary ramp ─────────────────────────────────── */
     --primary-100: oklch(0.93 0.03 35);
     --primary-200: oklch(0.87 0.08 35);
     --primary-300: oklch(0.8 0.12 35);
     --primary-400: oklch(0.74 0.15 35);
     --primary-500: oklch(0.68 0.18 35);
-    --primary-600: oklch(0.62 0.17 35);
-    --primary-700: oklch(0.54 0.15 35);
-    --primary-800: oklch(0.44 0.12 35);
-    --primary-900: oklch(0.34 0.1 35);
+    --primary-600: oklch(0.62 0.16 35);
+    --primary-700: oklch(0.54 0.12 35);
+    --primary-800: oklch(0.44 0.09 35);
+    --primary-900: oklch(0.34 0.075 35);
 
+    /* ── Status ramps — placeholder, define when adding form validation ── */
+    /* --danger-500: oklch(0.58 0.22 25); */
+    /* --success-500: oklch(0.58 0.18 145); */
+    /* --warning-500: oklch(0.68 0.18 75); */
+
+    /* ── Base ─────────────────────────────────────────── */
     --background: var(--neutral-50);
-    --foreground: var(--neutral-950);
+    --foreground: var(--neutral-900);
 
+    /* ── Text ─────────────────────────────────────────── */
+    --text-primary: var(--neutral-900);
+    --text-secondary: var(--neutral-700);
+    --text-tertiary: var(--neutral-500);
+    --text-muted: var(--neutral-400);
+    --text-inverse: var(--neutral-50);
+    --text-link: var(--primary-500);
+    --text-link-hover: var(--primary-600);
+    /* --text-danger: placeholder; */
+    /* --text-success: placeholder; */
+    /* --text-warning: placeholder; */
+
+    --text-selected: var(--primary-950);
+    --text-selected-background: var(--primary-200);
+
+    /* ── Surfaces ─────────────────────────────────────── */
     --surface: var(--neutral-100);
     --surface-raised: var(--neutral-200);
+    --surface-overlay: oklch(0.13 0.0035 70 / 50%);
+    --surface-tooltip: var(--neutral-100);
 
-    --color-text-neutral: hsl(35, 8%, 50%);
+    /* ── Borders ──────────────────────────────────────── */
+    --border-light: var(--neutral-200);
+    --border: var(--neutral-300);
+    --border-strong: var(--neutral-400);
+    --border-focus: var(--primary-500);
+    /* --border-danger: placeholder; */
 
-    --color-border: hsl(35, 12%, 80%);
-    --color-border-strong: hsl(35, 8%, 65%);
+    /* ── Primary semantic ─────────────────────────────── */
+    --primary-subtle: var(--primary-100);
+    --primary-muted: var(--primary-200);
+    --primary: var(--primary-500);
+    --primary-hover: var(--primary-600);
+    --primary-active: var(--primary-700);
+    --on-primary: var(--neutral-50);
 
-    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.25);
-
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
+    /* ── Component tokens (Radix etc.) ────────────────── */
     --muted: var(--neutral-200);
-    --muted-foreground: var(--neutral-300);
-    --ring: oklch(0.708 0 0);
+    --muted-foreground: var(--neutral-500);
+    --popover: var(--neutral-50);
+    --popover-foreground: var(--neutral-900);
+    --ring: var(--border-focus);
+
+    /* ── Shadow ───────────────────────────────────────── */
+    --shadow: 0 4px 8px oklch(0 0 0 / 25%);
 
     --radius: 0.625rem;
 }
 
 .dark {
+    /* ── Base ─────────────────────────────────────────── */
     --background: var(--neutral-950);
-    --foreground: oklch(0.985 0 0);
+    --foreground: var(--neutral-100);
 
+    /* ── Text ─────────────────────────────────────────── */
+    --text-primary: var(--neutral-100);
+    --text-secondary: var(--neutral-300);
+    --text-tertiary: var(--neutral-500);
+    --text-muted: var(--neutral-600);
+    --text-inverse: var(--neutral-950);
+    --text-link: var(--primary-400);
+    --text-link-hover: var(--primary-300);
+
+    --text-selected: var(--neutral-50);
+    --text-selected-background: oklch(0.48 0.075 35);
+
+    /* ── Surfaces ─────────────────────────────────────── */
     --surface: var(--neutral-900);
     --surface-raised: var(--neutral-800);
+    --surface-overlay: oklch(0 0 0 / 70%);
+    --surface-tooltip: var(--neutral-100);
 
+    /* ── Borders ──────────────────────────────────────── */
     --border-light: var(--neutral-800);
-    --border-medium: var(--neutral-700);
+    --border: var(--neutral-700);
     --border-strong: var(--neutral-600);
+    --border-focus: var(--primary-400);
 
-    --shadow-md: 0 4px 8px hsla(0, 0%, 0%, 0.75);
+    /* ── Primary semantic ─────────────────────────────── */
+    --primary-subtle: var(--primary-900);
+    --primary-muted: var(--primary-800);
+    --primary-hover: var(--primary-400);
+    --primary-active: var(--primary-300);
 
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
+    /* ── Component tokens ─────────────────────────────── */
     --muted: var(--neutral-800);
-    --muted-foreground: var(--neutral-700);
-    --ring: oklch(0.556 0 0);
+    --muted-foreground: var(--neutral-600);
+    --popover: var(--neutral-900);
+    --popover-foreground: var(--neutral-100);
+
+    /* ── Shadow ───────────────────────────────────────── */
+    --shadow: 0 4px 8px oklch(0 0 0 / 75%);
 }
 
 @theme inline {
+    /* ── Base ─────────────────────────────────────────── */
     --color-background: var(--background);
     --color-foreground: var(--foreground);
 
+    /* ── Text ─────────────────────────────────────────── */
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-tertiary: var(--text-tertiary);
+    --color-text-muted: var(--text-muted);
+    --color-text-inverse: var(--text-inverse);
+    --color-text-link: var(--text-link);
+    --color-text-link-hover: var(--text-link-hover);
+
+    /* ── Surfaces ─────────────────────────────────────── */
     --color-surface: var(--surface);
     --color-surface-raised: var(--surface-raised);
+    --color-surface-overlay: var(--surface-overlay);
+    --color-surface-tooltip: var(--surface-tooltip);
 
-    --color-text-neutral: var(--color-text-neutral);
-
+    /* ── Borders ──────────────────────────────────────── */
     --color-border-light: var(--border-light);
-    --color-border-medium: var(--border-medium);
+    --color-border: var(--border);
     --color-border-strong: var(--border-strong);
+    --color-border-focus: var(--border-focus);
 
-    --color-primary: var(--primary-500);
-    --color-on-primary: var(--neutral-50);
+    /* ── Primary ──────────────────────────────────────── */
+    --color-primary-subtle: var(--primary-subtle);
+    --color-primary-muted: var(--primary-muted);
+    --color-primary: var(--primary);
+    --color-primary-hover: var(--primary-hover);
+    --color-primary-active: var(--primary-active);
+    --color-on-primary: var(--on-primary);
 
-    --shadow-md: var(--shadow-md);
-
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
+    /* ── Component tokens ─────────────────────────────── */
     --color-muted: var(--muted);
     --color-muted-foreground: var(--muted-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
     --color-ring: var(--ring);
 
+    /* ── Shadow ───────────────────────────────────────── */
+    --shadow: var(--shadow);
+
+    /* ── Radius ───────────────────────────────────────── */
     --radius-xs: calc(var(--radius) * 0.4);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
@@ -101,11 +187,13 @@
     --radius-4xl: calc(var(--radius) * 2.8);
     --radius-full: calc(var(--radius) * 1000);
 
+    /* ── Typography ───────────────────────────────────── */
     --font-sans:
         system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-heading: var(--font-sans);
 }
 
+/* ── Scrollbar ────────────────────────────────────────── */
 .messages-scroll,
 textarea.composer-scroll {
     scrollbar-width: auto;
@@ -114,7 +202,7 @@ textarea.composer-scroll {
 
 .messages-scroll:hover,
 textarea.composer-scroll:hover {
-    scrollbar-color: var(--color-surface-medium) transparent;
+    scrollbar-color: var(--color-surface-raised) transparent;
 }
 
 .messages-scroll::-webkit-scrollbar,
@@ -137,9 +225,10 @@ textarea.composer-scroll::-webkit-scrollbar-thumb {
 
 .messages-scroll:hover::-webkit-scrollbar-thumb,
 textarea.composer-scroll:hover::-webkit-scrollbar-thumb {
-    background-color: var(--color-surface-medium);
+    background-color: var(--color-surface-raised);
 }
 
+/* ── Thread fade ──────────────────────────────────────── */
 .thread-fade {
     background: linear-gradient(
         to bottom,
@@ -150,9 +239,16 @@ textarea.composer-scroll:hover::-webkit-scrollbar-thumb {
 
 @layer base {
     body {
-        @apply bg-background text-foreground;
+        @apply bg-background text-text-primary;
     }
     html {
         @apply font-sans;
+    }
+    button {
+        cursor: pointer;
+    }
+    ::selection {
+        background-color: var(--text-selected-background);
+        color: var(--text-selected);
     }
 }

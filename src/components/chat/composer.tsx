@@ -61,7 +61,7 @@ export default function Composer({
       onMouseDown={handleMouseDown}
       onSubmit={onSubmit}
       className={cn(
-        "dark:bg-surface relative transition-colors rounded-xl flex flex-col gap-1 shadow-md",
+        "dark:bg-surface relative transition-colors rounded-xl flex flex-col gap-1 shadow",
         focused
           ? "border border-transparent ring-3 ring-primary"
           : "border border-border hover:border-border-strong",
@@ -126,7 +126,7 @@ function Input({
       onBlur={onBlur}
       rows={2}
       placeholder={placeholder}
-      className="w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-neutral"
+      className="w-full resize-none outline-none composer-scroll pt-3 px-3 placeholder:text-text-muted"
     />
   );
 }
@@ -146,6 +146,13 @@ type ActionProps = {
 function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
   const actionKey = isStreaming ? "stop" : "send";
 
+  const arrowClassName = cn(
+    "size-4.5",
+    isStreaming && "text-on-primary",
+    !isStreaming && !isEmpty && "text-on-primary",
+    !isStreaming && isEmpty && "text-foreground opacity-25",
+  );
+
   return (
     <button
       type="button"
@@ -153,11 +160,9 @@ function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
       disabled={!isStreaming && isEmpty}
       className={cn(
         "flex items-center justify-center size-7 rounded-full transition-colors duration-200 shrink-0",
-        isStreaming && "bg-primary text-on-primary",
-        !isStreaming && !isEmpty && "bg-primary text-on-primary",
-        !isStreaming &&
-          isEmpty &&
-          "bg-muted dark:bg-surface-raised text-muted-foreground",
+        isStreaming && "bg-primary",
+        !isStreaming && !isEmpty && "bg-primary",
+        !isStreaming && isEmpty && "bg-foreground/8",
       )}
     >
       <AnimatePresence mode="wait">
@@ -172,7 +177,7 @@ function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
           {isStreaming ? (
             <IconPlayerStopFilled className="size-4.5" />
           ) : (
-            <IconArrowNarrowUp className="size-4.5" />
+            <IconArrowNarrowUp className={arrowClassName} />
           )}
         </motion.span>
       </AnimatePresence>
