@@ -177,7 +177,7 @@ const ScrollButton = memo(function ScrollButton({
           transition={{ duration: 0.15, ease: "easeOut" }}
           onClick={onClick}
           className={cn(
-            "absolute z-50 bottom-2 left-1/2 -translate-x-1/2 bg-background dark:bg-surface-raised border border-border rounded-full p-1.5",
+            "absolute z-50 bottom-2 left-1/2 -translate-x-1/2 bg-surface-floating border border-border rounded-full p-1.5",
             className,
           )}
           {...props}

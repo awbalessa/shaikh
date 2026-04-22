@@ -29,10 +29,7 @@ const Message = memo(function Message({ message }: MessageProps) {
     >
       <div
         dir="auto"
-        className={cn(
-          isUser &&
-            "bg-surface dark:bg-surface-raised rounded-2xl px-4 py-2 max-w-[80%]",
-        )}
+        className={cn(isUser && "bg-surface rounded-xl px-4 py-2 max-w-[80%]")}
       >
         {isUser
           ? parts.map((part, i) => <span key={i}>{part.text}</span>)
@@ -41,7 +38,7 @@ const Message = memo(function Message({ message }: MessageProps) {
             ))}
       </div>
       {isUser && (
-        <div className="flex items-center gap-0.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+        <div className="flex items-center py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
           <MessageCopyAction
             label={content.actions.copy}
             copiedLabel={content.actions.copied}
@@ -75,7 +72,7 @@ function MessageAction({ label, onClick, children }: MessageActionProps) {
           type="button"
           onClick={onClick}
           tabIndex={-1}
-          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="rounded-md p-1 text-text-tertiary hover:text-text-primary hover:bg-surface dark:hover:bg-surface-raised transition-colors"
         >
           {children}
         </button>
@@ -114,7 +111,7 @@ function MessageCopyAction({
           type="button"
           onClick={handleClick}
           tabIndex={-1}
-          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="rounded-md p-1 hover:bg-surface text-text-tertiary hover:text-text-primary transition-colors"
         >
           <AnimatePresence mode="wait" initial={false}>
             {copied ? (

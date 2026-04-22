@@ -6,7 +6,7 @@
 
 :root {
     /* ── Neutral ramp ─────────────────────────────────── */
-    --neutral-50: oklch(1 0 70);
+    --neutral-50: oklch(1 0 0);
     --neutral-100: oklch(0.96 0.0035 70);
     --neutral-200: oklch(0.91 0.005 70);
     --neutral-300: oklch(0.82 0.005 70);
@@ -15,8 +15,9 @@
     --neutral-600: oklch(0.45 0.005 70);
     --neutral-700: oklch(0.34 0.005 70);
     --neutral-800: oklch(0.25 0.005 70);
-    --neutral-900: oklch(0.18 0.005 70);
-    --neutral-950: oklch(0.13 0.0035 70);
+    --neutral-850: oklch(0.18 0.005 70);
+    --neutral-900: oklch(0.13 0.0035 70);
+    --neutral-950: oklch(0 0 0);
 
     /* ── Primary ramp ─────────────────────────────────── */
     --primary-100: oklch(0.93 0.03 35);
@@ -38,6 +39,12 @@
     --background: var(--neutral-50);
     --foreground: var(--neutral-900);
 
+    /* ── Surfaces ─────────────────────────────────────── */
+    --surface: var(--neutral-100);
+    --surface-raised: var(--neutral-200);
+    --surface-floating: var(--neutral-50);
+    --surface-composer: var(--neutral-50);
+
     /* ── Text ─────────────────────────────────────────── */
     --text-primary: var(--neutral-900);
     --text-secondary: var(--neutral-700);
@@ -49,15 +56,8 @@
     /* --text-danger: placeholder; */
     /* --text-success: placeholder; */
     /* --text-warning: placeholder; */
-
     --text-selected: var(--primary-950);
     --text-selected-background: var(--primary-200);
-
-    /* ── Surfaces ─────────────────────────────────────── */
-    --surface: var(--neutral-100);
-    --surface-raised: var(--neutral-200);
-    --surface-overlay: oklch(0.13 0.0035 70 / 50%);
-    --surface-tooltip: var(--neutral-100);
 
     /* ── Borders ──────────────────────────────────────── */
     --border-light: var(--neutral-200);
@@ -74,13 +74,6 @@
     --primary-active: var(--primary-700);
     --on-primary: var(--neutral-50);
 
-    /* ── Component tokens (Radix etc.) ────────────────── */
-    --muted: var(--neutral-200);
-    --muted-foreground: var(--neutral-500);
-    --popover: var(--neutral-50);
-    --popover-foreground: var(--neutral-900);
-    --ring: var(--border-focus);
-
     /* ── Shadow ───────────────────────────────────────── */
     --shadow: 0 4px 8px oklch(0 0 0 / 25%);
 
@@ -89,8 +82,14 @@
 
 .dark {
     /* ── Base ─────────────────────────────────────────── */
-    --background: var(--neutral-950);
+    --background: var(--neutral-900);
     --foreground: var(--neutral-100);
+
+    /* ── Surfaces ─────────────────────────────────────── */
+    --surface: var(--neutral-800);
+    --surface-raised: var(--neutral-700);
+    --surface-floating: var(--neutral-800);
+    --surface-composer: var(--neutral-850);
 
     /* ── Text ─────────────────────────────────────────── */
     --text-primary: var(--neutral-100);
@@ -100,15 +99,8 @@
     --text-inverse: var(--neutral-950);
     --text-link: var(--primary-400);
     --text-link-hover: var(--primary-300);
-
     --text-selected: var(--neutral-50);
-    --text-selected-background: oklch(0.48 0.075 35);
-
-    /* ── Surfaces ─────────────────────────────────────── */
-    --surface: var(--neutral-900);
-    --surface-raised: var(--neutral-800);
-    --surface-overlay: oklch(0 0 0 / 70%);
-    --surface-tooltip: var(--neutral-100);
+    --text-selected-background: oklch(0.5 0.09 35);
 
     /* ── Borders ──────────────────────────────────────── */
     --border-light: var(--neutral-800);
@@ -122,12 +114,6 @@
     --primary-hover: var(--primary-400);
     --primary-active: var(--primary-300);
 
-    /* ── Component tokens ─────────────────────────────── */
-    --muted: var(--neutral-800);
-    --muted-foreground: var(--neutral-600);
-    --popover: var(--neutral-900);
-    --popover-foreground: var(--neutral-100);
-
     /* ── Shadow ───────────────────────────────────────── */
     --shadow: 0 4px 8px oklch(0 0 0 / 75%);
 }
@@ -137,6 +123,12 @@
     --color-background: var(--background);
     --color-foreground: var(--foreground);
 
+    /* ── Surfaces ─────────────────────────────────────── */
+    --color-surface: var(--surface);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-floating: var(--surface-floating);
+    --color-surface-composer: var(--surface-composer);
+
     /* ── Text ─────────────────────────────────────────── */
     --color-text-primary: var(--text-primary);
     --color-text-secondary: var(--text-secondary);
@@ -145,12 +137,6 @@
     --color-text-inverse: var(--text-inverse);
     --color-text-link: var(--text-link);
     --color-text-link-hover: var(--text-link-hover);
-
-    /* ── Surfaces ─────────────────────────────────────── */
-    --color-surface: var(--surface);
-    --color-surface-raised: var(--surface-raised);
-    --color-surface-overlay: var(--surface-overlay);
-    --color-surface-tooltip: var(--surface-tooltip);
 
     /* ── Borders ──────────────────────────────────────── */
     --color-border-light: var(--border-light);
@@ -165,13 +151,6 @@
     --color-primary-hover: var(--primary-hover);
     --color-primary-active: var(--primary-active);
     --color-on-primary: var(--on-primary);
-
-    /* ── Component tokens ─────────────────────────────── */
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-ring: var(--ring);
 
     /* ── Shadow ───────────────────────────────────────── */
     --shadow: var(--shadow);
@@ -202,7 +181,7 @@ textarea.composer-scroll {
 
 .messages-scroll:hover,
 textarea.composer-scroll:hover {
-    scrollbar-color: var(--color-surface-raised) transparent;
+    scrollbar-color: var(--color-surface) transparent;
 }
 
 .messages-scroll::-webkit-scrollbar,
@@ -225,7 +204,7 @@ textarea.composer-scroll::-webkit-scrollbar-thumb {
 
 .messages-scroll:hover::-webkit-scrollbar-thumb,
 textarea.composer-scroll:hover::-webkit-scrollbar-thumb {
-    background-color: var(--color-surface-raised);
+    background-color: var(--color-surface);
 }
 
 /* ── Thread fade ──────────────────────────────────────── */

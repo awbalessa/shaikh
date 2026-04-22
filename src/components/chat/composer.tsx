@@ -35,6 +35,7 @@ export default function Composer({
 
   const handleMouseDown = (e: React.MouseEvent<HTMLFormElement>) => {
     if ((e.target as HTMLElement).closest("button")) return;
+    if (e.target === textAreaRef.current) return;
     e.preventDefault();
     textAreaRef.current?.focus();
   };
@@ -61,7 +62,7 @@ export default function Composer({
       onMouseDown={handleMouseDown}
       onSubmit={onSubmit}
       className={cn(
-        "dark:bg-surface relative transition-colors rounded-xl flex flex-col gap-1 shadow",
+        "bg-surface-composer relative transition-colors rounded-xl flex flex-col gap-1.5 shadow",
         focused
           ? "border border-transparent ring-3 ring-primary"
           : "border border-border hover:border-border-strong",
