@@ -147,13 +147,6 @@ type ActionProps = {
 function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
   const actionKey = isStreaming ? "stop" : "send";
 
-  const arrowClassName = cn(
-    "size-4.5",
-    isStreaming && "text-on-primary",
-    !isStreaming && !isEmpty && "text-on-primary",
-    !isStreaming && isEmpty && "text-foreground opacity-25",
-  );
-
   return (
     <button
       type="button"
@@ -163,7 +156,7 @@ function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
         "flex items-center justify-center size-7 rounded-full transition-colors duration-200 shrink-0",
         isStreaming && "bg-primary",
         !isStreaming && !isEmpty && "bg-primary",
-        !isStreaming && isEmpty && "bg-foreground/8",
+        !isStreaming && isEmpty && "bg-foreground/12",
       )}
     >
       <AnimatePresence mode="wait">
@@ -176,9 +169,16 @@ function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
           className="flex items-center justify-center"
         >
           {isStreaming ? (
-            <IconPlayerStopFilled className="size-4.5" />
+            <IconPlayerStopFilled className="size-4.5 text-on-primary" />
           ) : (
-            <IconArrowNarrowUp className={arrowClassName} />
+            <IconArrowNarrowUp
+              className={cn(
+                "size-4.5",
+                isStreaming && "text-on-primary",
+                !isStreaming && !isEmpty && "text-on-primary",
+                !isStreaming && isEmpty && "text-text-primary opacity-25",
+              )}
+            />
           )}
         </motion.span>
       </AnimatePresence>
