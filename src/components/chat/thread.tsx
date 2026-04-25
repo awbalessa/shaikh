@@ -18,17 +18,25 @@ import Message from "./message";
 
 const MIN_SPACER = 64;
 
-type ChatThreadProps = React.ComponentPropsWithoutRef<"div"> & {
+type ThreadProps = React.ComponentPropsWithoutRef<"div"> & {
   messages: UIMessage[];
   status: ChatStatus;
+  editingMessageID: string | null;
+  onStartEditing: (id: string) => void;
+  onStopEditing: () => void;
+  onEditMessage: (id: string, text: string) => void;
 };
 
 export default function Thread({
   messages,
   status,
+  editingMessageID,
+  onStartEditing,
+  onStopEditing,
+  onEditMessage,
   className,
   ...props
-}: ChatThreadProps) {
+}: ThreadProps) {
   const deferredMessages = useDeferredValue(messages);
 
   const isWaiting = status === "submitted" && messages.at(-1)?.role === "user";
@@ -106,7 +114,13 @@ export default function Thread({
             key={message.id}
             ref={message.id === lastUserMessageId ? lastUserRef : undefined}
           >
-            <Message message={message} />
+            <Message
+              message={message}
+              editingMessageID={editingMessageID}
+              onStartEditing={onStartEditing}
+              onStopEditing={onStopEditing}
+              onEditMessage={onEditMessage}
+            />
           </div>
         ))}
         <WaitingIndicator isWaiting={isWaiting} />
