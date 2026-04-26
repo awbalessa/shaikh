@@ -16,7 +16,7 @@ export default Page;
 
 function PageContent() {
   return (
-    <main className="h-dvh flex flex-row overflow-hidden">
+    <main className="h-dvh flex flex-row overflow-hidden bg-surface-composer">
       <QuranPane />
       <ChatPane />
     </main>

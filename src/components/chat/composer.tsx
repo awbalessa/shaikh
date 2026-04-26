@@ -62,7 +62,7 @@ export default function Composer({
       onMouseDown={handleMouseDown}
       onSubmit={onSubmit}
       className={cn(
-        "bg-surface-composer relative transition-colors rounded-xl flex flex-col gap-1.5 shadow",
+        "bg-surface-input relative transition-colors rounded-xl flex flex-col gap-1.5 shadow",
         focused
           ? "border border-transparent ring-3 ring-primary"
           : "border border-border hover:border-border-strong",

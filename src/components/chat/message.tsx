@@ -254,6 +254,12 @@ function UserMessageEditor({
   }, [value]);
 
   useEffect(() => {
+    const el = textAreaRef.current;
+    if (!el) return;
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
     };
@@ -279,9 +285,9 @@ function UserMessageEditor({
         rows={2}
       />
       <div className="flex flex-row justify-between items-center">
-        <div className="flex flex-row gap-1 items-center">
-          <IconInfoCircle className="size-3" />
-          <p className="text-xs">{content.warning}</p>
+        <div className="flex flex-row gap-1.5 items-start">
+          <IconInfoCircle className="size-3 mt-0.75" />
+          <p className="text-xs max-w-56">{content.warning}</p>
         </div>
         <div className="flex flex-row gap-2">
           <button
