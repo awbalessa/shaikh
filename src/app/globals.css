@@ -7,7 +7,7 @@
 :root {
     /* ── Neutral ramp ─────────────────────────────────── */
     --neutral-100: oklch(0.95 0.0025 70);
-    --neutral-200: oklch(0.88 0.003 70);
+    --neutral-200: oklch(0.87 0.003 70);
     --neutral-300: oklch(0.8 0.004 70);
     --neutral-400: oklch(0.68 0.004 70);
     --neutral-500: oklch(0.55 0.004 70);
@@ -21,9 +21,9 @@
     --primary-100: oklch(0.94 0.055 35);
     --primary-200: oklch(0.88 0.07 35);
     --primary-300: oklch(0.8 0.095 35);
-    --primary-400: oklch(0.74 0.14 35);
+    --primary-400: oklch(0.74 0.15 35);
     --primary-500: oklch(0.68 0.18 35);
-    --primary-600: oklch(0.62 0.14 35);
+    --primary-600: oklch(0.62 0.15 35);
     --primary-700: oklch(0.54 0.12 35);
     --primary-800: oklch(0.46 0.085 35);
     --primary-900: oklch(0.32 0.055 35);
@@ -43,6 +43,7 @@
     --surface-raised: var(--neutral-200);
     --surface-input: oklch(1 0 0);
     --surface-inverse: var(--neutral-800);
+    --surface-inverse-raised: var(--neutral-700);
 
     /* ── Text ─────────────────────────────────────────── */
     --text-primary: var(--neutral-950);
@@ -65,7 +66,6 @@
     /* --border-danger: placeholder; */
 
     /* ── Primary semantic ─────────────────────────────── */
-    --primary: var(--primary-500);
     --primary-hover: var(--primary-600);
 
     /* ── Shadow ───────────────────────────────────────── */
@@ -84,6 +84,7 @@
     --surface-raised: var(--neutral-700);
     --surface-input: var(--neutral-800);
     --surface-inverse: var(--neutral-100);
+    --surface-inverse-raised: var(--neutral-200);
 
     /* ── Text ─────────────────────────────────────────── */
     --text-primary: var(--neutral-100);
@@ -102,10 +103,7 @@
     --border-strong: var(--neutral-600);
 
     /* ── Primary semantic ─────────────────────────────── */
-    --primary-subtle: var(--primary-900);
-    --primary-muted: var(--primary-800);
     --primary-hover: var(--primary-400);
-    --primary-active: var(--primary-300);
 
     /* ── Shadow ───────────────────────────────────────── */
     --shadow: 0 4px 8px oklch(0 0 0 / 75%);
@@ -121,6 +119,7 @@
     --color-surface-raised: var(--surface-raised);
     --color-surface-input: var(--surface-input);
     --color-surface-inverse: var(--surface-inverse);
+    --color-surface-inverse-raised: var(--surface-inverse-raised);
 
     /* ── Text ─────────────────────────────────────────── */
     --color-text-primary: var(--text-primary);
@@ -136,7 +135,7 @@
     --color-border-strong: var(--border-strong);
 
     /* ── Primary ──────────────────────────────────────── */
-    --color-primary: var(--primary);
+    --color-primary: var(--primary-500);
     --color-primary-hover: var(--primary-hover);
     --color-on-primary: oklch(1 0 0);
 

@@ -1,16 +1,19 @@
+"use client";
 import { createContext, ReactNode, useContext, useState } from "react";
+
+export type AuthModalVariant = "messageAttempt" | "cta";
 
 type AuthModalState = {
   open: boolean;
   view: "entry" | "signup" | "login";
-  variant: "messageAttempt" | "cta";
+  variant: AuthModalVariant;
   email: string;
   pendingMessage?: string;
 };
 
 const AuthModalContext = createContext<
   AuthModalState & {
-    openModal: (variant: AuthModalState["variant"], message?: string) => void;
+    openModal: (variant: AuthModalVariant, message?: string) => void;
     closeModal: () => void;
     setView: (view: AuthModalState["view"]) => void;
     setEmail: (email: string) => void;
@@ -26,7 +29,7 @@ export function AuthModalProvider({ children }: { children: ReactNode }) {
     pendingMessage: "",
   });
 
-  const openModal = (variant: AuthModalState["variant"], message?: string) =>
+  const openModal = (variant: AuthModalVariant, message?: string) =>
     setState((s) => ({
       ...s,
       open: true,

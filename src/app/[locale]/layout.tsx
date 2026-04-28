@@ -8,6 +8,8 @@ import { ThemeProvider } from "next-themes";
 import DirectionProvider from "@/components/direction-provider";
 import "../globals.css";
 import "streamdown/styles.css";
+import { AuthModalProvider } from "@/hooks/use-auth-modal";
+import { AuthModal } from "@/components/auth/auth-modal";
 
 export const metadata: Metadata = {
   title: "Shaikh",
@@ -26,7 +28,10 @@ const LocaleLayout: NextLayoutIntlayer = async ({ children, params }) => {
             <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
               <ThemeToggle />
               <Tooltip.Provider delayDuration={100}>
-                {children}
+                <AuthModalProvider>
+                  {children}
+                  <AuthModal />
+                </AuthModalProvider>
               </Tooltip.Provider>
             </ThemeProvider>
           </DirectionProvider>

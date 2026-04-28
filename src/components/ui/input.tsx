@@ -21,13 +21,14 @@ export function Input({
   return (
     <div className="relative">
       <input
+        dir={hasValue ? "auto" : undefined}
         type={type}
         value={value}
         onChange={onChange}
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         className={cn(
-          "bg-surface-input border border-border rounded-md px-4 pt-6 pb-2",
+          "bg-surface-input outline-none border border-border focus:border-border-strong transition-colors rounded-md px-4 pt-6 pb-2",
           className,
         )}
         {...props}
@@ -35,11 +36,12 @@ export function Input({
       {label && (
         <motion.label
           animate={{
-            y: isFocused || hasValue ? -24 : 0,
-            scale: isFocused || hasValue ? 0.85 : 1,
+            y: isFocused || hasValue ? -7 : 0,
+            x: isFocused || hasValue ? -3 : 0,
+            scale: isFocused || hasValue ? 9 / 14 : 1,
           }}
           transition={{ duration: 0.15 }}
-          className="absolute left-3 top-2.5 text-text-tertiary pointer-events-none"
+          className="absolute start-3 top-2.5 text-text-tertiary pointer-events-none"
         >
           {label}
         </motion.label>

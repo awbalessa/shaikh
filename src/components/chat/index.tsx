@@ -4,8 +4,11 @@ import { useChat } from "@ai-sdk/react";
 import { useCallback, useState } from "react";
 import Thread from "./thread";
 import Composer from "./composer";
+import { useAuthModal } from "@/hooks/use-auth-modal";
 
 export default function Client() {
+  const { openModal } = useAuthModal();
+  const session = null;
   const { messages, status, sendMessage, stop } = useChat();
   const [input, setInput] = useState("");
   const [editingMessageID, setEditingMessageID] = useState<string | null>(null);
@@ -26,6 +29,11 @@ export default function Client() {
   const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmed = input.trim();
+    if (!session) {
+      openModal("messageAttempt", trimmed);
+      setInput("");
+      return;
+    }
     if (!trimmed || status === "streaming" || status === "submitted") return;
     setEditingMessageID(null);
     sendMessage({ text: trimmed });

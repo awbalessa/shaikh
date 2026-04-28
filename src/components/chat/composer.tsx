@@ -154,8 +154,8 @@ function Action({ isStreaming, isEmpty, onClick }: ActionProps) {
       disabled={!isStreaming && isEmpty}
       className={cn(
         "flex items-center justify-center size-7 rounded-full transition-colors duration-200 shrink-0",
-        isStreaming && "bg-primary",
-        !isStreaming && !isEmpty && "bg-primary",
+        isStreaming && "bg-primary hover:bg-primary-hover",
+        !isStreaming && !isEmpty && "bg-primary hover:bg-primary-hover",
         !isStreaming && isEmpty && "bg-foreground/12",
       )}
     >
